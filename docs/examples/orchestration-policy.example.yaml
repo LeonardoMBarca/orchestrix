@@ -1,0 +1,199 @@
+# Illustrative Orchestrix orchestration policy.
+#
+# This file is documentation, not yet a stable public configuration contract.
+# The final schema must be validated against implementation requirements.
+
+version: 1
+
+execution:
+  mode: multi-runtime # single-runtime | multi-runtime | hybrid
+  preset: custom     # balanced | quality-first | throughput-first | conservative | subscription-saver | custom
+
+billing:
+  subscriptionOnly: true
+  allowApiFallback: false
+
+scheduler:
+  maxConcurrentTasks: 4
+  maxModifyingTasks: 3
+  maxReviewTasks: 2
+  speculativeParallelism: false
+
+runtimes:
+  codex:
+    enabled: true
+    priority: 90
+    maxConcurrentSessions: 3
+    mode: preferred
+    allowedRoles:
+      - implementation-engineer
+      - backend-engineer
+      - debugger
+      - reviewer
+      - security-reviewer
+
+  claude:
+    enabled: true
+    priority: 100
+    maxConcurrentSessions: 2
+    mode: preferred
+    allowedRoles:
+      - planner
+      - architect
+      - implementation-engineer
+      - reviewer
+      - documentation-agent
+
+  antigravity:
+    enabled: true
+    priority: 80
+    maxConcurrentSessions: 2
+    mode: preferred
+    allowedRoles:
+      - frontend-engineer
+      - implementation-engineer
+      - reviewer
+
+routing:
+  strategy: weighted
+
+  weights:
+    capabilityMatch: 0.30
+    userPreference: 0.25
+    historicalPerformance: 0.18
+    availability: 0.12
+    quotaPressure: 0.08
+    contextCompatibility: 0.05
+    retryHistory: 0.02
+
+  capabilities:
+    backend:
+      preferred:
+        - codex
+        - claude
+        - antigravity
+
+    frontend:
+      preferred:
+        - antigravity
+        - claude
+        - codex
+
+    architecture:
+      preferred:
+        - claude
+        - codex
+
+    debugging:
+      preferred:
+        - codex
+        - claude
+
+    security-review:
+      preferred:
+        - codex
+        - claude
+
+review:
+  requireIndependentSession: true
+  deterministicChecksBeforeModelReview: true
+  preferDifferentRuntime: true
+  requireDifferentRuntimeForHighRisk: false
+  fallbackToSameRuntime: true
+
+  byRisk:
+    low:
+      requireModelReview: false
+      requireHumanApproval: false
+
+    medium:
+      requireModelReview: true
+      requireHumanApproval: false
+
+    high:
+      requireModelReview: true
+      preferCrossModelReview: true
+      requireHumanApproval: true
+
+    critical:
+      requireModelReview: true
+      preferCrossModelReview: true
+      minimumReviewers: 2
+      requireHumanApproval: true
+
+verification:
+  requireBuildWhenAvailable: true
+  requireTestsWhenAvailable: true
+  requireLintWhenAvailable: true
+  requireStaticAnalysisForHighRisk: true
+
+retry:
+  maxAttemptsPerTask: 3
+  freshSessionAfterFailure: true
+  alternateRuntimeWhenAvailable: true
+  replanBeforeFinalAttempt: true
+  escalateToHumanAfterExhaustion: true
+
+delegation:
+  enabled: true
+  maxDepth: 2
+  maxChildTasksPerTask: 5
+  allowSpecialistReviewRequest: true
+  allowReviewerCorrectionTask: true
+  requireApprovalForHighRiskChildTask: true
+
+resources:
+  semanticLocks:
+    enabled: true
+    mode: strict # strict | advisory
+    inferAutomatically: true
+    deadlockDetection: true
+
+context:
+  strategy: focused
+  includeRelevantArchitecture: true
+  includeFailureMemory: true
+  recentRelatedTasks: 5
+  includeFullDiffBelowThreshold: true
+  includeUnrelatedHistory: false
+  runtimeAwareBudget: true
+
+integration:
+  requireGreenDeterministicChecks: true
+  useIntegrationAgent: true
+  autoIntegrateLowRisk: false
+  requireHumanApprovalForHighRisk: true
+  preferredMergeStrategy: squash
+
+approvals:
+  destructiveDatabaseOperation: require
+  forcePush: block
+  productionCommand: require
+  massFileDeletion: require
+  modifySecrets: block
+  dependencyInstallation: ask
+  networkAccess: ask
+
+observability:
+  persistRoutingExplanation: true
+  persistEffectivePolicyVersion: true
+  emitPolicyChangeEvents: true
+  exposeContextManifest: true
+  exposeRuntimeCapacityState: true
+
+# A single-runtime user could reduce the same policy to something like:
+#
+# execution:
+#   mode: single-runtime
+#
+# runtimes:
+#   codex:
+#     enabled: true
+#     maxConcurrentSessions: 3
+#
+# review:
+#   requireIndependentSession: true
+#   preferDifferentRuntime: false
+#   fallbackToSameRuntime: true
+#
+# All core orchestration features remain available.
