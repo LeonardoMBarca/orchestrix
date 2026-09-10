@@ -12,6 +12,20 @@ Defines the problem, product thesis, goals, non-goals, domain concepts, executio
 
 Describes the initial target architecture, component boundaries, control plane, runtime adapter model, task state machine, scheduler, router, worktree isolation, verification, persistence, recovery, security, and open architectural decisions.
 
+### [Orchestration Control Center](./ORCHESTRATION_CONTROL_CENTER.md)
+
+Defines single-runtime support as a first-class product requirement and specifies the proposed technical control panel for execution strategy, runtime pools, Agent Profiles, task routing, concurrency, review policy, delegation, retries, resource locks, context, quotas, integration, human approvals, and live policy changes.
+
+It also defines the conceptual execution modes:
+
+```text
+Single Runtime
+Multi Runtime
+Hybrid
+```
+
+and the requirement that Orchestrix remain valuable even when the user has only one coding-agent subscription.
+
 ### [Roadmap](./ROADMAP.md)
 
 Breaks the vision into implementation phases and milestones, from runtime feasibility spikes through multi-agent orchestration, adaptive planning, observability, benchmarking, open-source readiness, and eventual distributed execution.
@@ -19,6 +33,10 @@ Breaks the vision into implementation phases and milestones, from runtime feasib
 ## Architecture Decision Records
 
 Important architectural decisions should be documented in [`adr/`](./adr).
+
+Current ADRs:
+
+- [`ADR-0001 — Single Runtime Is a First-Class Configuration`](./adr/0001-single-runtime-first-class.md)
 
 ADRs should be used when a decision materially affects one or more of:
 
