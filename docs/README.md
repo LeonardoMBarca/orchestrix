@@ -26,6 +26,8 @@ Hybrid
 
 and the requirement that Orchestrix remain valuable even when the user has only one coding-agent subscription.
 
+An illustrative policy document is available at [`examples/orchestration-policy.example.yaml`](./examples/orchestration-policy.example.yaml). It demonstrates how the technical UI can map to explicit, versionable orchestration policy rather than hidden UI state.
+
 ### [Roadmap](./ROADMAP.md)
 
 Breaks the vision into implementation phases and milestones, from runtime feasibility spikes through multi-agent orchestration, adaptive planning, observability, benchmarking, open-source readiness, and eventual distributed execution.
