@@ -12,6 +12,18 @@ Defines the problem, product thesis, goals, non-goals, domain concepts, executio
 
 Describes the initial target architecture, component boundaries, control plane, runtime adapter model, task state machine, scheduler, router, worktree isolation, verification, persistence, recovery, security, and open architectural decisions.
 
+### [Proposed Technology Stack](./TECH_STACK.md)
+
+Records the current baseline stack: Tauri 2, React, TypeScript, Vite, Rust, Tokio, SQLite, petgraph, Git CLI, and structured local runtime adapters. It also identifies open choices such as SQLx vs rusqlite, frontend state management, and the code/diff viewer.
+
+### [Context Ownership Model](./CONTEXT_OWNERSHIP.md)
+
+Defines the boundary between provider-owned conversational context and Orchestrix-owned durable project context. Provider runtimes manage their own conversation history, context windows, resume semantics, and compaction, while Orchestrix persists tasks, plans, decisions, failures, reviews, events, project knowledge, and generates focused Context Packs.
+
+The governing rule is:
+
+> Providers own conversational context. Orchestrix owns durable project context.
+
 ### [Orchestration Control Center](./ORCHESTRATION_CONTROL_CENTER.md)
 
 Defines single-runtime support as a first-class product requirement and specifies the proposed technical control panel for execution strategy, runtime pools, Agent Profiles, task routing, concurrency, review policy, delegation, retries, resource locks, context, quotas, integration, human approvals, and live policy changes.
@@ -49,6 +61,7 @@ Current ADRs:
 - [`ADR-0001 — Single Runtime Is a First-Class Configuration`](./adr/0001-single-runtime-first-class.md)
 - [`ADR-0002 — Model and Reasoning Controls Are First-Class Policy`](./adr/0002-model-and-reasoning-policy.md)
 - [`ADR-0003 — Desktop App with an Editor-Agnostic Core`](./adr/0003-desktop-app-editor-agnostic-core.md)
+- [`ADR-0004 — Providers Own Conversational Context; Orchestrix Owns Durable Project Context`](./adr/0004-context-ownership.md)
 
 ADRs should be used when a decision materially affects one or more of:
 
