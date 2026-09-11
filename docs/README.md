@@ -32,6 +32,10 @@ An illustrative policy document is available at [`examples/orchestration-policy.
 
 Defines model selection and reasoning/thinking effort as first-class orchestration controls. It specifies normalized reasoning intent, runtime capability discovery, provider-specific translation, per-role/per-risk/per-task overrides, requested-vs-effective configuration, reasoning-aware routing, observability, and the proposed `Nuclear` quality preset.
 
+### [Desktop App and Project Workspace](./DESKTOP_APP_AND_PROJECT_WORKSPACE.md)
+
+Defines the initial product shell as a standalone Desktop App backed by an editor-agnostic local Core/daemon. It specifies project creation/opening flows, Project Explorer behavior, file and diff visibility, execution-aware file metadata, external-editor integration, the distinction between Project and Repository, and why Orchestrix should not become a full IDE in its first version.
+
 ### [Roadmap](./ROADMAP.md)
 
 Breaks the vision into implementation phases and milestones, from runtime feasibility spikes through multi-agent orchestration, adaptive planning, observability, benchmarking, open-source readiness, and eventual distributed execution.
@@ -44,6 +48,7 @@ Current ADRs:
 
 - [`ADR-0001 — Single Runtime Is a First-Class Configuration`](./adr/0001-single-runtime-first-class.md)
 - [`ADR-0002 — Model and Reasoning Controls Are First-Class Policy`](./adr/0002-model-and-reasoning-policy.md)
+- [`ADR-0003 — Desktop App with an Editor-Agnostic Core`](./adr/0003-desktop-app-editor-agnostic-core.md)
 
 ADRs should be used when a decision materially affects one or more of:
 
