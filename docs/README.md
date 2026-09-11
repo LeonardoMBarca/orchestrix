@@ -28,6 +28,10 @@ and the requirement that Orchestrix remain valuable even when the user has only 
 
 An illustrative policy document is available at [`examples/orchestration-policy.example.yaml`](./examples/orchestration-policy.example.yaml). It demonstrates how the technical UI can map to explicit, versionable orchestration policy rather than hidden UI state.
 
+### [Model and Reasoning Policy](./REASONING_AND_MODEL_POLICY.md)
+
+Defines model selection and reasoning/thinking effort as first-class orchestration controls. It specifies normalized reasoning intent, runtime capability discovery, provider-specific translation, per-role/per-risk/per-task overrides, requested-vs-effective configuration, reasoning-aware routing, observability, and the proposed `Nuclear` quality preset.
+
 ### [Roadmap](./ROADMAP.md)
 
 Breaks the vision into implementation phases and milestones, from runtime feasibility spikes through multi-agent orchestration, adaptive planning, observability, benchmarking, open-source readiness, and eventual distributed execution.
@@ -39,6 +43,7 @@ Important architectural decisions should be documented in [`adr/`](./adr).
 Current ADRs:
 
 - [`ADR-0001 — Single Runtime Is a First-Class Configuration`](./adr/0001-single-runtime-first-class.md)
+- [`ADR-0002 — Model and Reasoning Controls Are First-Class Policy`](./adr/0002-model-and-reasoning-policy.md)
 
 ADRs should be used when a decision materially affects one or more of:
 
