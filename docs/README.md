@@ -16,6 +16,10 @@ Records the Studio prototype candidate, onboarding with one connection, four-tas
 
 Consolidates nine solution families, three interaction references, 14 prioritized decisions and the handoff to D1. Records the replacement of the earlier full-journey criterion, observed/documented/unknown steps, and validation owners. Links [version/license provenance](./research/landscape-and-provenance.md), [Conductor workflow](./research/conductor-dynamic-evidence.md), [Cline/Superset demos](./research/workflow-demonstrations.md), [OpenCode media](./research/opencode-media-observation.md) and [subscription/account UX](./research/subscription-account-ux.md).
 
+### [Competitive Research Update — 2026-10-09](./research/competitive-update-2026-10-09.md)
+
+Adds Jackalope and Cobalt to the initial nine-family survey and records Superset multi-account documentation. Compares six relevant product surfaces, access limits and evidence gaps; distinguishes task-depth presets from provider reasoning. Links five proposed positioning decisions to the existing pilot/alpha and M3/M4 work, with a future comparison protocol. No competitor execution, new implementation or gate completion is claimed.
+
 ### [Runtime Harness Results](./research/runtime-harness-results.md)
 
 Records the local Codex app-server experiment, normalized offline fixtures, supported/unknown capabilities and sanitized live evidence. Confirms a trivial response and interrupted turn via existing ChatGPT authentication; leaves process-tree supervision, real resume, code execution and independent accounts pending. Includes a [version-specific protocol inspection](./research/codex-protocol-spike.md) and a [discovery handoff](./research/discovery-handoff.md).

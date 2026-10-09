@@ -2,6 +2,8 @@
 
 Consolidação em **8 de outubro de 2026**. **D0 concluído como etapa de pesquisa**, pelo critério metodológico explicitado abaixo. O resultado é uma direção de produto, requisitos de experiência e prioridades rastreáveis. Validação de uso, adapters e aplicativo de produção têm gates próprios.
 
+**Complemento em 09/10/2026:** a [atualização competitiva](competitive-update-2026-10-09.md) acrescenta Jackalope/Cobalt e registra multiaccount no Superset. Amplia a cobertura documental para onze famílias e reforça que a diferenciação depende de comparação prática. A consolidação de 08/10 abaixo conserva seus nove produtos, demos e limites; o complemento não altera seu aceite nem conclui D1/M0.
+
 ## Critério de encerramento e alteração registrada
 
 O backlog anterior pedia cinco percursos por teste/demo em pelo menos três referências. Os registros anteriores passaram a tratar isso como quinze jornadas completas, incluindo recuperação e aplicação final confirmadas. **Esse requisito integral não foi demonstrado.** O critério foi proposto pelo agente durante a elaboração do plano, não imposto pelo responsável. A revisão é uma decisão metodológica do agente sob a autonomia delegada para conduzir o plano; o pedido do responsável foi pesquisa aprofundada de solução/interface como etapa inicial.

@@ -43,6 +43,8 @@ Aprofundar o [levantamento inicial](./PRODUCT_AND_UX_RESEARCH.md), comparando pr
 
 **Concluído como pesquisa.** Nove famílias, demonstrações Conductor/Cline/Superset, matriz de proveniência e critérios para D1. O requisito anterior, interpretado como quinze jornadas completas por teste/demo, **não foi cumprido integralmente**: foi substituído pelo método acima, com justificativa e cobertura em [D0 — conclusão](./research/d0-conclusion.md). Os gates técnicos e de piloto não foram reduzidos.
 
+**Complemento documental de OX-D01 em 09/10:** [concorrentes e implicações](./research/competitive-update-2026-10-09.md). Jackalope/Cobalt ampliam o levantamento; Superset tem evidência de multiaccount registrada. CMP-01 a CMP-05 e o protocolo futuro orientam OX-D05/OX-017 e hipóteses M3/M4, sem alterar aceites ou criar requisito de testar todos os concorrentes antes de retomar M0.
+
 ### OX-D02 Benchmark UX e visual
 
 Comparar pelo menos três referências de interação/visual e as interfaces dos similares. Anotar hierarquia, densidade, navegação, feedback, leitura de código/diff, configuração, atenção, teclado e adaptação. Avaliar telas reais e estados, além de apresentações de marketing.

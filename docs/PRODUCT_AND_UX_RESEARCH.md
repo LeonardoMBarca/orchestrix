@@ -4,6 +4,8 @@ O Orchestrix precisa combinar coordenação confiável de agentes com um espaço
 
 **Atualização em 8 de outubro de 2026 — D0 concluído como pesquisa:** a [conclusão](./research/d0-conclusion.md) registra evidências, 14 decisões priorizadas, lacunas e a revisão explícita do aceite metodológico. O pacote reúne nove famílias, [manutenção/licenças](./research/landscape-and-provenance.md), [jornadas](./research/solution-journeys.md), [benchmark visual](./research/experience-decisions.md), [posicionamento](./research/product-positioning.md) e [contas/assinatura](./research/subscription-account-ux.md). Demos [Conductor](./research/conductor-dynamic-evidence.md) e [Cline/Superset](./research/workflow-demonstrations.md) aprofundam as capturas anteriores; Vibe/OpenCode complementam a observação. Passos apenas documentados permanecem identificados. O [protótipo exploratório](../prototypes/desktop/README.md) usa Studio como padrão escolhido. D1 e seu piloto são a próxima etapa; depois retomamos M0, conforme o [status](./DEVELOPMENT_STATUS.md).
 
+**Complemento em 09/10/2026:** [pesquisa competitiva atualizada](./research/competitive-update-2026-10-09.md) acrescenta Jackalope e Cobalt e registra múltiplas contas no Superset. O levantamento acumulado passa a onze famílias; demos e auditoria de licenças anteriores não foram ampliadas por essa consulta documental. A diferenciação passa por hipóteses mensuráveis, com protocolo futuro vinculado ao piloto/alpha e a M3/M4.
+
 ## 1 Perguntas que a pesquisa precisa responder
 
 1. Que parte da coordenação os produtos semelhantes automatizam e que parte ainda exige trabalho manual?
@@ -30,6 +32,8 @@ As capacidades nesta tabela são descritas pelas fontes oficiais. A coluna de in
 | Antigravity | O anúncio oficial apresenta o Antigravity 2.0 como app independente do IDE, com Windows/macOS/Linux, tarefas assíncronas e subagentes; a família também anuncia CLI/SDK/API. [Anúncio](https://www.antigravity.google/blog/introducing-google-antigravity-2), [artefatos/revisão](https://www.antigravity.google/docs/artifact-review/). | Referência direta de coordenação e revisão, além de provider desejado. Comparar as superfícies concretas; integração de terceiros, conta/cota e contrato do adapter ainda não foram validados. [Análise complementar](./research/product-positioning.md#antigravity-como-referência-adicional). |
 
 Multissessão e suporte a vários agentes não comprovam suporte a múltiplas contas independentes. No comparativo, conta, autenticação, quota e grupos de capacidade precisam de evidência própria. Recursos não encontrados nas fontes consultadas entram como “não verificado”, sem virar afirmações de inexistência.
+
+O [complemento competitivo](./research/competitive-update-2026-10-09.md#comparação-documental) registra evidência específica de contas para Superset, Jackalope e Cobalt, além de atualizar Cline Kanban e OpenHands Canvas. Suporte documentado permanece distinto de isolamento/cota comprovados em teste próprio.
 
 ## 3 Soluções e contratos técnicos a estudar
 

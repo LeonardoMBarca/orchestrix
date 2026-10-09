@@ -12,6 +12,8 @@ A demonstração completa do workflow Conductor foi obtida e examinada por 68 fr
 
 ## D1: trabalho imediato
 
+A [pesquisa competitiva de 09/10](competitive-update-2026-10-09.md) amplia o levantamento documental para onze famílias e liga hipóteses de diferenciação a OX-D05/OX-017 e M3/M4. A prioridade continua o piloto inicial; a comparação externa proposta não acrescenta requisito de saída a esse gate.
+
 1. Avaliar onboarding/entrada, contexto/arquivos, tarefa curta e relação objetivo/tarefas/tentativas da [entrega D1](../design/d1-delivery.md). Usar POS-01 a POS-14 e [ACC-01 a ACC-07](subscription-account-ux.md), com capabilities e dados desconhecidos explícitos.
 2. Verificar condições adicionais de Studio, tokens/componentes, painéis e estados já preparados: conteúdo extenso, zoom, cores forçadas e movimento reduzido. Usar POS-15/16; a verificação técnica existente de teclado/layout não substitui conforto no piloto ou escala do aplicativo nativo.
 3. Executar OX-D05 com o responsável: registrar conclusão, ajuda, erros e desconforto. Corrigir problemas críticos; decidir edição leve e nomes de presets. Avaliação externa permanece antes do alpha.

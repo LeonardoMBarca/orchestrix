@@ -10,6 +10,8 @@ Esse posicionamento depende da combinação e da qualidade do fluxo. Executar v�
 
 A hipótese principal a validar é: **controle compreensível e rastreável do ciclo completo, útil desde a primeira assinatura, que possa crescer para diferentes runtimes e contas sem mudar o modo de trabalhar**.
 
+**Atualização competitiva em 09/10/2026:** [Jackalope/Cobalt e multiaccount Superset](competitive-update-2026-10-09.md) ampliam a cobertura para onze famílias. Escolhas automáticas de execução e contexto também têm sobreposição documentada. A hipótese acima precisa de comparação mensurável; a nova pesquisa não comprova vantagem do Orchestrix. CMP-01 a CMP-05 ligam esse achado a OX-D05/OX-017 e M3/M4.
+
 ## O que a nova evidência muda
 
 | Referência e superfície examinada | Capacidade documentada relevante | Consequência proposta para o Orchestrix |
@@ -26,6 +28,8 @@ A hipótese principal a validar é: **controle compreensível e rastreável do c
 As categorias se sobrepõem: runtime, SDK integrável e aplicativo de coordenação podem pertencer à mesma família. Comparar a superfície concreta evita atribuir uma capacidade do SDK a toda interface do produto.
 
 **Não verificado nesta rodada:** isolamento de múltiplas contas do mesmo provedor, agregação de capacidade compartilhada e enforcement de todos os controles em cada produto. Isso é ausência de evidência deste levantamento, não afirmação de ausência do recurso. Uma variante, um preset, uma sessão e uma worktree não comprovam uma conta diferente nem cota adicional.
+
+**Correção de abrangência em 09/10:** suporte a múltiplas contas está documentado em Superset, Jackalope e Cobalt, conforme o [complemento](competitive-update-2026-10-09.md#comparação-documental). A ressalva acima continua válida para comportamento não testado, incluindo isolamento efetivo, capacidade compartilhada e enforcement; não deve ser lida como ausência documental de multiaccount. O mesmo relatório separa presets de profundidade da tarefa de controles de reasoning do provedor.
 
 ## Antigravity como referência adicional
 
