@@ -65,7 +65,7 @@ Explorar duas ou três direções visuais nas mesmas jornadas, escolher uma com 
 
 **Aceite:** protótipo navegável de onboarding, workspace, revisão e configuração, com estados vazio, carregando, bloqueado, falha, conflito e reconexão. Temas, ações e conteúdo são coerentes; componentes têm regras de adaptação e teclado. Dados simulados não sugerem recursos de runtime inexistentes.
 
-**Progresso OX-D04:** Studio padrão, sete temas, [tokens/componentes](./design/d1-design-system.md), painéis, teclado e texto ampliado implementados no estudo. 19 cenários técnicos passaram; verificação de conforto/acessibilidade completa permanece pendente.
+**Progresso OX-D04:** Studio padrão, sete temas, [tokens/componentes](./design/d1-design-system.md), painéis, teclado, texto ampliado e retorno de foco implementados no estudo. 24 cenários técnicos passaram em 09/10, incluindo media queries de cores forçadas/movimento reduzido e limites Unicode; conforto, zoom/escala real e acessibilidade completa permanecem pendentes.
 
 ### OX-D05 Avaliação e iteração de experiência
 
@@ -95,7 +95,7 @@ Executar contrato equivalente em Claude Code e Antigravity. Investigar como duas
 
 Definir `RuntimeDescriptor`, capabilities por conexão/modelo, configuração solicitada/efetiva, eventos, erros e término. Operações opcionais, como retomada e telemetria de cota, precisam expressar ausência de suporte.
 
-**Preparação:** 11 cenários fake e 23 testes do contrato experimental estão no harness de M0. Não são o contrato Rust final nem dispensam a dependência do primeiro runtime aprovado. Eventos de perda de sinal não viram sucesso/falha terminal inventados.
+**Preparação:** 11 cenários fake e 48 testes do contrato experimental estão no harness preparatório, incluindo [admissão/interrupção e observação de descendente no Windows](./research/offline-lifecycle-validation.md). Não são o contrato Rust final nem dispensam a dependência do primeiro runtime aprovado ou o gate humano D1. Eventos de perda de sinal não viram sucesso/falha terminal inventados.
 
 **Aceite:** fixtures e fake runtime reproduzem sucesso, evento inválido, autenticação inválida, rate limit, interrupção, timeout e crash. O Core recebe o mesmo contrato sem importar eventos específicos de cada provedor. Campos desconhecidos compatíveis não derrubam o parser; incompatibilidades são diagnosticadas.
 
@@ -141,7 +141,7 @@ Adicionar evaluators para comandos configurados de teste, build e lint, com cwd,
 
 Definir commands, queries, snapshots, envelope de eventos e cursor sem tipos Tauri no domínio. Criar daemon com instância única, transporte restrito ao usuário e cliente CLI de diagnóstico. Registrar ADR de transporte e encerramento.
 
-**Aceite:** cliente consulta e pausa sem Desktop; segundo cliente não cria segundo scheduler; reconexão recupera snapshot/eventos com sequência consistente; política de fechar janela é distinta de encerrar daemon. Transporte rejeita acesso não autorizado no limite suportado pelo sistema operacional.
+**Aceite:** cliente consulta e suspende novas admissões sem Desktop; segundo cliente não cria segundo scheduler; reconexão recupera snapshot/eventos com sequência consistente; política de fechar janela é distinta de encerrar daemon. A suspensão mínima impede novos trabalhos e preserva tentativas ativas; não confirma pausa de turno ou término de worker. Transporte rejeita acesso não autorizado no limite suportado pelo sistema operacional.
 
 ### OX-011 Recuperação
 
@@ -157,7 +157,7 @@ Criar shell Tauri/React, seleção de repositório Git, recentes, conexão ao da
 
 Usar os tokens, componentes, navegação e estados validados em OX-D04/OX-D05. A interface inicial já precisa da direção visual escolhida e adaptação de painéis.
 
-**Aceite:** abrir projeto existente não altera seu conteúdo; usuário registra e verifica uma conexão sem expor credenciais; janela reconecta ao mesmo run; erro de Git/runtime tem ação clara; fechar e reabrir segue a política de lifecycle. Comparação com protótipo, teclado, temas e layout compacto/amplo passam pelo aceite de experiência. O build Windows é reproduzível.
+**Aceite:** abrir projeto existente não altera seu conteúdo; usuário registra e verifica uma conexão sem expor credenciais; janela reconecta ao mesmo run; erro de Git/runtime tem ação clara; fechar segue a preferência de continuar execução ou suspender novas admissões pelo daemon, preservando tentativas ativas, e reabrir reconecta ao estado existente. Comparação com protótipo, teclado, temas e layout compacto/amplo passam pelo aceite de experiência. O build Windows é reproduzível.
 
 ### OX-013 Revisão e correção
 
@@ -173,7 +173,7 @@ Preparar integração serial em branch/worktree do run e aplicação final no de
 
 ### OX-015 Inspeção e controle
 
-Entregar criação/edição de tarefa manual com objetivo, critérios, risco, contexto e checks, além de tentativas, sessões, timeline, arquivos alterados, diff e resultados. Expor pausa de admissões, cancelamento, retry e aprovação. Oferecer abertura de arquivos no editor externo.
+Entregar criação/edição de tarefa manual com objetivo, critérios, risco, contexto e checks, além de tentativas, sessões, timeline, arquivos alterados, diff e resultados. Expor suspensão/retomada mínima de novas admissões pelo daemon, cancelamento, retry e aprovação. A suspensão pertence a M2 e não exige o scheduler ampliado de M3; interromper uma tentativa continua sendo uma operação distinta. Oferecer abertura de arquivos no editor externo.
 
 **Aceite:** usuário entende o bloqueio atual, configuração efetiva e resultado do trabalho sem abrir o banco ou ler transcript completo; pode interromper execução; UI reconectada não perde eventos nem duplica comandos. Atualizações preservam seleção/foco e versão em revisão; painéis não escondem a ação principal em janela compacta. Pedidos de correção sobre código/diff funcionam dentro do app.
 
@@ -203,4 +203,6 @@ Usar o Desktop para uma alteração pequena no próprio Orchestrix, documentar o
 | 6 | Memória e documentação | Conhecimento validado com fontes influencia Context Packs futuros. |
 | 7 | Beta, benchmark e VS Code | Instalação externa funciona; extensão reutiliza API; comparação apresenta evidências. |
 
-O próximo trabalho concreto é executar e registrar o piloto inicial da [entrega D1](./design/d1-delivery.md), corrigir problemas críticos e retestar os casos afetados. Jornadas/contexto/onboarding, Studio/componentes e painéis foram implementados no estudo; 19 cenários técnicos passaram. A [conclusão de D0](./research/d0-conclusion.md) e o [handoff](./research/discovery-handoff.md) preservam evidência, hipóteses e lacunas. Depois OX-001 retoma worktree, sessões e supervisão Windows; OX-001/OX-002 orientam o contrato final de OX-003. Não é necessário implementar todos os adapters para iniciar o worker confiável.
+A suspensão mínima de novas admissões e a preferência de fechar a janela pertencem ao fluxo inicial de M2, com o comando de daemon definido em OX-010 e exposto em OX-012/OX-015. M3 amplia políticas e controle global para DAG, concorrência e escopos de projeto/conexão/grupo; não adia o controle mínimo de M2. Essas capacidades são trabalho planejado, sem implementação de daemon/scheduler demonstrada pelo protótipo.
+
+O próximo trabalho concreto é executar e registrar o piloto inicial da [entrega D1](./design/d1-delivery.md), corrigir problemas críticos e retestar os casos afetados. Jornadas/contexto/onboarding, Studio/componentes, painéis e foco foram implementados no estudo; 24 cenários técnicos passaram em 09/10. A [preparação offline](./research/offline-lifecycle-validation.md) ampliou contratos e observação de processos, sem retomar M0 ou fechar D1. A [conclusão de D0](./research/d0-conclusion.md) e o [handoff](./research/discovery-handoff.md) preservam evidência, hipóteses e lacunas. Depois OX-001 retoma worktree, sessões e contenção/término da árvore no Windows; OX-001/OX-002 orientam o contrato final de OX-003. Não é necessário implementar todos os adapters para iniciar o worker confiável.

@@ -2,10 +2,11 @@ import {HarnessError} from './json-rpc.mjs';
 
 /** Deliberately small experiment. Provider messages never become the Core domain. */
 export class CodexSession {
-  constructor(client,{attemptId='probe-attempt-1',turnTimeoutMs=45000}={}) {
-    this.client=client;this.attemptId=attemptId;this.turnTimeoutMs=turnTimeoutMs;
+  constructor(client,{attemptId='probe-attempt-1',turnTimeoutMs=45000,interruptTimeoutMs=10000}={}) {
+    this.client=client;this.attemptId=attemptId;this.turnTimeoutMs=turnTimeoutMs;this.interruptTimeoutMs=interruptTimeoutMs;
     this.events=[];this.turns=new Map();this.waiters=new Map();this.deltaText=new Map();this.threadId=null;
     this.knownTurns=new Set();this.startPending=false;this.earlyNotifications=[];
+    this.turnAdmission='idle';this.activeTurnId=null;this.interrupts=new Map();
     client.on('notification',message=>this.observe(message));
     client.on('request',message=>this.handleRequest(message));
     client.on('failure',error=>this.rejectWaiters(error));
@@ -65,23 +66,32 @@ export class CodexSession {
     return this.configuration;
   }
   async startTurn(text,{effort}={}) {
-    if(!this.threadId||this.startPending)throw new HarnessError('contract','A thread and exclusive turn-start ownership are required');
-    this.startPending=true;
+    if(!this.threadId||this.startPending||this.turnAdmission!=='idle')throw new HarnessError('contract','A thread with no active or uncertain turn is required');
+    if(this.client.failure||this.client.closed)throw this.client.failure||new HarnessError('transport','Runtime is closed');
+    this.startPending=true;this.turnAdmission='starting';
     try {
       const result=await this.client.request('turn/start',{threadId:this.threadId,input:[{type:'text',text,text_elements:[]}],effort,sandboxPolicy:{type:'readOnly',networkAccess:false},approvalPolicy:'never',approvalsReviewer:'user'});
-      if(!result?.turn?.id)throw new HarnessError('protocol','Runtime did not return a turn ID');
-      this.knownTurns.add(result.turn.id);this.startPending=false;
+      if(this.client.failure||this.client.closed)throw this.client.failure||new HarnessError('transport','Runtime ended during turn start');
+      if(typeof result?.turn?.id!=='string'||!result.turn.id||result.turn.id.length>512||this.knownTurns.has(result.turn.id))throw new HarnessError('protocol','Runtime did not return a new valid turn ID');
+      this.knownTurns.add(result.turn.id);this.activeTurnId=result.turn.id;this.turnAdmission='active';this.startPending=false;
       for(const message of this.earlyNotifications.splice(0))this.observe(message);
       return result.turn.id;
     } catch(error) {
-      if(['timeout','process-exit','transport'].includes(error.kind))this.event('attempt.observation.unknown',{phase:'turn-start',reason:error.kind});
+      // Only a correlated RPC rejection without contradictory notifications proves no turn started.
+      if(error.kind==='rpc'&&!this.earlyNotifications.length&&!this.client.failure&&!this.client.closed)this.turnAdmission='idle';
+      else {this.turnAdmission='uncertain';this.event('attempt.observation.unknown',{phase:'turn-start',reason:error.kind||'local-error'});}
       throw error;
     } finally {this.startPending=false;this.earlyNotifications=[];}
   }
   observe({method,params={}}) {
     if(params?.threadId!==this.threadId||!this.threadId)return;
-    const turnId=params?.turnId??params?.turn?.id;
-    if(['turn/started','turn/completed','item/agentMessage/delta'].includes(method)&&!this.knownTurns.has(turnId)) {
+    const turnNotification=['turn/started','turn/completed'].includes(method);
+    const deltaNotification=method==='item/agentMessage/delta';
+    const turnId=turnNotification?params?.turn?.id:params?.turnId;
+    const alternatePresent=turnNotification?Object.hasOwn(params,'turnId'):deltaNotification&&params?.turn!=null&&Object.hasOwn(params.turn,'id');
+    const alternateId=turnNotification?params.turnId:params?.turn?.id;
+    if(alternatePresent&&alternateId!==turnId){this.client.fail(new HarnessError('protocol','Contradictory turn identities in runtime notification'));return;}
+    if((turnNotification||deltaNotification)&&!this.knownTurns.has(turnId)) {
       if(this.startPending) {
         if(this.earlyNotifications.length>=128)this.client.fail(new HarnessError('protocol','Pre-ACK notification limit exceeded'));
         else this.earlyNotifications.push({method,params});
@@ -105,7 +115,8 @@ export class CodexSession {
         return;
       }
       this.turns.set(turn.id,outcome);this.event('attempt.turn.ended',outcome);
-      const waiter=this.waiters.get(turn.id);if(waiter){clearTimeout(waiter.timer);this.waiters.delete(turn.id);waiter.resolve(outcome);}
+      if(this.activeTurnId===turn.id){this.activeTurnId=null;this.turnAdmission='idle';}
+      const waiters=this.waiters.get(turn.id);if(waiters)for(const waiter of [...waiters])waiter.resolve(outcome);
     } else this.event('runtime.notification',{method});
   }
   handleRequest({id,method,params={}}) {
@@ -119,21 +130,69 @@ export class CodexSession {
     } catch(error){this.client.fail(error);}
   }
   waitForTurn(id,timeoutMs=this.turnTimeoutMs) {
-    if(this.turns.has(id))return Promise.resolve(this.turns.get(id));
+    return this.subscribeTurn(id,timeoutMs).promise;
+  }
+  subscribeTurn(id,timeoutMs) {
+    const immediate=promise=>({promise,cancel:()=>{}});
+    const rejected=error=>({...immediate(Promise.reject(error)),error});
+    if(this.turns.has(id))return immediate(Promise.resolve(this.turns.get(id)));
+    if(!this.knownTurns.has(id))return rejected(new HarnessError('contract','Cannot wait for an unowned turn'));
+    if(!Number.isInteger(timeoutMs)||timeoutMs<1||timeoutMs>2147483647)return rejected(new HarnessError('contract','A bounded positive turn timeout is required'));
     if(this.client.failure||this.client.closed) {
       this.event('attempt.observation.unknown',{turnId:id,reason:'transport-unavailable'});
-      return Promise.reject(this.client.failure||new HarnessError('process-exit','Runtime is closed'));
+      return rejected(this.client.failure||new HarnessError('process-exit','Runtime is closed'));
     }
-    if(this.waiters.has(id))return Promise.reject(new HarnessError('contract','A waiter already owns this turn'));
-    return new Promise((resolve,reject)=>{
-      const timer=setTimeout(()=>{this.waiters.delete(id);this.event('attempt.observation.unknown',{turnId:id,reason:'timeout'});reject(new HarnessError('timeout','Turn completion was not confirmed'));},timeoutMs);
-      this.waiters.set(id,{resolve,reject,timer});
-    });
+    const group=this.waiters.get(id)||new Set();
+    if(group.size>=16)return rejected(new HarnessError('contract','Turn observer limit exceeded'));
+    let resolve,reject;
+    const promise=new Promise((resolvePromise,rejectPromise)=>{resolve=resolvePromise;reject=rejectPromise;});
+    let settled=false;
+    const finish=(error,outcome)=>{
+      if(settled)return;settled=true;clearTimeout(waiter.timer);group.delete(waiter);
+      if(!group.size&&this.waiters.get(id)===group)this.waiters.delete(id);
+      if(error)reject(error);else resolve(outcome);
+    };
+    const waiter={resolve:outcome=>finish(null,outcome),reject:error=>finish(error)};
+    group.add(waiter);this.waiters.set(id,group);
+    waiter.timer=setTimeout(()=>{
+      if(this.activeTurnId===id)this.turnAdmission='uncertain';
+      this.event('attempt.observation.unknown',{turnId:id,reason:'timeout'});
+      waiter.reject(new HarnessError('timeout','Turn completion was not confirmed'));
+    },timeoutMs);
+    return {promise,cancel:waiter.reject};
   }
-  async interrupt(id) {
-    await this.client.request('turn/interrupt',{threadId:this.threadId,turnId:id});
-    this.event('attempt.interrupt.requested',{turnId:id});
-    return this.waitForTurn(id,10000);
+  interrupt(id) {
+    if(this.turns.has(id))return Promise.resolve(this.turns.get(id));
+    if(!this.threadId||!this.knownTurns.has(id))return Promise.reject(new HarnessError('contract','Cannot interrupt an unowned turn'));
+    if(this.interrupts.has(id))return this.interrupts.get(id);
+    const operation=this.performInterrupt(id).then(outcome=>{this.interrupts.delete(id);return outcome;},error=>{this.interrupts.delete(id);throw error;});
+    this.interrupts.set(id,operation);return operation;
   }
-  rejectWaiters(error) {for(const [id,waiter] of this.waiters){clearTimeout(waiter.timer);this.event('attempt.observation.unknown',{turnId:id,reason:'transport-unavailable'});waiter.reject(error);}this.waiters.clear();}
+  async performInterrupt(id) {
+    const waiter=this.subscribeTurn(id,this.interruptTimeoutMs);
+    // Consume a deadline/transport rejection immediately, even while the RPC ACK is pending.
+    const terminal=waiter.promise.then(outcome=>({outcome}),error=>({error}));
+    if(waiter.error)throw waiter.error;
+    try {
+      await this.client.request('turn/interrupt',{threadId:this.threadId,turnId:id},this.interruptTimeoutMs);
+      this.event('attempt.interrupt.requested',{turnId:id});
+    } catch(error) {
+      waiter.cancel(error);
+      if(this.turns.has(id))return this.turns.get(id);
+      if(this.activeTurnId===id)this.turnAdmission='uncertain';
+      this.event('attempt.observation.unknown',{turnId:id,phase:'turn-interrupt',reason:error.kind||'local-error'});
+      throw error;
+    }
+    const result=await terminal;if(result.error)throw result.error;return result.outcome;
+  }
+  rejectWaiters(error) {
+    if(this.activeTurnId&&!this.turns.has(this.activeTurnId)) {
+      this.turnAdmission='uncertain';
+      if(!this.waiters.has(this.activeTurnId))this.event('attempt.observation.unknown',{turnId:this.activeTurnId,reason:'transport-unavailable'});
+    }
+    for(const [id,waiters] of [...this.waiters]) {
+      this.event('attempt.observation.unknown',{turnId:id,reason:'transport-unavailable'});
+      for(const waiter of [...waiters])waiter.reject(error);
+    }
+  }
 }

@@ -4,6 +4,8 @@ Experimento isolado de protocolo, executável com **Node 24+ e Git**, sem depend
 
 Foi uma antecipação técnica. O foco atual do plano é D0 → D1 com piloto inicial → retomada de M0. Preservar este experimento não encerra os gates de pesquisa/design ou promove o adapter a produção.
 
+Em 09/10/2026, a [preparação offline](../../docs/research/offline-lifecycle-validation.md) corrigiu admissão de turnos e acompanhamento/interrupção concorrentes, e verificou descendente sintético sobrevivendo ao pai no Windows. **48 testes offline passaram**; nenhum runtime real foi chamado nessa continuação. O piloto D1 permanece pendente.
+
 ## Executar
 
 ```powershell
@@ -41,6 +43,8 @@ O [resultado registrado](../../docs/research/runtime-harness-results.md) disting
 
 `JsonRpcProcess` cuida de JSONL/UTF-8, correlação, requests bidirecionais, limites, timeouts e subprocesso próprio. Drena stderr sem registrar seu conteúdo. Respostas atrasadas não assumem ownership de outro request. Erro de framing encerra o processo próprio; não repete turn/start.
 
+Saída do pai e fechamento dos pipes são observações distintas. Depois de `exit`, drena por até 250ms; se pipes herdados permanecerem abertos, desliga seus endpoints e marca `observationDetached=true`, `stdioClosed=false`, mantendo `treeTermination=unknown`. Não envia kill a um pai já encerrado. `stop()` compartilha uma operação; falha de lançamento não inventa um processo pai terminado.
+
 `CodexSession` traduz somente a parte necessária ao spike:
 
 | Evento normalizado | Significado |
@@ -57,10 +61,12 @@ O [resultado registrado](../../docs/research/runtime-harness-results.md) disting
 
 Envelope: `schemaVersion`, `sequence`, `attemptId`, `type`, campos específicos. Eventos de provedor não normalizados conservam somente o nome do método como diagnóstico. Modelo/effort resolvidos não são telemetria de qual execução serviu o turno. Sessão/turno não representam conclusão ou aplicação de uma Task/Run no Git.
 
+Um turno ativo/incerto bloqueia outro início; ACK perdido não autoriza retry. Acompanhamento e interrupção compartilham o terminal com deadlines independentes; interrupções concorrentes enviam um RPC. Uma confirmação terminal recebida permanece preservada mesmo quando o ACK de interrupção falha. Perda do ACK de início sem identidade comprovada ainda exige recuperação futura, não um reset silencioso.
+
 Aprovações de comando/arquivo recebem `decline`; pedidos de permissões recebem `{permissions:{},scope:'turn'}`. Requests desconhecidos recebem erro; não existe aceite genérico. O parser permite notifications desconhecidas bem formadas e limita frames a 1 MiB, conteúdo de resposta a 64 KiB e eventos a 4096.
 
 ## Limites para produção
 
-Este supervisor confirma apenas o término do **processo pai**; `treeTermination` permanece `unknown`. Ainda faltam Job Objects/árvore no Windows, retomada real, crash/reconciliação durável, execução de código em worktree, checks/revisão/aplicação, matriz CLI versus app-server e isolamento de duas contas. Dois processos fake testam correlação; não comprovam cotas independentes.
+Este supervisor confirma apenas o término do **processo pai**; `treeTermination` permanece `unknown`, inclusive quando um descendente sintético foi observado ativo. Ainda faltam contenção/Job Objects e término comprovado da árvore no Windows, retomada real, crash/reconciliação durável, execução de código em worktree, checks/revisão/aplicação, matriz CLI versus app-server e isolamento de duas contas. Dois processos fake testam correlação; não comprovam cotas independentes.
 
 Os testes deste diretório são offline. Não tornam live parte do CI e não instalam providers ou toolchains. O contrato Rust final de OX-003 deve incorporar os resultados, preservando as separações de estado estabelecidas no [backlog](../../docs/DEVELOPMENT_BACKLOG.md).

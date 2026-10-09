@@ -9,7 +9,7 @@
     "probe:fake": "node probe.mjs --fake",
     "probe:codex": "node probe.mjs --codex",
     "probe:codex:live": "node probe.mjs --codex --live",
-    "check": "node --check probe.mjs && node --check src/json-rpc.mjs && node --check src/codex-session.mjs"
+    "check": "node --check probe.mjs && node --check src/json-rpc.mjs && node --check src/codex-session.mjs && node --check fixtures/fake-app-server.mjs && node --check fixtures/process-tree.mjs"
   },
   "engines": {"node": ">=24"}
 }

@@ -1,6 +1,6 @@
 # Handoff da pesquisa D0 para D1 e a retomada posterior de M0
 
-Data: **8 de outubro de 2026**. D0 foi encerrado como pesquisa na [conclusão consolidada](d0-conclusion.md), que registra a revisão explícita do método e o requisito anterior não demonstrado integralmente. Este handoff organiza D1 e as validações técnicas posteriores; não atribui aceite aos spikes nem substitui ADRs.
+Criado em **8 de outubro de 2026**, com continuação registrada em **9 de outubro de 2026**. D0 foi encerrado como pesquisa na [conclusão consolidada](d0-conclusion.md), que registra a revisão explícita do método e o requisito anterior não demonstrado integralmente. Este handoff organiza D1 e as validações técnicas posteriores; não atribui aceite aos spikes nem substitui ADRs.
 
 **Ordem de trabalho:** D0 concluído → D1 com piloto inicial → retomada de M0. Aproveitar o protótipo existente; os fundamentos técnicos adiante orientam M0 depois do piloto.
 
@@ -12,11 +12,21 @@ A demonstração completa do workflow Conductor foi obtida e examinada por 68 fr
 
 ## D1: trabalho imediato
 
-1. Completar onboarding/entrada sem projeto, contexto/arquivos, tarefa curta e relação objetivo/tarefas/tentativas. Cobrir POS-01 a POS-14 e [ACC-01 a ACC-07](subscription-account-ux.md), com capabilities e dados desconhecidos explícitos.
-2. Refinar Studio, tokens e componentes; resize/recolhimento e modo foco; estados de autorização, limite, conflito e reconexão. Validar POS-15/16 com teclado, layouts e escala.
+1. Avaliar onboarding/entrada, contexto/arquivos, tarefa curta e relação objetivo/tarefas/tentativas da [entrega D1](../design/d1-delivery.md). Usar POS-01 a POS-14 e [ACC-01 a ACC-07](subscription-account-ux.md), com capabilities e dados desconhecidos explícitos.
+2. Verificar condições adicionais de Studio, tokens/componentes, painéis e estados já preparados: conteúdo extenso, zoom, cores forçadas e movimento reduzido. Usar POS-15/16; a verificação técnica existente de teclado/layout não substitui conforto no piloto ou escala do aplicativo nativo.
 3. Executar OX-D05 com o responsável: registrar conclusão, ajuda, erros e desconforto. Corrigir problemas críticos; decidir edição leve e nomes de presets. Avaliação externa permanece antes do alpha.
 
 Os critérios e fontes estão no [benchmark](experience-decisions.md) e nas [14 decisões de D0](d0-conclusion.md). Dados simulados permitem avaliar compreensão; não certificam runtime ou cota.
+
+## Continuação em 09/10 — D1 e preparação offline
+
+O responsável solicitou prosseguimento do plano. O piloto individual continua solicitado, sem resultado humano registrado; a continuação não conta como feedback de uso nem fecha OX-D05. O pré-requisito de piloto registrado e ausência de problemas críticos para retomar M0 permanece no [backlog](../DEVELOPMENT_BACKLOG.md).
+
+O escopo desta rodada foi verificar condições adicionais do protótipo D1 e preparar cenários offline de supervisão Windows com processos próprios e dados sintéticos. A [entrega D1](../design/d1-delivery.md) registra correção do foco e 24 cenários aprovados. A [preparação offline](offline-lifecycle-validation.md) registra 48 testes aprovados, incluindo pai encerrado com descendente ativo, cancelamento sem confirmação e perda de observação, preservando estado desconhecido quando faltar evidência. Não houve nova autenticação, chamada de modelo ou execução de agente de código. As versões, condições e limites estão nesses registros; não são resultados humanos ou aceite do supervisor de produção.
+
+Essa preparação antecipa trabalho independente sem considerar M0 retomado/concluído, aprovar adapter ou iniciar o Core de produção. O [status](../DEVELOPMENT_STATUS.md) conserva o registro de entregas/resultados; o roteiro do piloto existente permanece disponível, sem substituir seu uso por novos questionários.
+
+**Escopo de controle planejado:** em M2, o daemon terá suspensão/retomada mínima de novas admissões, inclusive na preferência de fechamento da janela, preservando tentativas ativas. Isso é distinto de pausa de turno, cancelamento e término confirmado. M3 amplia políticas e controle global do scheduler para DAG, concorrência e escopos de projeto/conexão/grupo. O protótipo não demonstra esses controles de daemon/scheduler implementados.
 
 ## M0: decisões fundamentadas para a retomada depois do piloto
 

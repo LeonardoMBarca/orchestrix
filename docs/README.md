@@ -10,7 +10,7 @@ Records completed D0 research, its explicit methodology revision, solution journ
 
 ### [D1 Prototype Delivery](./design/d1-delivery.md)
 
-Records the Studio prototype candidate, onboarding with one connection, four-task Run, versioned implementation/review context, account states and adaptive panels. Includes 19 passing technical scenarios, a reproducible build identifier and current limitations. The [pilot guide](./design/d1-pilot.md), [scenario matrix](./design/d1-scenario-matrix.md) and [visual system](./design/d1-design-system.md) keep human validation and later runtime proofs separate. D1 remains open pending the initial pilot.
+Records the Studio prototype candidate, onboarding with one connection, four-task Run, versioned implementation/review context, account states and adaptive panels. Includes 24 passing technical scenarios, focus restoration, browser-emulated accessibility media, a reproducible build identifier and current limitations. The [pilot guide](./design/d1-pilot.md), [scenario matrix](./design/d1-scenario-matrix.md) and [visual system](./design/d1-design-system.md) keep human validation and later runtime proofs separate. D1 remains open pending the initial pilot.
 
 ### [D0 Research Conclusion](./research/d0-conclusion.md)
 
@@ -19,6 +19,10 @@ Consolidates nine solution families, three interaction references, 14 prioritize
 ### [Runtime Harness Results](./research/runtime-harness-results.md)
 
 Records the local Codex app-server experiment, normalized offline fixtures, supported/unknown capabilities and sanitized live evidence. Confirms a trivial response and interrupted turn via existing ChatGPT authentication; leaves process-tree supervision, real resume, code execution and independent accounts pending. Includes a [version-specific protocol inspection](./research/codex-protocol-spike.md) and a [discovery handoff](./research/discovery-handoff.md).
+
+### [Offline Lifecycle Validation](./research/offline-lifecycle-validation.md)
+
+Records the 09/10 preparation: active/uncertain turn admission, shared terminal observers, bounded process observation and a detached descendant surviving its parent on Windows. Keeps parent exit, closed pipes and tree termination separate. Offline evidence does not resume M0, validate provider capabilities or close the D1 pilot gate.
 
 ### [Development Plan](./DEVELOPMENT_PLAN.md)
 

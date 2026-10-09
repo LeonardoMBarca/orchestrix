@@ -1,5 +1,7 @@
 # Fixtures offline do app-server
 
+Também há uma [fixture de processos](process-tree.mjs) para a preparação offline de 09/10. Ela cria um descendente Node próprio `detached`, mantendo pipes herdados depois da saída do pai. O descendente se encerra sozinho em 2,5s; o pai tem timer de segurança. Não há autenticação, rede ou leitura de projeto. Os [testes de ciclo de processo](../tests/process-lifecycle.test.mjs) conferem pai/transporte/árvore separadamente, sem kill por PID do descendente. [Resultados e limites](../../../docs/research/offline-lifecycle-validation.md).
+
 `fake-app-server.mjs` é um processo Node 24 que fala envelopes JSON-RPC delimitados por linha em stdin/stdout. Não chama Codex, modelos ou redes; não lê autenticação, não executa comandos e não modifica repositórios ou arquivos. stderr permanece separado do protocolo. A execução usa somente módulos da stdlib e não exige instalar dependências.
 
 ```powershell

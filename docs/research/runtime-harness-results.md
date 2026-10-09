@@ -4,6 +4,8 @@ Registro de **8 de outubro de 2026**, Windows nativo. Entrega: [harness executá
 
 O percurso foi uma antecipação técnica. [D0 foi consolidado como pesquisa](d0-conclusion.md); D1 e seu piloto inicial são a próxima etapa. O incremento técnico abaixo é para a retomada posterior de M0, conforme o plano atualizado; não é aceite da modalidade OAuth própria acrescentada pela pesquisa.
 
+**Continuação em 09/10:** [48 testes offline e correções de lifecycle](offline-lifecycle-validation.md), incluindo descendente sintético ativo depois da saída do pai. Não houve nova autenticação/inferência e o gate humano D1 continua pendente. Os dados live abaixo permanecem os de 08/10; a preparação não amplia suas capacidades reais demonstradas.
+
 ## O que foi demonstrado
 
 | Camada | Resultado observado | Limite |
@@ -51,13 +53,13 @@ O **app-server é o candidato para o primeiro adapter**, por oferecer sessão, r
 
 Não instalar todos os provedores para começar um worker de um runtime. OX-002 segue a matriz oficial por modalidade e a prova independente de contas; ausência de segunda conta não autoriza copiar login ou trocar a identidade da sessão existente.
 
-Próximo incremento técnico delimitado: executar alteração pequena em worktree descartável, capturar diff e checks da mesma tentativa, testar retomada não ephemeral e cancelamento com descendente sintético. O resultado orientará o supervisor Rust/Windows e os limites do adapter. Persistência/reconciliação e aplicação no repositório real entram apenas nos tickets correspondentes.
+Próximo incremento técnico delimitado, depois do piloto D1: executar alteração pequena em worktree descartável, capturar diff e checks da mesma tentativa, testar retomada não ephemeral e contenção/cancelamento da árvore com descendente próprio. A observação sintética preparada em 09/10 mantém o resultado desconhecido e não substitui essa prova. O resultado orientará o supervisor Rust/Windows e os limites do adapter. Persistência/reconciliação e aplicação no repositório real entram apenas nos tickets correspondentes.
 
 ## Estado dos gates
 
 - **OX-001 em andamento:** percurso básico real validado; comparação de superfícies, retomada e árvore ainda pendentes.
 - **OX-003 experimento preparatório:** eventos, framing e fake testados; contrato final aguarda promoção de um runtime e integração no Core.
-- **OX-D01 parcial:** novas cenas oficiais enriquecem o [handoff](discovery-handoff.md), sem fechar os percursos de bloqueio/integração.
+- **OX-D01 concluído como pesquisa:** conforme a [consolidação explícita do método](d0-conclusion.md), preservando lacunas dos percursos dos concorrentes e sem certificar runtimes.
 - **OX-D05 pendente:** feedback de temas e automação não substituem piloto com tarefas.
 
 Nenhum gate foi removido ou considerado concluído para iniciar Desktop de produção.

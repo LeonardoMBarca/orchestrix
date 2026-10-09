@@ -1,6 +1,6 @@
 # D1 — sistema visual do Studio
 
-Data: 2026-10-08. Escopo: refinamento implementado em [styles.css](../../prototypes/desktop/styles.css) para o protótipo D1. Studio continua o padrão; Atelier, Horizon, Deep Black, Medieval, Forest e Dawn continuam selecionáveis pela galeria existente.
+Data: 2026-10-08, revisado em 2026-10-09. Escopo: refinamento implementado em [styles.css](../../prototypes/desktop/styles.css) para o protótipo D1. Studio continua o padrão; Atelier, Horizon, Deep Black, Medieval, Forest e Dawn continuam selecionáveis pela galeria existente.
 
 Este documento registra regras visuais e verificações técnicas. A avaliação com usuários permanece no [roteiro do piloto](d1-pilot.md) e na [matriz de cenários](d1-scenario-matrix.md); os checks abaixo não representam aceite do piloto nem uma implementação desktop funcional.
 
@@ -38,7 +38,7 @@ Controles têm altura mínima de 44px na densidade confortável e 36px na compac
 
 O foco usa contorno de 2px com afastamento de 3px. Seleções têm combinação de fundo, borda/indicador e estado textual. A fila conserva indicador de tarefa selecionada; temas conservam radio marcado; fontes de contexto conservam `aria-pressed`. Aprovação, falha, bloqueio e ausência de confirmação continuam com seus rótulos específicos; o CSS não altera o significado dos estados.
 
-Movimento é reduzido com `prefers-reduced-motion`. Em cores forçadas, contornos e bordas passam a usar cores de sistema. Esses dois modos possuem tratamento no CSS, sem validação prática nesta rodada.
+Movimento é reduzido com `prefers-reduced-motion`. Em cores forçadas, contornos e bordas passam a usar cores de sistema. Os modos foram ativados e conferidos no Chrome/Playwright em 09/10; a configuração real do Windows permanece pendente.
 
 ## Componentes e reflow
 
@@ -68,11 +68,12 @@ A verificação usou o preview local e Chrome headless no Windows, sem agente, a
 - Controles: o botão Nova tarefa mediu 44px confortável e 36px compacto com texto normal.
 - Interação de layout: passaram teclado End/seta esquerda no separador, persistência da largura após reload, recolher/mostrar fila, persistência de densidade/texto, modo de foco em 200% e ausência de overflow nos modais de contexto/conexão a 320px.
 - Inspeção visual: capturas Studio de trabalho, entrada, preferências, inspector de conexão, contexto e texto a 200% no desktop/celular. Capturas temporárias locais apoiaram a inspeção; não substituem um piloto.
+- Continuação em 09/10: cinco [testes reproduzíveis](../../prototypes/desktop/tests/d1-accessibility.spec.mjs) passaram, com foco após entrada/cadastro, movimento reduzido, cores forçadas e textos Unicode nos limites dos campos/paths Windows e WSL a 320px. O toast ficou sem transição/animação; foco e seleção conservaram contorno de 2px; campos/texto conservaram distinção do fundo. Chrome 154.0.8037.98 headless, Playwright 1.64.0, Node 24.19.0 no Windows. A suíte completa passou 24 cenários.
 
 O script adicional e suas imagens foram gerados no diretório temporário do sistema, sem adicionar outra ferramenta ao projeto. A cobertura de 200% em seis views se refere ao Studio; os outros temas receberam a cobertura existente de layout normal e a verificação adicional de contraste.
 
 ## Limites da rodada
 
-Não foram executados: piloto com usuários, leitor de tela, zoom físico do navegador a 200%, modo de cores forçadas, movimento reduzido, embalagem Tauri ou avaliação visual do aplicativo nativo em Windows/WSL. O resize por teclado, a fonte ampliada manual e a persistência foram executados como descrito. A suíte posterior de [19 cenários D1](d1-delivery.md#verificação-técnica) também executou arraste do separador com ponteiro. Inspectors de contexto/conexões usam largura até 820px para leitura; demais diálogos conservam o limite original.
+Não foram executados: piloto com usuários, leitor de tela, zoom físico do navegador a 200%, escalas/contraste configurados no Windows, logs/diffs extensos, embalagem Tauri ou avaliação visual do aplicativo nativo em Windows/WSL. As media queries de cores forçadas e movimento reduzido foram exercitadas pelo navegador, conforme descrito. Resize por teclado/ponteiro, fonte ampliada manual e persistência passaram na [suíte D1](d1-delivery.md#verificação-técnica). Inspectors de contexto/conexões usam largura até 820px para leitura; demais diálogos conservam o limite original.
 
 Os critérios de produto e as interações de domínio continuam na matriz D1. Esta folha de estilos não implementa autenticação, execução, seleção real de modelos ou integração Git.

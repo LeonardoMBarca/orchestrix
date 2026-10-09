@@ -62,10 +62,12 @@ npm.cmd run check
 npm.cmd test
 ```
 
-Os 19 cenários automatizados (10 D1 e nove anteriores) passaram usando Node 24.19.0 e Chrome instalado no Windows. O runner de teste é Playwright 1.64.0, fixado no lockfile. Caso o canal Chrome não esteja instalado, instale-o ou ajuste `playwright.config.mjs` para o navegador de teste disponível.
+Os 24 cenários automatizados (dez D1, nove anteriores e cinco de acessibilidade/regressão) passaram em 09/10/2026 usando Node 24.19.0 e Chrome 154.0.8037.98 headless no Windows. O runner de teste é Playwright 1.64.0, fixado no lockfile. Caso o canal Chrome não esteja instalado, instale-o ou ajuste `playwright.config.mjs` para o navegador de teste disponível.
 
 Os testes cobrem transições, identidade/proveniência do artefato, confirmação vencida, preferências, persistência/restauração de tema, conteúdo de usuário, teclado, reflow e quatro pares principais de contraste de texto em cada um dos sete temas. Foram usados viewports de 1920×1080, 1280×800, 1024×768, 720×480, 390×844 e 320×720 pixels CSS. Capturas próprias foram renderizadas e examinadas; os arquivos gerados ficam em `artifacts/`, ignorado pelo Git.
 
-Isso não certifica acessibilidade completa, escala física do Windows ou conforto de uso. Escala 125/150/200%, zoom físico do navegador, tecnologias assistivas e avaliação com desenvolvedores permanecem pendentes. O incremento D1 verificou texto ampliado a 200%, arraste/teclado e persistência de layout; isso é distinto da escala/zoom físico. Os testes do protótipo também não são testes dos futuros adapters/Core.
+Os cinco [testes adicionais](tests/d1-accessibility.spec.mjs) verificam destino de foco após preparar projeto/adicionar conexão, movimento reduzido e cores forçadas emulados pelo Chrome e textos/paths Unicode nos limites dos campos a 320px. A correção do foco mantém um controle válido ou o conteúdo atual, sem mover a rolagem.
+
+Isso não certifica acessibilidade completa, escala física do Windows ou conforto de uso. Escala 125/150/200%, zoom físico do navegador, configuração de contraste do Windows, tecnologias assistivas, logs/diffs extensos e avaliação com desenvolvedores permanecem pendentes. O incremento D1 verificou texto ampliado a 200%, arraste/teclado e persistência de layout; isso é distinto da escala/zoom físico. Os testes do protótipo também não são testes dos futuros adapters/Core.
 
 Referência para a configuração do runner e canal do navegador: [Playwright configuration](https://playwright.dev/docs/test-configuration) e [browsers](https://playwright.dev/docs/browsers#google-chrome--microsoft-edge).
