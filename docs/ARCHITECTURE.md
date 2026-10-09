@@ -4,6 +4,8 @@
 
 This document describes the **initial target architecture**. It is intentionally more concrete than `PROJECT_VISION.md`, but it is still a design hypothesis and should evolve through ADRs and implementation feedback.
 
+The [Development Plan](./DEVELOPMENT_PLAN.md) proposes the concrete delivery sequence and additional domain concepts for Connections, Capacity Groups, Runs, Task Attempts, and Integration Attempts. These proposals require contract validation and ADRs; the existing architecture is not evidence of implemented behavior.
+
 ---
 
 ## 1. Architectural objective
@@ -855,9 +857,11 @@ Invariants:
 ```text
 No hidden API fallback.
 No rate-limit bypassing.
-No shared provider account pooling.
+No pooling or redistributing a provider account across unrelated users.
 No credential extraction for redistribution.
 ```
+
+Multiple separate accounts belonging to the same user are modeled as distinct Connections in the Development Plan. Their integration depends on supported authentication isolation and applicable provider conditions. Multiple sessions do not create additional quota, and Connections may share capacity limits.
 
 ---
 

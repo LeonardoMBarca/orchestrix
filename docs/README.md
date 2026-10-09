@@ -4,6 +4,36 @@ This directory contains the evolving design and engineering documentation for Or
 
 ## Core documents
 
+### [Development Status](./DEVELOPMENT_STATUS.md)
+
+Records completed D0 research, its explicit methodology revision, solution journeys, integration recommendations and visual benchmarking. Also tracks the [Desktop study](../prototypes/desktop/README.md) with Studio as default and the [runtime harness](../tools/runtime-harness/README.md) with a bounded Codex subscription probe. D1 pilot and runtime/production gates remain pending.
+
+### [D1 Prototype Delivery](./design/d1-delivery.md)
+
+Records the Studio prototype candidate, onboarding with one connection, four-task Run, versioned implementation/review context, account states and adaptive panels. Includes 19 passing technical scenarios, a reproducible build identifier and current limitations. The [pilot guide](./design/d1-pilot.md), [scenario matrix](./design/d1-scenario-matrix.md) and [visual system](./design/d1-design-system.md) keep human validation and later runtime proofs separate. D1 remains open pending the initial pilot.
+
+### [D0 Research Conclusion](./research/d0-conclusion.md)
+
+Consolidates nine solution families, three interaction references, 14 prioritized decisions and the handoff to D1. Records the replacement of the earlier full-journey criterion, observed/documented/unknown steps, and validation owners. Links [version/license provenance](./research/landscape-and-provenance.md), [Conductor workflow](./research/conductor-dynamic-evidence.md), [Cline/Superset demos](./research/workflow-demonstrations.md), [OpenCode media](./research/opencode-media-observation.md) and [subscription/account UX](./research/subscription-account-ux.md).
+
+### [Runtime Harness Results](./research/runtime-harness-results.md)
+
+Records the local Codex app-server experiment, normalized offline fixtures, supported/unknown capabilities and sanitized live evidence. Confirms a trivial response and interrupted turn via existing ChatGPT authentication; leaves process-tree supervision, real resume, code execution and independent accounts pending. Includes a [version-specific protocol inspection](./research/codex-protocol-spike.md) and a [discovery handoff](./research/discovery-handoff.md).
+
+### [Development Plan](./DEVELOPMENT_PLAN.md)
+
+Starts with D0 product/UX research and D1 design validation, followed by delivery milestones M0–M6. Covers multi-account connections, configurable model/reasoning/context policies, recoverable execution, an adaptive Desktop workspace, provider feasibility, and future VS Code integration. Written in Portuguese for the project owner. Accepted ADRs remain authoritative.
+
+### [Product and UX Research](./PRODUCT_AND_UX_RESEARCH.md)
+
+Records an initial internet survey of comparable products, integration approaches, and interaction references, with official sources. Defines deeper comparative journeys, annotated visual references, design exploration, prototyping, usability evaluation, and experience acceptance criteria. Distinguishes sourced product claims from proposed Orchestrix decisions and future validation.
+
+The consolidated D0 research includes [product positioning](./research/product-positioning.md) across nine families, an [attention/recovery/review benchmark](./research/attention-and-review-benchmark.md), and [workflow/context patterns](./research/workflow-risk-patterns.md). These deliver priorities and observable D1 scenarios while keeping incomplete competitor journeys explicit.
+
+### [Initial Development Backlog](./DEVELOPMENT_BACKLOG.md)
+
+Defines discovery/design tickets OX-D01–OX-D05 and implementation tickets OX-001–OX-017, with dependencies and acceptance criteria. D0 is closed as research under the explicitly consolidated method. D1 and its initial pilot are next, then M0 resumes using the early experiments. Independent tasks may progress in parallel within a milestone.
+
 ### [Project Vision](./PROJECT_VISION.md)
 
 Defines the problem, product thesis, goals, non-goals, domain concepts, execution philosophy, orchestration model, context strategy, memory model, open-source direction, and long-term vision.
@@ -50,7 +80,7 @@ Defines the initial product shell as a standalone Desktop App backed by an edito
 
 ### [Roadmap](./ROADMAP.md)
 
-Breaks the vision into implementation phases and milestones, from runtime feasibility spikes through multi-agent orchestration, adaptive planning, observability, benchmarking, open-source readiness, and eventual distributed execution.
+Lists the envisioned subsystem phases. The Development Plan groups them into usable delivery increments, bringing basic policy, context, observability, recovery, and Desktop supervision into the initial workflow.
 
 ## Architecture Decision Records
 

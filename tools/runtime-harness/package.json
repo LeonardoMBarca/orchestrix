@@ -1,0 +1,15 @@
+{
+  "name": "orchestrix-runtime-harness",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "M0 experiment for local coding-agent protocols; not the production Core",
+  "scripts": {
+    "test": "node --test --test-concurrency=1 tests/*.test.mjs",
+    "probe:fake": "node probe.mjs --fake",
+    "probe:codex": "node probe.mjs --codex",
+    "probe:codex:live": "node probe.mjs --codex --live",
+    "check": "node --check probe.mjs && node --check src/json-rpc.mjs && node --check src/codex-session.mjs"
+  },
+  "engines": {"node": ">=24"}
+}

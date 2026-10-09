@@ -10,6 +10,8 @@ The project is designed first as a personal engineering tool and portfolio proje
 
 > **Status:** early architecture and design phase. No stable release exists yet.
 
+The [development work](./docs/DEVELOPMENT_STATUS.md) includes sourced product/UX research, a [navigable Desktop study](./prototypes/desktop/README.md) with simulated data and seven selectable themes, and an isolated [runtime harness](./tools/runtime-harness/README.md). Studio is the default. A bounded Codex probe validated a response and turn interruption via existing ChatGPT authentication; production orchestration remains planned.
+
 ## Why Orchestrix?
 
 Modern coding agents are individually powerful, but using several of them together still requires a human to act as the scheduler, reviewer, message broker, context manager, and integration layer.
@@ -305,6 +307,8 @@ A guiding distinction throughout the project will be:
 ## Documentation
 
 Detailed project vision, architecture, domain model, execution model, invariants, and roadmap will live under [`docs/`](./docs) as the design evolves.
+
+The proposed [development plan](./docs/DEVELOPMENT_PLAN.md) follows D0 [product and UX research](./docs/PRODUCT_AND_UX_RESEARCH.md), D1 design and initial pilot, then M0 runtime feasibility and subsequent implementation milestones. D0 research is consolidated in the [conclusion](./docs/research/d0-conclusion.md), with an explicit methodology revision, partial demo coverage and preserved limitations. D1 has a [prototype candidate and technical checks](./docs/design/d1-delivery.md) ready for the [initial user pilot](./docs/design/d1-pilot.md); its pilot and M0 gates remain open. The [initial backlog](./docs/DEVELOPMENT_BACKLOG.md) defines these gates, multi-account connections and configurable model, reasoning, and context policies.
 
 ## Contributing
 

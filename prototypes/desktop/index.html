@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="pt-BR" data-direction="studio">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark light">
+  <title>Orchestrix — estudo do workspace</title>
+  <link rel="stylesheet" href="styles.css">
+  <script src="workspace.js" defer></script>
+  <script src="connections.js" defer></script>
+  <script src="app.js" defer></script>
+</head>
+<body>
+  <a class="skip-link" href="#content">Ir para o trabalho</a>
+  <div class="app" id="app">
+    <aside class="sidebar" aria-label="Navegação principal">
+      <div class="brand"><span class="brand-mark" aria-hidden="true">o<span></span></span><span>orchestrix</span><span class="alpha">D1 · preview</span></div>
+      <button class="project-switch" data-action="onboarding"><span class="project-icon">O</span><span><strong id="project-name">orchestrix</strong><small>Projeto local · demonstração</small></span><span data-icon="chevrons"></span></button>
+      <nav class="nav">
+        <button data-view="work" class="nav-item active"><span data-icon="layers"></span>Trabalho<span class="nav-number" id="work-count">4</span></button>
+        <button data-view="attention" class="nav-item"><span data-icon="inbox"></span>Precisa de você<span class="nav-number accent" id="attention-count">2</span></button>
+        <button data-view="review" class="nav-item"><span data-icon="diff"></span>Alterações</button>
+        <button data-view="history" class="nav-item"><span data-icon="clock"></span>Histórico</button>
+      </nav>
+      <div class="nav-section"><span>CONFIGURAÇÃO DO PROJETO</span></div>
+      <nav class="nav">
+        <button data-view="connections" class="nav-item"><span data-icon="plug"></span>Conexões</button>
+        <button data-view="settings" class="nav-item"><span data-icon="sliders"></span>Preferências</button>
+      </nav>
+      <div class="sidebar-bottom">
+        <button class="theme-settings-link" data-action="appearance">Personalizar aparência <span data-icon="arrow"></span></button>
+        <button class="reset" data-action="reset"><span data-icon="reset"></span>Reiniciar demonstração</button>
+        <div class="demo-note"><span class="demo-dot"></span>Protótipo · dados simulados</div>
+      </div>
+    </aside>
+    <main class="main">
+      <header class="topbar">
+        <div class="breadcrumb"><span data-icon="folder"></span><span id="breadcrumb-project">orchestrix</span><span class="slash">/</span><strong id="view-name">Trabalho</strong></div>
+        <div class="topbar-actions"><button class="command-trigger" data-action="commands" aria-label="Buscar ações do workspace"><span data-icon="search"></span><span>Buscar ou executar…</span><kbd>Ctrl K</kbd></button><button class="icon-button focus-toggle" data-action="focus" aria-label="Ativar modo de foco" aria-pressed="false" title="Modo de foco"><span data-icon="focus"></span></button><span class="avatar" title="Seu espaço local">LB</span></div>
+      </header>
+      <section class="content" id="content" tabindex="-1"></section>
+      <footer class="statusbar"><span><span class="status-dot"></span>Workspace de demonstração</span><span>Sem execução de agentes ou alterações no repositório<span class="footer-shortcut"> · <kbd>?</kbd> atalhos</span></span></footer>
+    </main>
+  </div>
+  <dialog id="modal" aria-labelledby="modal-title"></dialog>
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+</body>
+</html>

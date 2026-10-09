@@ -1,0 +1,397 @@
+{
+  "schemaVersion": 1,
+  "date": "2026-10-08T20:23:11.294Z",
+  "experiment": "M0/runtime-contract",
+  "mode": "codex",
+  "scenario": null,
+  "transport": "stdio",
+  "liveRequested": true,
+  "liveStarted": true,
+  "subscriptionGate": true,
+  "status": "passed",
+  "checks": [
+    "initialize/initialized",
+    "subscription-auth",
+    "ordinary-usage-available",
+    "official-endpoint-resolved",
+    "isolated-restart-gates-reconfirmed",
+    "thread-boundaries-resolved",
+    "turn-terminal-observed",
+    "interrupt-terminal-observed"
+  ],
+  "limits": [
+    "One existing auth store; independent accounts not tested",
+    "Parent process exit is observed; process tree termination is unknown",
+    "Requested/resolved settings are not execution telemetry",
+    "Read-only policy is not a Windows sandbox certification"
+  ],
+  "events": [
+    {
+      "schemaVersion": 1,
+      "sequence": 1,
+      "attemptId": "probe-attempt-1",
+      "type": "runtime.initialized"
+    },
+    {
+      "schemaVersion": 1,
+      "sequence": 2,
+      "attemptId": "probe-attempt-1",
+      "type": "connection.observed",
+      "authType": "chatgpt",
+      "authenticated": true
+    },
+    {
+      "schemaVersion": 1,
+      "sequence": 3,
+      "attemptId": "probe-attempt-1",
+      "type": "session.started",
+      "threadId": "threadId-1",
+      "model": "gpt-6.1-sol",
+      "sandbox": "readOnly"
+    },
+    {
+      "schemaVersion": 1,
+      "sequence": 4,
+      "attemptId": "probe-attempt-1",
+      "type": "runtime.notification",
+      "method": "mcpServer/startupStatus/updated"
+    },
+    {
+      "schemaVersion": 1,
+      "sequence": 5,
+      "attemptId": "probe-attempt-1",
+      "type": "runtime.notification",
+      "method": "thread/status/changed"
+    },
+    {
+      "schemaVersion": 1,
+      "sequence": 6,
+      "attemptId": "probe-attempt-1",
+      "type": "attempt.turn.started",
+      "turnId": "turnId-2"
+    },
+    {
+      "schemaVersion": 1,
+      "sequence": 7,
+      "attemptId": "probe-attempt-1",
+      "type": "runtime.notification",
+      "method": "mcpServer/startupStatus/updated"
+    },
+    {
+      "schemaVersion": 1,
+      "sequence": 8,
+      "attemptId": "probe-attempt-1",
+      "type": "runtime.notification",
+      "method": "item/started"
+    },
+    {
+      "schemaVersion": 1,
+      "sequence": 9,
+      "attemptId": "probe-attempt-1",
+      "type": "runtime.notification",
+      "method": "item/completed"
+    },
+    {
+      "schemaVersion": 1,
+      "sequence": 10,
+      "attemptId": "probe-attempt-1",
+      "type": "runtime.notification",
+      "method": "item/started"
+    },
+    {
+      "schemaVersion": 1,
+      "sequence": 11,
+      "attemptId": "probe-attempt-1",
+      "type": "response.delta",
+      "turnId": "turnId-2",
+      "bytes": 2
+    },
+    {
+      "schemaVersion": 1,
+      "sequence": 12,
+      "attemptId": "probe-attempt-1",
+      "type": "response.delta",
+      "turnId": "turnId-2",
+      "bytes": 3
+    },
+    {
+      "schemaVersion": 1,
+      "sequence": 13,
+      "attemptId": "probe-attempt-1",
+      "type": "response.delta",
+      "turnId": "turnId-2",
+      "bytes": 3
+    },
+    {
+      "schemaVersion": 1,
+      "sequence": 14,
+      "attemptId": "probe-attempt-1",
+      "type": "response.delta",
+      "turnId": "turnId-2",
+      "bytes": 2
+    },
+    {
+      "schemaVersion": 1,
+      "sequence": 15,
+      "attemptId": "probe-attempt-1",
+      "type": "response.delta",
+      "turnId": "turnId-2",
+      "bytes": 4
+    },
+    {
+      "schemaVersion": 1,
+      "sequence": 16,
+      "attemptId": "probe-attempt-1",
+      "type": "response.delta",
+      "turnId": "turnId-2",
+      "bytes": 2
+    },
+    {
+      "schemaVersion": 1,
+      "sequence": 17,
+      "attemptId": "probe-attempt-1",
+      "type": "response.delta",
+      "turnId": "turnId-2",
+      "bytes": 3
+    },
+    {
+      "schemaVersion": 1,
+      "sequence": 18,
+      "attemptId": "probe-attempt-1",
+      "type": "runtime.notification",
+      "method": "item/completed"
+    },
+    {
+      "schemaVersion": 1,
+      "sequence": 19,
+      "attemptId": "probe-attempt-1",
+      "type": "runtime.notification",
+      "method": "thread/tokenUsage/updated"
+    },
+    {
+      "schemaVersion": 1,
+      "sequence": 20,
+      "attemptId": "probe-attempt-1",
+      "type": "runtime.notification",
+      "method": "thread/status/changed"
+    },
+    {
+      "schemaVersion": 1,
+      "sequence": 21,
+      "attemptId": "probe-attempt-1",
+      "type": "attempt.turn.ended",
+      "turnId": "turnId-2",
+      "status": "completed",
+      "errorKind": null
+    },
+    {
+      "schemaVersion": 1,
+      "sequence": 22,
+      "attemptId": "probe-attempt-1",
+      "type": "runtime.notification",
+      "method": "thread/status/changed"
+    },
+    {
+      "schemaVersion": 1,
+      "sequence": 23,
+      "attemptId": "probe-attempt-1",
+      "type": "attempt.turn.started",
+      "turnId": "turnId-3"
+    },
+    {
+      "schemaVersion": 1,
+      "sequence": 24,
+      "attemptId": "probe-attempt-1",
+      "type": "runtime.notification",
+      "method": "item/started"
+    },
+    {
+      "schemaVersion": 1,
+      "sequence": 25,
+      "attemptId": "probe-attempt-1",
+      "type": "runtime.notification",
+      "method": "item/completed"
+    },
+    {
+      "schemaVersion": 1,
+      "sequence": 26,
+      "attemptId": "probe-attempt-1",
+      "type": "attempt.interrupt.requested",
+      "turnId": "turnId-3"
+    },
+    {
+      "schemaVersion": 1,
+      "sequence": 27,
+      "attemptId": "probe-attempt-1",
+      "type": "runtime.notification",
+      "method": "thread/status/changed"
+    },
+    {
+      "schemaVersion": 1,
+      "sequence": 28,
+      "attemptId": "probe-attempt-1",
+      "type": "attempt.turn.ended",
+      "turnId": "turnId-3",
+      "status": "interrupted",
+      "errorKind": null
+    }
+  ],
+  "workspace": {
+    "disposable": true,
+    "gitInitialized": true,
+    "retainedForInspection": true,
+    "filesUnchanged": true
+  },
+  "runtimeVersion": "0.162.0-alpha.2",
+  "auth": {
+    "type": "chatgpt",
+    "authenticated": true,
+    "requiresOpenaiAuth": true,
+    "subscriptionGate": true
+  },
+  "availability": true,
+  "models": [
+    {
+      "model": "gpt-6.1-sol",
+      "isDefault": true,
+      "efforts": [
+        "low",
+        "medium",
+        "high",
+        "xhigh",
+        "max",
+        "ultra"
+      ]
+    },
+    {
+      "model": "gpt-6-astra",
+      "isDefault": false,
+      "efforts": [
+        "low",
+        "medium",
+        "high",
+        "xhigh",
+        "max",
+        "ultra"
+      ]
+    },
+    {
+      "model": "gpt-6-sol",
+      "isDefault": false,
+      "efforts": [
+        "low",
+        "medium",
+        "high",
+        "xhigh",
+        "max",
+        "ultra"
+      ]
+    },
+    {
+      "model": "gpt-6-luna",
+      "isDefault": false,
+      "efforts": [
+        "low",
+        "medium",
+        "high",
+        "xhigh",
+        "max"
+      ]
+    },
+    {
+      "model": "gpt-5.6-sol",
+      "isDefault": false,
+      "efforts": [
+        "low",
+        "medium",
+        "high",
+        "xhigh",
+        "max",
+        "ultra"
+      ]
+    },
+    {
+      "model": "gpt-5.6-terra",
+      "isDefault": false,
+      "efforts": [
+        "low",
+        "medium",
+        "high",
+        "xhigh",
+        "max",
+        "ultra"
+      ]
+    },
+    {
+      "model": "gpt-5.6-luna",
+      "isDefault": false,
+      "efforts": [
+        "low",
+        "medium",
+        "high",
+        "xhigh",
+        "max"
+      ]
+    }
+  ],
+  "endpoints": {
+    "providerOpenai": true,
+    "officialEndpointConfirmed": true,
+    "resources": {
+      "hooksDisabled": true,
+      "pluginsDisabled": true,
+      "appsDisabled": true,
+      "notifyDisabled": true,
+      "mcpConfiguredCount": 1,
+      "mcpDisabled": true
+    }
+  },
+  "bootstrapProcess": {
+    "code": 0,
+    "signal": null,
+    "parentExited": true,
+    "treeTermination": "unknown"
+  },
+  "mcpOverridesCount": 1,
+  "configuration": {
+    "requested": {
+      "model": "gpt-6.1-sol",
+      "effort": "low",
+      "provider": "openai",
+      "sandbox": "read-only",
+      "approval": "never"
+    },
+    "resolvedConfiguration": {
+      "model": "gpt-6.1-sol",
+      "effort": "low",
+      "provider": "openai",
+      "sandbox": "readOnly",
+      "networkAccess": false,
+      "approval": "never",
+      "reviewer": "user",
+      "ephemeral": true,
+      "cwdMatched": true
+    }
+  },
+  "firstTurn": {
+    "status": "completed",
+    "errorKind": null,
+    "expectedTextMatched": true
+  },
+  "cancellation": {
+    "requestAcknowledged": true,
+    "terminalStatus": "interrupted",
+    "interruptedConfirmed": true
+  },
+  "process": {
+    "code": 0,
+    "signal": null,
+    "parentExited": true,
+    "treeTermination": "unknown"
+  },
+  "transportMetrics": {
+    "messages": 37,
+    "stderrBytesDrained": 0
+  },
+  "durationMs": 5879
+}

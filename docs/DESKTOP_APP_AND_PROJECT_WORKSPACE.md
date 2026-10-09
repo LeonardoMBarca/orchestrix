@@ -14,6 +14,8 @@ It should not begin life as a VS Code extension and should not attempt to become
 
 The Desktop App is the engineering cockpit. The Core is the product engine.
 
+The initial product should support comfortable assisted development inside Orchestrix: define work, supply context, inspect code and diffs, request corrections, review evidence, and apply approved results. Visual quality, clear structure, and adaptive interaction are initial product requirements. The [Product and UX Research](./PRODUCT_AND_UX_RESEARCH.md) defines discovery and design validation before Desktop implementation.
+
 A future VS Code extension, CLI, web client, or even a dedicated Code-OSS-based IDE may connect to the same Core without changing the orchestration model.
 
 ---
@@ -83,6 +85,8 @@ V1 should include:
 - test/build output;
 - terminal/log views where useful;
 - links/actions to open files in an external editor.
+
+The normal assisted workflow should be completable in the app. Lightweight manual editing, including indentation, save, and undo, may be added based on discovery findings. External-editor actions remain optional integrations. Test/build output is evidence from the Core's verification pipeline; the initial product does not require a debugger, test explorer, or an integrated testing environment.
 
 V1 does not need to include:
 
@@ -167,6 +171,8 @@ This discovery process should produce explicit, inspectable project metadata rat
 The Desktop App should expose the actual project/repository filesystem through a Project Explorer.
 
 Example layout:
+
+This diagram shows conceptual responsibilities, not a fixed three-column implementation. D1 will validate navigation and layout. Panels should resize/collapse, a focus mode should prioritize the current work, and preferences should persist. Compact windows must preserve the primary action; live updates must not steal focus or unexpectedly rearrange the selected task.
 
 ```text
 ┌──────────────────────────────────────────────────────────┐
@@ -268,9 +274,11 @@ V1 should support:
 - links from an event to the relevant diff/file;
 - links from a review finding to the relevant location.
 
-A complete code editor is optional and can be evaluated later.
+A complete code editor is optional and can be evaluated later. A bounded lightweight editor can be considered independently, with syntax highlighting, indentation, save/undo, and explicit coordination with active agent writes. Manual changes invalidate evaluations or approvals tied to an earlier artifact version.
 
-For manual editing, Orchestrix may provide actions such as:
+Inline comments and selected code/diff should support contextual correction requests inside Orchestrix. Navigating between a file, finding, diff, and check preserves the task and artifact version being inspected.
+
+For users who prefer an external editor, Orchestrix may provide actions such as:
 
 ```text
 Open in VS Code
@@ -385,3 +393,11 @@ Orchestration Control Center
 ```
 
 This provides enough project visibility to supervise real work while keeping focus on Orchestrix's unique value: orchestration rather than text editing.
+
+## 13. Product research and experience acceptance
+
+D0 studies comparable products, integration approaches, and interaction references. D1 produces journeys, information architecture, visual directions, a navigable prototype, tokens, and pilot evaluation. A functional shell alone does not satisfy M2: implementation must follow the chosen direction and pass visual/interaction QA.
+
+The experience should include consistent typography, spacing, surfaces, icons, status semantics, light/dark themes, visible keyboard focus, discoverable actions, and layouts tested across compact/wide windows and Windows display scaling. Detail is progressively disclosed; tasks needing attention remain easy to find.
+
+Design empty, loading, disconnected, auth-expired, running, waiting, rate-limited, failed-check, rejected-review, conflict, reconnecting, cancelled, and applied states. Validate the assisted workflow with users before concluding the alpha, recording evidence and unresolved issues. See the [research process and acceptance criteria](./PRODUCT_AND_UX_RESEARCH.md).

@@ -2,6 +2,11 @@
 #
 # This file is documentation, not yet a stable public configuration contract.
 # The final schema must be validated against implementation requirements.
+# Runtime keys below represent adapter types, not individual accounts. The
+# Development Plan proposes distinct Connection IDs for multi-account pools.
+# Historical scoring and automatic resource inference are future capabilities;
+# the initial router uses eligibility checks and ordered preferences, with
+# explicitly declared resource claims.
 
 version: 1
 

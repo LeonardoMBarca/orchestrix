@@ -1,0 +1,14 @@
+{
+  "name": "orchestrix-desktop-study",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Prototype with simulated data, independent of the production Desktop stack",
+  "scripts": {
+    "start": "node server.mjs",
+    "check": "node --check app.js && node --check workspace.js && node --check connections.js && node --check server.mjs",
+    "test": "playwright test"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.64.0"
+  }
+}

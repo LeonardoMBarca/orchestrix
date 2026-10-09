@@ -10,6 +10,14 @@ The sequence is based on one principle:
 
 > **Establish deterministic execution and observability before adding autonomous intelligence.**
 
+## Delivery planning
+
+The [Development Plan](./DEVELOPMENT_PLAN.md) begins with D0 product research and D1 design/validation, then delivers M0–M6. The [Initial Development Backlog](./DEVELOPMENT_BACKLOG.md) defines discovery tickets OX-D01–OX-D05 and implementation tickets OX-001–OX-017. The phases below are a subsystem inventory rather than a requirement to finish every preceding phase before shipping a usable application.
+
+D0 compares similar solutions, technical integration approaches, and UX/visual references. Its [research conclusion](./research/d0-conclusion.md) records sourced evidence, an explicit methodology revision and partial demo coverage. D1 now has a [verified prototype candidate](./design/d1-delivery.md), with onboarding, versioned context, connection states, review, themes and adaptive panels. The initial user pilot is pending. User validation and technical runtime/recovery gates remain pending; the [research package](./PRODUCT_AND_UX_RESEARCH.md) supplies criteria and priorities.
+
+Basic policy resolution, model/reasoning configuration, Context Packs, events, recovery, and Desktop supervision belong in the first complete workflow. Advanced routing, memory, replanning, and observability can expand later. Runtime adapters should graduate individually; an unready provider must not block delivery using a verified provider.
+
 ---
 
 ## Phase 0 — Architecture foundation
@@ -88,7 +96,7 @@ A small harness for each runtime plus captured sample event streams under `tests
 
 ### Exit criteria
 
-Each runtime can execute a trivial repository task and produce events that can be normalized without screen automation.
+At least one runtime can execute a trivial repository task and produce events that can be normalized without screen automation. Each additional adapter must pass its own contract before being enabled. Record unknown or unsupported capabilities, including account isolation and quota telemetry.
 
 ---
 
@@ -108,7 +116,9 @@ Build the first provider-independent runtime layer.
 - cancellation/termination;
 - environment sanitization;
 - subscription-only policy hook;
-- adapters for initial runtimes.
+- the first verified adapter, with additional adapters introduced after their own feasibility gates;
+- connection/account identity and capability metadata, separate from runtime type;
+- requested-versus-effective model/reasoning configuration.
 
 ### Tests
 
@@ -247,7 +257,7 @@ Implementation Agent
       ↓
 Deterministic verification
       ↓
-Review Agent using different runtime
+Review Agent using an independent session
       ↓
 Correction loop if required
       ↓
@@ -258,7 +268,7 @@ Human merge approval
 
 ### Exit criteria
 
-Orchestrix can coordinate an implementation + cross-model review + correction cycle without the user manually copying prompts between agents.
+Orchestrix can coordinate implementation + independent review + correction without the user manually copying prompts between agents. A different provider/model family is preferred when available and configured, but only required when the user explicitly requests it. The workflow must work with one runtime, consistent with ADR-0001.
 
 This is the first major usability milestone.
 
@@ -341,6 +351,8 @@ A natural-language objective can produce a valid, reviewable, versioned task gra
 
 ## Phase 11 — Router and agent profiles
 
+Basic profiles, eligibility checks, model/reasoning policy, and ordered user preferences are required in the initial workflow. This phase expands routing rather than postponing those controls until after autonomous planning.
+
 ### Objectives
 
 Assign work based on capabilities rather than hard-coded providers.
@@ -374,6 +386,8 @@ The same task can be automatically assigned to different runtimes based on profi
 ---
 
 ## Phase 12 — Context Compiler
+
+An explicit, inspectable Context Pack is part of the first worker. This phase expands relevance selection, provenance, and memory integration beyond that initial package.
 
 ### Objectives
 
@@ -487,6 +501,8 @@ A developer or new agent can understand the current state of a non-trivial proje
 ---
 
 ## Phase 16 — Desktop UI
+
+The initial Desktop shell and supervision controls are delivered with the first implementation/review loop, following D0 research and D1 design validation. Visual quality, clear navigation, adaptive layout, and comfortable assisted development are part of that first app. This phase describes the broader UI surface; it is not a prerequisite sequence that delays all UI until after the Documentation Agent.
 
 ### Objectives
 
@@ -742,8 +758,10 @@ Task + worktree + runtime + deterministic verification
 ### Milestone C — Multi-Agent Loop
 
 ```text
-Implementation + cross-model review + correction
+Implementation + independent review + correction
 ```
+
+Cross-model diversity is optional unless explicitly required by policy.
 
 ### Milestone D — Parallel Orchestrator
 
@@ -787,13 +805,14 @@ Open-source contribution model + adapters + optional distributed workers
 
 Before major implementation begins:
 
-1. Write the first ADRs.
-2. Decide whether Rust/Tauri remains the preferred stack after explicit trade-off analysis.
-3. Create runtime feasibility spikes for Codex, Claude Code, and Antigravity.
-4. Capture real structured runtime events.
-5. Define the normalized runtime event schema from evidence rather than assumptions.
-6. Implement a fake runtime before relying on external agents in tests.
-7. Build the first deterministic Task state machine.
+1. Use the completed D0 [research conclusion](./research/d0-conclusion.md) to evaluate the D1 prototype in the initial user pilot and resolve critical findings, as described in OX-D03–OX-D05. Existing prototype/runtime experiments do not complete these gates.
+2. Write the first ADRs.
+3. Decide whether Rust/Tauri remains the preferred stack after explicit trade-off analysis.
+4. Resume M0 runtime feasibility spikes for Codex, Claude Code, and Antigravity after the initial D1 pilot; reuse the Codex harness already prepared.
+5. Capture real structured runtime events.
+6. Define the normalized runtime event schema from evidence rather than assumptions.
+7. Implement a fake runtime before relying on external agents in tests.
+8. Build the first deterministic Task state machine.
 
 The first major engineering objective should be:
 
