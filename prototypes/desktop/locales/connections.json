@@ -1,0 +1,694 @@
+{
+  "Disponível · simulação": {
+    "en": "Available · simulation",
+    "es": "Disponible · simulación"
+  },
+  "Limite observado · simulação": {
+    "en": "Observed limit · simulation",
+    "es": "Límite observado · simulación"
+  },
+  "Autorização expirada · simulação": {
+    "en": "Authorization expired · simulation",
+    "es": "Autorización caducada · simulación"
+  },
+  "Acesso negado · simulação": {
+    "en": "Access denied · simulation",
+    "es": "Acceso denegado · simulación"
+  },
+  "Novos trabalhos bloqueados · simulação": {
+    "en": "New work blocked · simulation",
+    "es": "Nuevos trabajos bloqueados · simulación"
+  },
+  "Plano próprio do provedor · simulação": {
+    "en": "Your provider plan · simulation",
+    "es": "Tu plan del proveedor · simulación"
+  },
+  "API com cobrança separada · simulação": {
+    "en": "API with separate billing · simulation",
+    "es": "API con facturación separada · simulación"
+  },
+  "(identidade fictícia)": {
+    "en": "(fictional identity)",
+    "es": "(identidad ficticia)"
+  },
+  "Registro inicial validado e modalidade confirmada na simulação.": {
+    "en": "Initial record validated and modality confirmed in the simulation.",
+    "es": "Registro inicial validado y modalidad confirmada en la simulación."
+  },
+  "Registro de exemplo aguarda autorização simulada.": {
+    "en": "Example record awaiting simulated authorization.",
+    "es": "Registro de ejemplo a la espera de autorización simulada."
+  },
+  "Codex · pessoal A": {
+    "en": "Codex · personal A",
+    "es": "Codex · personal A"
+  },
+  "Pessoal A · exemplo": {
+    "en": "Personal A · example",
+    "es": "Personal A · ejemplo"
+  },
+  "Codex · pessoal B": {
+    "en": "Codex · personal B",
+    "es": "Codex · personal B"
+  },
+  "Pessoal B · exemplo": {
+    "en": "Personal B · example",
+    "es": "Personal B · ejemplo"
+  },
+  "Claude · pessoal": {
+    "en": "Claude · personal",
+    "es": "Claude · personal"
+  },
+  "Pessoal · exemplo": {
+    "en": "Personal · example",
+    "es": "Personal · ejemplo"
+  },
+  "Catálogo em descoberta · simulação": {
+    "en": "Catalog discovery in progress · simulation",
+    "es": "Descubrimiento del catálogo en curso · simulación"
+  },
+  "Não confirmado": {
+    "en": "Unconfirmed",
+    "es": "Sin confirmar"
+  },
+  "Não solicitado": {
+    "en": "Not requested",
+    "es": "No solicitado"
+  },
+  "Não solicitada": {
+    "en": "Not requested",
+    "es": "No solicitada"
+  },
+  "Não confirmado; nenhuma tentativa foi encerrada": {
+    "en": "Unconfirmed; no attempts were terminated",
+    "es": "Sin confirmar; no se finalizó ningún intento"
+  },
+  "Não confirmada · sem resposta do provedor na simulação": {
+    "en": "Unconfirmed · no provider response in the simulation",
+    "es": "Sin confirmar · sin respuesta del proveedor en la simulación"
+  },
+  "· simulação; tentativas anteriores preservadas.": {
+    "en": "· simulation; earlier attempts preserved.",
+    "es": "· simulación; intentos anteriores conservados."
+  },
+  "CONEXÕES · SIMULAÇÃO": {
+    "en": "CONNECTIONS · SIMULATION",
+    "es": "CONEXIONES · SIMULACIÓN"
+  },
+  "Contas distintas, escolhas claras": {
+    "en": "Distinct accounts, clear choices",
+    "es": "Cuentas distintas, decisiones claras"
+  },
+  "Escolha a conexão para novos trabalhos. Sessões existentes preservam sua conta, configuração e contexto.": {
+    "en": "Choose the connection for new work. Existing sessions retain their account, configuration and context.",
+    "es": "Elige la conexión para nuevos trabajos. Las sesiones existentes conservan su cuenta, configuración y contexto."
+  },
+  "Adicionar conexão simulada": {
+    "en": "Add simulated connection",
+    "es": "Añadir conexión simulada"
+  },
+  "Todos os registros e catálogos são fictícios, sem credenciais. Conta, workspace e grupo de capacidade têm identidades próprias; mais sessões não significam mais cota. Nenhum limite muda a origem de cobrança automaticamente.": {
+    "en": "All records and catalogs are fictional, without credentials. Accounts, workspaces and capacity groups have their own identities; more sessions do not mean more quota. No limit changes the billing source automatically.",
+    "es": "Todos los registros y catálogos son ficticios, sin credenciales. Las cuentas, los espacios de trabajo y los grupos de capacidad tienen sus propias identidades; más sesiones no significan más cuota. Ningún límite cambia automáticamente el origen de facturación."
+  },
+  "· capacidade real desconhecida": {
+    "en": "· actual capacity unknown",
+    "es": "· capacidad real desconocida"
+  },
+  "Elegível para nova tentativa simulada": {
+    "en": "Eligible for a new simulated attempt",
+    "es": "Elegible para un nuevo intento simulado"
+  },
+  "Indisponível para nova tentativa": {
+    "en": "Unavailable for a new attempt",
+    "es": "No disponible para un nuevo intento"
+  },
+  "tentativa vinculada": {
+    "en": "linked attempt",
+    "es": "intento vinculado"
+  },
+  "tentativas vinculadas": {
+    "en": "linked attempts",
+    "es": "intentos vinculados"
+  },
+  "Inspecionar conexão": {
+    "en": "Inspect connection",
+    "es": "Inspeccionar conexión"
+  },
+  "Descobrindo catálogo · simulação": {
+    "en": "Discovering catalog · simulation",
+    "es": "Descubriendo catálogo · simulación"
+  },
+  "Modelos disponíveis e acesso ainda não foram confirmados. Novas tentativas aguardam; as existentes preservam seus snapshots.": {
+    "en": "Available models and access have not been confirmed yet. New attempts wait; existing ones retain their snapshots.",
+    "es": "Los modelos disponibles y el acceso aún no están confirmados. Los nuevos intentos esperan; los existentes conservan sus snapshots."
+  },
+  "Preferência do runtime": {
+    "en": "Runtime preference",
+    "es": "Preferencia del runtime"
+  },
+  "Favorito do perfil": {
+    "en": "Profile favorite",
+    "es": "Favorito del perfil"
+  },
+  "Não definido": {
+    "en": "Not defined",
+    "es": "No definido"
+  },
+  "Escolhas para a próxima tentativa": {
+    "en": "Choices for the next attempt",
+    "es": "Decisiones para el próximo intento"
+  },
+  "Modelo solicitado": {
+    "en": "Requested model",
+    "es": "Modelo solicitado"
+  },
+  "Raciocínio solicitado": {
+    "en": "Requested reasoning",
+    "es": "Razonamiento solicitado"
+  },
+  "Catálogo": {
+    "en": "Catalog",
+    "es": "Catálogo"
+  },
+  "Catálogo ilustrativo; acesso real desconhecido": {
+    "en": "Illustrative catalog; actual access unknown",
+    "es": "Catálogo ilustrativo; acceso real desconocido"
+  },
+  "Escolha incompatível · catálogo de exemplo": {
+    "en": "Incompatible choice · example catalog",
+    "es": "Elección incompatible · catálogo de ejemplo"
+  },
+  "Modelo efetivo": {
+    "en": "Effective model",
+    "es": "Modelo efectivo"
+  },
+  "Não informado; nenhuma inferência real": {
+    "en": "Not reported; no real inference",
+    "es": "No informado; ninguna inferencia real"
+  },
+  "Exemplo de raciocínio:": {
+    "en": "Reasoning example:",
+    "es": "Ejemplo de razonamiento:"
+  },
+  "; acesso real não verificado.": {
+    "en": "; actual access unverified.",
+    "es": "; acceso real sin verificar."
+  },
+  "Modelo Codex de exemplo": {
+    "en": "Example Codex model",
+    "es": "Modelo Codex de ejemplo"
+  },
+  "Modelo Claude de exemplo": {
+    "en": "Example Claude model",
+    "es": "Modelo Claude de ejemplo"
+  },
+  "Catálogo simulado compatível. Isso não garante acesso real ao modelo.": {
+    "en": "Simulated catalog compatible. This does not guarantee actual access to the model.",
+    "es": "Catálogo simulado compatible. Esto no garantiza acceso real al modelo."
+  },
+  "Escolha incompatível com o catálogo simulado desta conexão. Ajuste a preferência ou selecione outra conexão para uma nova tentativa. Nenhum fallback para API foi realizado.": {
+    "en": "The choice is incompatible with this connection's simulated catalog. Adjust the preference or select another connection for a new attempt. No API fallback was performed.",
+    "es": "La elección es incompatible con el catálogo simulado de esta conexión. Ajusta la preferencia o selecciona otra conexión para un nuevo intento. No se realizó ningún fallback a API."
+  },
+  "Tentativas vinculadas": {
+    "en": "Linked attempts",
+    "es": "Intentos vinculados"
+  },
+  "Outra sessão nesta conexão pode realizar revisão, com contexto separado. Isso não cria outra conta nem capacidade independente.": {
+    "en": "Another session on this connection can perform a review with separate context. This does not create another account or independent capacity.",
+    "es": "Otra sesión de esta conexión puede realizar una revisión con un contexto separado. Esto no crea otra cuenta ni capacidad independiente."
+  },
+  "Sessão/contexto próprios; conta e configuração da tentativa preservadas.": {
+    "en": "Separate session/context; attempt account and configuration preserved.",
+    "es": "Sesión/contexto propios; cuenta y configuración del intento conservadas."
+  },
+  "Nenhuma tentativa vinculada nesta demonstração.": {
+    "en": "No attempts linked in this demo.",
+    "es": "Ningún intento vinculado en esta demostración."
+  },
+  "Conexão não encontrada na demonstração.": {
+    "en": "Connection not found in the demo.",
+    "es": "Conexión no encontrada en la demostración."
+  },
+  "Validada somente na simulação": {
+    "en": "Validated only in the simulation",
+    "es": "Validada solo en la simulación"
+  },
+  "Validação pendente": {
+    "en": "Validation pending",
+    "es": "Validación pendiente"
+  },
+  "Continuar autorização simulada": {
+    "en": "Continue simulated authorization",
+    "es": "Continuar autorización simulada"
+  },
+  "Reconectar na simulação": {
+    "en": "Reconnect in the simulation",
+    "es": "Reconectar en la simulación"
+  },
+  "· conexão simulada": {
+    "en": "· simulated connection",
+    "es": "· conexión simulada"
+  },
+  "O e-mail pode coincidir entre contas/workspaces; ele não substitui a identidade do registro. Valores acima são exemplos, sem tokens.": {
+    "en": "Email addresses may match across accounts/workspaces; they do not replace the record identity. The values above are examples, without tokens.",
+    "es": "El correo puede coincidir entre cuentas o espacios de trabajo; no sustituye la identidad del registro. Los valores anteriores son ejemplos, sin tokens."
+  },
+  "Simular estados desta conexão": {
+    "en": "Simulate connection states",
+    "es": "Simular estados de esta conexión"
+  },
+  "Apenas a elegibilidade de novos trabalhos muda. Nenhuma tentativa existente é retomada, interrompida ou transferida.": {
+    "en": "Only eligibility for new work changes. No existing attempt is resumed, interrupted or transferred.",
+    "es": "Solo cambia la elegibilidad para nuevos trabajos. Ningún intento existente se reanuda, interrumpe ni transfiere."
+  },
+  "Histórico de registros e decisões": {
+    "en": "Record and decision history",
+    "es": "Historial de registros y decisiones"
+  },
+  "Encerramento e confirmação": {
+    "en": "Termination and confirmation",
+    "es": "Finalización y confirmación"
+  },
+  "Registro estável": {
+    "en": "Stable record",
+    "es": "Registro estable"
+  },
+  "Identidade": {
+    "en": "Identity",
+    "es": "Identidad"
+  },
+  "Identidade ilustrativa": {
+    "en": "Illustrative identity",
+    "es": "Identidad ilustrativa"
+  },
+  "E-mail fictício": {
+    "en": "Fictional email",
+    "es": "Correo ficticio"
+  },
+  "Registro de autorização": {
+    "en": "Authorization record",
+    "es": "Registro de autorización"
+  },
+  "Ainda não validado": {
+    "en": "Not validated yet",
+    "es": "Todavía sin validar"
+  },
+  "Modalidade": {
+    "en": "Modality",
+    "es": "Modalidad"
+  },
+  "Workspace": {
+    "en": "Workspace",
+    "es": "Espacio de trabajo"
+  },
+  "Grupo de capacidade": {
+    "en": "Capacity group",
+    "es": "Grupo de capacidad"
+  },
+  "Capacidade": {
+    "en": "Capacity",
+    "es": "Capacidad"
+  },
+  "Desconhecida; grupos distintos não comprovam cotas independentes": {
+    "en": "Unknown; distinct groups do not prove independent quotas",
+    "es": "Desconocida; los grupos distintos no prueban cuotas independientes"
+  },
+  "Gerenciar uso simulado": {
+    "en": "Manage simulated usage",
+    "es": "Gestionar uso simulado"
+  },
+  "Concluir descoberta simulada": {
+    "en": "Finish simulated discovery",
+    "es": "Finalizar descubrimiento simulado"
+  },
+  "Simular descoberta em andamento": {
+    "en": "Simulate discovery in progress",
+    "es": "Simular descubrimiento en curso"
+  },
+  "Simular limite": {
+    "en": "Simulate limit",
+    "es": "Simular límite"
+  },
+  "Simular expiração": {
+    "en": "Simulate expiration",
+    "es": "Simular caducidad"
+  },
+  "Simular acesso negado": {
+    "en": "Simulate denied access",
+    "es": "Simular acceso denegado"
+  },
+  "Simular catálogo incompatível": {
+    "en": "Simulate incompatible catalog",
+    "es": "Simular catálogo incompatible"
+  },
+  "Restaurar catálogo simulado": {
+    "en": "Restore simulated catalog",
+    "es": "Restaurar catálogo simulado"
+  },
+  "· registro r": {
+    "en": "· record r",
+    "es": "· registro r"
+  },
+  "Novos trabalhos": {
+    "en": "New work",
+    "es": "Nuevos trabajos"
+  },
+  "Permitidos se elegíveis": {
+    "en": "Allowed if eligible",
+    "es": "Permitidos si son elegibles"
+  },
+  "Bloqueados": {
+    "en": "Blocked",
+    "es": "Bloqueados"
+  },
+  "Término de workers": {
+    "en": "Worker termination",
+    "es": "Finalización de workers"
+  },
+  "Saída da conta": {
+    "en": "Account logout",
+    "es": "Cierre de sesión de la cuenta"
+  },
+  "Revogação remota": {
+    "en": "Remote revocation",
+    "es": "Revocación remota"
+  },
+  "Simular revogação sem resposta": {
+    "en": "Simulate revocation without response",
+    "es": "Simular revocación sin respuesta"
+  },
+  "Desconectar para novos trabalhos": {
+    "en": "Disconnect for new work",
+    "es": "Desconectar para nuevos trabajos"
+  },
+  "Adicionar conexão · simulação": {
+    "en": "Add connection · simulation",
+    "es": "Añadir conexión · simulación"
+  },
+  "Crie um registro pendente, separado das conexões em uso. Não informe tokens, senhas ou dados de contas reais.": {
+    "en": "Create a pending record, separate from connections in use. Do not enter tokens, passwords or real account data.",
+    "es": "Crea un registro pendiente, separado de las conexiones en uso. No introduzcas tokens, contraseñas ni datos de cuentas reales."
+  },
+  "Runtime de exemplo": {
+    "en": "Example runtime",
+    "es": "Runtime de ejemplo"
+  },
+  "Nome para reconhecer a conta": {
+    "en": "Name to recognize the account",
+    "es": "Nombre para reconocer la cuenta"
+  },
+  "Ex.: minha segunda conta de exemplo": {
+    "en": "E.g. my second example account",
+    "es": "Ej.: mi segunda cuenta de ejemplo"
+  },
+  "Workspace de exemplo": {
+    "en": "Example workspace",
+    "es": "Espacio de trabajo de ejemplo"
+  },
+  "Ex.: pessoal ou equipe fictícia": {
+    "en": "E.g. personal or fictional team",
+    "es": "Ej.: personal o equipo ficticio"
+  },
+  "Origem de autorização e cobrança": {
+    "en": "Authorization and billing source",
+    "es": "Origen de autorización y facturación"
+  },
+  "A modalidade será confirmada antes da ativação. API é uma escolha separada; limites de assinatura nunca a selecionam automaticamente.": {
+    "en": "The modality will be confirmed before activation. API is a separate choice; subscription limits never select it automatically.",
+    "es": "La modalidad se confirmará antes de la activación. La API es una elección separada; los límites de suscripción nunca la seleccionan automáticamente."
+  },
+  "Adicionar registro pendente": {
+    "en": "Add pending record",
+    "es": "Añadir registro pendiente"
+  },
+  "Confirmo nesta simulação o uso do meu plano próprio pela conexão indicada.": {
+    "en": "I confirm in this simulation the use of my provider plan through the indicated connection.",
+    "es": "Confirmo en esta simulación el uso de mi plan del proveedor a través de la conexión indicada."
+  },
+  "Confirmo nesta simulação a escolha separada de API, com outra origem de cobrança.": {
+    "en": "I confirm in this simulation the separate API choice, with another billing source.",
+    "es": "Confirmo en esta simulación la elección separada de API, con otro origen de facturación."
+  },
+  "Validar autorização · simulação": {
+    "en": "Validate authorization · simulation",
+    "es": "Validar autorización · simulación"
+  },
+  "Nenhum provedor será acessado. O novo registro só fica disponível depois desta validação simulada. As tentativas antigas conservam o registro e contexto anteriores.": {
+    "en": "No provider will be accessed. The new record becomes available only after this simulated validation. Earlier attempts retain their previous record and context.",
+    "es": "No se accederá a ningún proveedor. El nuevo registro solo estará disponible después de esta validación simulada. Los intentos anteriores conservan su registro y contexto previos."
+  },
+  "Registro proposto r": {
+    "en": "Proposed record r",
+    "es": "Registro propuesto r"
+  },
+  "· fictício": {
+    "en": "· fictional",
+    "es": "· ficticio"
+  },
+  "Resultado da validação de identidade simulada": {
+    "en": "Simulated identity validation result",
+    "es": "Resultado de la validación de identidad simulada"
+  },
+  "Identidade corresponde à conta indicada": {
+    "en": "Identity matches the indicated account",
+    "es": "La identidad corresponde a la cuenta indicada"
+  },
+  "Identidade diferente — impedir ativação": {
+    "en": "Different identity — prevent activation",
+    "es": "Identidad diferente — impedir activación"
+  },
+  "Uma validação de exemplo não comprova assinatura, acesso a modelos ou capacidade independente.": {
+    "en": "Example validation does not prove a subscription, model access or independent capacity.",
+    "es": "Una validación de ejemplo no prueba una suscripción, acceso a modelos ni capacidad independiente."
+  },
+  "Validar registro simulado": {
+    "en": "Validate simulated record",
+    "es": "Validar registro simulado"
+  },
+  "Esta modalidade já foi confirmada neste registro de demonstração; não é necessário consentir novamente.": {
+    "en": "This modality was already confirmed in this demo record; no additional consent is needed.",
+    "es": "Esta modalidad ya se confirmó en este registro de demostración; no hace falta consentir de nuevo."
+  },
+  "Voltar à conexão": {
+    "en": "Back to connection",
+    "es": "Volver a la conexión"
+  },
+  "Nova autorização pendente": {
+    "en": "New authorization pending",
+    "es": "Nueva autorización pendiente"
+  },
+  "Registro anterior preservado": {
+    "en": "Previous record preserved",
+    "es": "Registro anterior conservado"
+  },
+  "Gerenciar uso · simulação": {
+    "en": "Manage usage · simulation",
+    "es": "Gestionar uso · simulación"
+  },
+  "usa": {
+    "en": "uses",
+    "es": "usa"
+  },
+  ". A versão real encaminhará ao gerenciamento de uso do provedor correspondente; esta demonstração não acessa esse serviço.": {
+    "en": ". The real version will direct you to the corresponding provider's usage management; this demo does not access that service.",
+    "es": ". La versión real te llevará a la gestión de uso del proveedor correspondiente; esta demostración no accede a ese servicio."
+  },
+  "Capacidade efetiva: desconhecida.": {
+    "en": "Effective capacity: unknown.",
+    "es": "Capacidad efectiva: desconocida."
+  },
+  "Grupo:": {
+    "en": "Group:",
+    "es": "Grupo:"
+  },
+  "Mais sessões/hosts não comprovam uma franquia adicional.": {
+    "en": "More sessions/hosts do not prove an additional allowance.",
+    "es": "Más sesiones o hosts no prueban una cuota adicional."
+  },
+  "Um limite permite aguardar, ajustar a próxima execução ou escolher outra conexão elegível. O histórico e a origem de cobrança permanecem explícitos.": {
+    "en": "A limit lets you wait, adjust the next execution or choose another eligible connection. History and billing source remain explicit.",
+    "es": "Un límite permite esperar, ajustar la próxima ejecución o elegir otra conexión elegible. El historial y el origen de facturación siguen siendo explícitos."
+  },
+  "Simular limite liberado": {
+    "en": "Simulate limit cleared",
+    "es": "Simular límite liberado"
+  },
+  "Bloquear novos trabalhos · simulação": {
+    "en": "Block new work · simulation",
+    "es": "Bloquear nuevos trabajos · simulación"
+  },
+  "A conexão": {
+    "en": "The connection",
+    "es": "La conexión"
+  },
+  "deixará de aceitar novas tentativas. As": {
+    "en": "will stop accepting new attempts. The",
+    "es": "dejará de aceptar nuevos intentos. Los"
+  },
+  "tentativas pendentes continuam vinculadas à identidade original.": {
+    "en": "pending attempts remain linked to the original identity.",
+    "es": "intentos pendientes siguen vinculados a la identidad original."
+  },
+  "Esta ação não confirma término dos workers, saída da conta ou revogação no provedor. Cada confirmação precisa de evidência própria.": {
+    "en": "This action does not confirm worker termination, account logout or provider revocation. Each confirmation requires its own evidence.",
+    "es": "Esta acción no confirma la finalización de los workers, el cierre de sesión ni la revocación en el proveedor. Cada confirmación necesita su propia evidencia."
+  },
+  "Bloquear novos trabalhos": {
+    "en": "Block new work",
+    "es": "Bloquear nuevos trabajos"
+  },
+  "· descoberta de catálogo": {
+    "en": "· catalog discovery",
+    "es": "· descubrimiento del catálogo"
+  },
+  "pendente": {
+    "en": "pending",
+    "es": "pendiente"
+  },
+  "concluída": {
+    "en": "completed",
+    "es": "completado"
+  },
+  "Dados fictícios; nenhuma consulta ao provedor.": {
+    "en": "Fictional data; no provider queries.",
+    "es": "Datos ficticios; ninguna consulta al proveedor."
+  },
+  "Novos trabalhos bloqueados": {
+    "en": "New work blocked",
+    "es": "Nuevos trabajos bloqueados"
+  },
+  "Sem confirmação de término, logout ou revogação": {
+    "en": "No confirmation of termination, logout or revocation",
+    "es": "Sin confirmación de finalización, cierre de sesión ni revocación"
+  },
+  "Revogação sem confirmação; não tratada como sucesso.": {
+    "en": "Revocation unconfirmed; not treated as success.",
+    "es": "Revocación sin confirmar; no se trata como un éxito."
+  },
+  "· revogação não confirmada": {
+    "en": "· revocation unconfirmed",
+    "es": "· revocación sin confirmar"
+  },
+  "Sem sinal remoto · simulação; workers e histórico preservados.": {
+    "en": "No remote signal · simulation; workers and history preserved.",
+    "es": "Sin señal remota · simulación; workers e historial conservados."
+  },
+  "Limite observado": {
+    "en": "Observed limit",
+    "es": "Límite observado"
+  },
+  "Capacidade real desconhecida; sem fallback para API": {
+    "en": "Actual capacity unknown; no API fallback",
+    "es": "Capacidad real desconocida; sin fallback a API"
+  },
+  "Autorização expirada": {
+    "en": "Authorization expired",
+    "es": "Autorización caducada"
+  },
+  "Nova autorização necessária antes de novos trabalhos": {
+    "en": "New authorization required before new work",
+    "es": "Hace falta una nueva autorización antes de nuevos trabajos"
+  },
+  "Acesso negado": {
+    "en": "Access denied",
+    "es": "Acceso denegado"
+  },
+  "Sem retry silencioso ou troca de modalidade": {
+    "en": "No silent retries or modality changes",
+    "es": "Sin reintentos silenciosos ni cambios de modalidad"
+  },
+  "Limite liberado na simulação": {
+    "en": "Limit cleared in the simulation",
+    "es": "Límite liberado en la simulación"
+  },
+  "Elegibilidade reavaliada; nenhuma tentativa retomada automaticamente": {
+    "en": "Eligibility reassessed; no attempts resumed automatically",
+    "es": "Elegibilidad reevaluada; ningún intento reanudado automáticamente"
+  },
+  "Catálogo de exemplo restaurado.": {
+    "en": "Example catalog restored.",
+    "es": "Catálogo de ejemplo restaurado."
+  },
+  "Incompatibilidade identificada; sem fallback pago.": {
+    "en": "Incompatibility detected; no paid fallback.",
+    "es": "Incompatibilidad detectada; sin fallback de pago."
+  },
+  "· catálogo": {
+    "en": "· catalog",
+    "es": "· catálogo"
+  },
+  "compatível": {
+    "en": "compatible",
+    "es": "compatible"
+  },
+  "incompatível": {
+    "en": "incompatible",
+    "es": "incompatible"
+  },
+  "Somente novas escolhas afetadas · simulação; tentativas preservadas.": {
+    "en": "Only new choices affected · simulation; attempts preserved.",
+    "es": "Solo se afectan las nuevas decisiones · simulación; intentos conservados."
+  },
+  "Preencha nome, workspace, runtime e modalidade válidos para o exemplo.": {
+    "en": "Enter a valid name, workspace, runtime and modality for the example.",
+    "es": "Introduce un nombre, espacio de trabajo, runtime y modalidad válidos para el ejemplo."
+  },
+  "Escolha outro rótulo para distinguir as conexões. Elas podem ter o mesmo e-mail fictício.": {
+    "en": "Choose another label to distinguish the connections. They can share the same fictional email.",
+    "es": "Elige otra etiqueta para distinguir las conexiones. Pueden tener el mismo correo ficticio."
+  },
+  "· registro pendente adicionado": {
+    "en": "· pending record added",
+    "es": "· registro pendiente añadido"
+  },
+  "Sem autenticação real; conexões e tentativas em uso preservadas.": {
+    "en": "No real authentication; connections and attempts in use preserved.",
+    "es": "Sin autenticación real; conexiones e intentos en uso conservados."
+  },
+  "Registro pendente criado. Valide a autorização simulada antes de selecionar esta conexão.": {
+    "en": "Pending record created. Validate the simulated authorization before selecting this connection.",
+    "es": "Registro pendiente creado. Valida la autorización simulada antes de seleccionar esta conexión."
+  },
+  "Este pedido não está mais pendente. Inspecione a conexão e inicie uma nova autorização simulada.": {
+    "en": "This request is no longer pending. Inspect the connection and start a new simulated authorization.",
+    "es": "Esta solicitud ya no está pendiente. Inspecciona la conexión e inicia una nueva autorización simulada."
+  },
+  "Confirme a modalidade indicada para ativar somente este registro simulado.": {
+    "en": "Confirm the indicated modality to activate only this simulated record.",
+    "es": "Confirma la modalidad indicada para activar solo este registro simulado."
+  },
+  "Identidade diferente; ativação impedida": {
+    "en": "Different identity; activation prevented",
+    "es": "Identidad diferente; activación impedida"
+  },
+  "Registro anterior e tentativas conservados": {
+    "en": "Previous record and attempts retained",
+    "es": "Registro anterior e intentos conservados"
+  },
+  "A identidade não corresponde à conta indicada. Nenhuma tentativa foi transferida.": {
+    "en": "The identity does not match the indicated account. No attempts were transferred.",
+    "es": "La identidad no corresponde a la cuenta indicada. No se transfirió ningún intento."
+  },
+  "Registro r": {
+    "en": "Record r",
+    "es": "Registro r"
+  },
+  "validado na simulação": {
+    "en": "validated in the simulation",
+    "es": "validado en la simulación"
+  },
+  "Identidade e modalidade verificadas somente no exemplo; sem garantia de cota/acesso": {
+    "en": "Identity and modality verified only in the example; no quota/access guarantee",
+    "es": "Identidad y modalidad verificadas solo en el ejemplo; sin garantía de cuota ni acceso"
+  },
+  "Conexão disponível para novas tentativas simuladas. Histórico anterior preservado.": {
+    "en": "Connection available for new simulated attempts. Earlier history preserved.",
+    "es": "Conexión disponible para nuevos intentos simulados. Historial anterior conservado."
+  },
+  "Registro validado; escolha incompatível ainda impede uma nova tentativa. Nenhum fallback pago.": {
+    "en": "Record validated; an incompatible choice still prevents a new attempt. No paid fallback.",
+    "es": "Registro validado; una elección incompatible todavía impide un nuevo intento. Sin fallback de pago."
+  }
+}

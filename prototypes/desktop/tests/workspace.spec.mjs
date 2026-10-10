@@ -1,14 +1,17 @@
 import {test,expect} from '@playwright/test';
 import {mkdir} from 'node:fs/promises';
 import {fileURLToPath} from 'node:url';
+import {openStudio,openSettings,usePortuguese} from './navigation.mjs';
 
-test.beforeEach(async ({page}) => {await page.goto('/');});
+test.beforeEach(async ({page}) => {await usePortuguese(page);await page.goto('/');await openStudio(page);await page.locator('[data-view="work"]').click();});
 
-async function openReview(page) {await page.locator('[data-view="review"]').click();}
+async function openReview(page) {await openStudio(page);await page.locator('[data-view="review"]').click();}
 async function chooseTheme(page,id) {
-  const names={studio:'Studio',atelier:'Atelier',horizon:'Horizon','deep-black':'Deep Black',medieval:'Medieval',forest:'Forest',dawn:'Dawn'};
-  await page.getByRole('button',{name:'Personalizar aparência'}).click();
+  const names={studio:'Studio',institutional:'Institutional',atelier:'Atelier',horizon:'Horizon','deep-black':'Deep Black',medieval:'Medieval',forest:'Forest',dawn:'Dawn'};
+  await openSettings(page,'themes');
   await page.getByRole('radio',{name:names[id],exact:true}).check();
+  await page.locator('[data-settings-close]').click();
+  await openStudio(page);
   await page.locator('[data-view="work"]').click();
 }
 async function validateTask(page) {
@@ -34,12 +37,13 @@ test('cria tarefa com snapshot próprio e trata conteúdo do usuário como texto
 });
 
 test('inspecionar política não salva e novas preferências preservam tentativas existentes',async ({page}) => {
-  await page.locator('[data-view="settings"]').click();
+  await openSettings(page,'orchestration');
   await page.getByLabel('Raciocínio preferido').selectOption('medium');
   await page.getByRole('button',{name:'Inspecionar política'}).click();
-  await expect(page.getByRole('dialog')).toContainText('Raciocínio: high');
+  await expect(page.locator('#modal')).toContainText('Raciocínio: high');
   await page.getByRole('button',{name:'Fechar',exact:true}).click();
-  await page.getByRole('button',{name:'Salvar preferências simuladas'}).click();
+  await page.getByRole('button',{name:'Salvar orquestração'}).click();
+  await page.locator('[data-settings-close]').click();
   await page.locator('[data-view="work"]').click();
   await page.getByText('Conta, modelo, raciocínio e contexto',{exact:true}).click();
   await expect(page.locator('.context-inspector')).toContainText('Alto / desconhecido');
@@ -103,13 +107,15 @@ test('sinal perdido exige reconciliação e é diferente de pausa',async ({page}
 });
 
 test('ações e abas operam por teclado; fechar modal restaura foco',async ({page}) => {
-  await page.getByRole('button',{name:'Buscar ações do workspace'}).focus();
+  await page.getByRole('button',{name:'Buscar sessões, projetos e ações'}).focus();
   await page.keyboard.press('Control+k');
   await expect(page.getByLabel('Buscar ações',{exact:true})).toBeFocused();
-  await page.getByLabel('Buscar ações',{exact:true}).fill('preferências');
+  await page.getByLabel('Buscar ações',{exact:true}).fill('configurações');
   await page.keyboard.press('ArrowDown');
   await page.keyboard.press('Enter');
-  await expect(page.locator('h1')).toHaveText('Seu jeito de orquestrar');
+  await expect(page.locator('#floating-settings')).toBeVisible();
+  await expect(page.locator('#settings-language')).toBeVisible();
+  await page.locator('[data-settings-close]').click();
   await page.locator('[data-view="work"]').click();
   await page.getByRole('tab',{name:'Resumo',exact:true}).focus();
   await page.keyboard.press('ArrowRight');
@@ -121,10 +127,12 @@ test('ações e abas operam por teclado; fechar modal restaura foco',async ({pag
 });
 
 test('layouts refluem e direções preservam legibilidade básica',async ({page}) => {
+  test.setTimeout(90000);
   const external=[];
-  page.on('request',request=>{if(!request.url().startsWith('http://127.0.0.1:4173/'))external.push(request.url());});
+  const origin=new URL(test.info().project.use.baseURL).origin;
+  page.on('request',request=>{if(new URL(request.url()).origin!==origin)external.push(request.url());});
   const errors=[];page.on('pageerror',error=>errors.push(error.message));
-  for(const direction of ['studio','atelier','horizon','deep-black','medieval','forest','dawn']) {
+  for(const direction of ['studio','institutional','atelier','horizon','deep-black','medieval','forest','dawn']) {
     await chooseTheme(page,direction);
     for(const viewport of [{width:1920,height:1080},{width:1280,height:800},{width:1024,height:768},{width:720,height:480},{width:390,height:844},{width:320,height:720}]) {
       await page.setViewportSize(viewport);
@@ -134,23 +142,40 @@ test('layouts refluem e direções preservam legibilidade básica',async ({page}
       expect(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth)).toBe(true);
       await page.locator('[data-view="work"]').click();
     }
-    const ratios=await page.evaluate(()=>{
+    await page.mouse.move(0,0);
+    const ratios=await page.getByRole('button',{name:'Nova tarefa',exact:true}).evaluate(button=>{
       const css=getComputedStyle(document.documentElement);
-      const luminance=hex=>{let c=hex.trim().replace('#','');if(c.length===3)c=[...c].map(n=>n+n).join('');return [0,2,4].map(i=>parseInt(c.slice(i,i+2),16)/255).map(n=>n<=.04045?n/12.92:((n+.055)/1.055)**2.4).reduce((sum,n,i)=>sum+n*[.2126,.7152,.0722][i],0);};
-      const ratio=(a,b)=>{const x=luminance(css.getPropertyValue(a)),y=luminance(css.getPropertyValue(b));return (Math.max(x,y)+.05)/(Math.min(x,y)+.05);};
-      return [ratio('--text','--panel'),ratio('--muted','--panel'),ratio('--accent','--accent-bg'),ratio('--on-accent','--accent')];
+      const canvas=document.createElement('canvas');canvas.width=canvas.height=1;
+      const context=canvas.getContext('2d');
+      const luminance=color=>{
+        context.clearRect(0,0,1,1);context.fillStyle=color;context.fillRect(0,0,1,1);
+        const pixels=context.getImageData(0,0,1,1).data;
+        if(pixels[3]!==255)throw new Error(`Cor sem fundo opaco para medir contraste: ${color}`);
+        return [...pixels].slice(0,3).map(n=>n/255).map(n=>n<=.04045?n/12.92:((n+.055)/1.055)**2.4).reduce((sum,n,i)=>sum+n*[.2126,.7152,.0722][i],0);
+      };
+      const contrast=(a,b)=>{const x=luminance(a),y=luminance(b);return (Math.max(x,y)+.05)/(Math.min(x,y)+.05);};
+      const ratio=(a,b)=>contrast(css.getPropertyValue(a),css.getPropertyValue(b));
+      const primary=getComputedStyle(button);
+      return {
+        texto:ratio('--text','--panel'),secundario:ratio('--muted','--panel'),
+        destaque:ratio('--accent','--accent-bg'),sobreDestaque:ratio('--on-accent','--accent'),
+        botaoPrimario:contrast(primary.color,primary.backgroundColor)
+      };
     });
-    ratios.forEach(ratio=>expect(ratio).toBeGreaterThanOrEqual(4.5));
+    for(const [pair,ratio] of Object.entries(ratios))expect(ratio,`${direction}: ${pair}`).toBeGreaterThanOrEqual(4.5);
   }
   expect(errors).toEqual([]);expect(external).toEqual([]);
 });
 
 test('capturas dos temas e estados para inspeção visual',async ({page}) => {
+  test.setTimeout(60000);
   const destination=fileURLToPath(new URL('../artifacts/',import.meta.url));
   await mkdir(destination,{recursive:true});
-  for(const direction of ['studio','atelier','horizon','deep-black','medieval','forest','dawn']){
+  for(const direction of ['studio','institutional','atelier','horizon','deep-black','medieval','forest','dawn']){
     await chooseTheme(page,direction);
     await page.reload();
+    await openStudio(page);
+    await page.locator('[data-view="work"]').click();
     await page.evaluate(()=>window.scrollTo(0,0));
     await page.screenshot({path:`${destination}${direction}.png`,fullPage:true});
   }
@@ -162,25 +187,28 @@ test('capturas dos temas e estados para inspeção visual',async ({page}) => {
   await page.setViewportSize({width:720,height:480});
   await page.screenshot({path:`${destination}compact.png`,fullPage:true});
   await page.setViewportSize({width:1440,height:960});
-  await page.getByRole('button',{name:'Personalizar aparência'}).click();
-  await page.locator('#appearance').screenshot({path:`${destination}appearance.png`});
+  await openSettings(page,'themes');
+  await page.locator('#floating-settings').screenshot({path:`${destination}appearance.png`});
 });
 
 test('Studio é padrão; os temas em Preferências persistem sem afetar o trabalho',async ({page}) => {
   await expect(page.locator('html')).toHaveAttribute('data-direction','studio');
-  await expect(page.locator('.sidebar select')).toHaveCount(0);
-  await page.getByRole('button',{name:'Personalizar aparência'}).click();
+  await expect(page.locator('.sidebar select:not([data-language-picker])')).toHaveCount(0);
+  await openSettings(page,'themes');
   await expect(page.getByRole('radio',{name:'Studio',exact:true})).toBeChecked();
   await page.getByRole('radio',{name:'Medieval',exact:true}).check();
   await expect(page.locator('html')).toHaveAttribute('data-direction','medieval');
   await expect(page.getByRole('radio',{name:'Medieval',exact:true})).toBeChecked();
   await page.reload();
   await expect(page.locator('html')).toHaveAttribute('data-direction','medieval');
-  await page.getByRole('button',{name:'Personalizar aparência'}).click();
+  await openSettings(page,'themes');
   await page.getByRole('radio',{name:'Deep Black',exact:true}).check();
   await expect(page.getByRole('radio',{name:'Deep Black',exact:true})).toBeChecked();
   await page.getByRole('button',{name:'Restaurar Studio'}).click();
   await page.reload();
   await expect(page.locator('html')).toHaveAttribute('data-direction','studio');
+  await expect(page.getByRole('button',{name:'Conversa',exact:true})).toHaveAttribute('aria-current','page');
+  await openStudio(page);
+  await page.locator('[data-view="work"]').click();
   await expect(page.locator('.detail-meta')).toContainText('OX-24 · R-08');
 });

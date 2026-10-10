@@ -12,6 +12,8 @@ A demonstração completa do workflow Conductor foi obtida e examinada por 68 fr
 
 ## D1: trabalho imediato
 
+A [contenção Windows com processos próprios](windows-process-containment.md) passou oito casos nativos, além dos 48 testes anteriores. Essa preparação demonstra o Job da fixture; sua integração no supervisor e o encerramento de runtime real continuam pendentes. Não houve nova chamada de provider, autenticação ou modelo.
+
 A [pesquisa competitiva de 09/10](competitive-update-2026-10-09.md) amplia o levantamento documental para onze famílias e liga hipóteses de diferenciação a OX-D05/OX-017 e M3/M4. A prioridade continua o piloto inicial; a comparação externa proposta não acrescenta requisito de saída a esse gate.
 
 1. Avaliar onboarding/entrada, contexto/arquivos, tarefa curta e relação objetivo/tarefas/tentativas da [entrega D1](../design/d1-delivery.md). Usar POS-01 a POS-14 e [ACC-01 a ACC-07](subscription-account-ux.md), com capabilities e dados desconhecidos explícitos.
@@ -22,9 +24,9 @@ Os critérios e fontes estão no [benchmark](experience-decisions.md) e nas [14 
 
 ## Continuação em 09/10 — D1 e preparação offline
 
-O responsável solicitou prosseguimento do plano. O piloto individual continua solicitado, sem resultado humano registrado; a continuação não conta como feedback de uso nem fecha OX-D05. O pré-requisito de piloto registrado e ausência de problemas críticos para retomar M0 permanece no [backlog](../DEVELOPMENT_BACKLOG.md).
+O responsável solicitou prosseguimento do plano, pediu ajuda concreta para o piloto e forneceu feedback qualitativo real: gostou da direção visual, relatou pouca intuição/falta de chat e reforçou projetos com várias conversas e entrada avulsa, preservando o fluxo guiado. A [direção de projetos/conversas](../design/d1-chat-direction.md) registra esse ajuste. Execução/conclusão das tarefas do piloto continuam não confirmadas; o feedback não fecha OX-D05. O pré-requisito de piloto registrado e ausência de problemas críticos para retomar M0 permanece no [backlog](../DEVELOPMENT_BACKLOG.md).
 
-O escopo desta rodada foi verificar condições adicionais do protótipo D1 e preparar cenários offline de supervisão Windows com processos próprios e dados sintéticos. A [entrega D1](../design/d1-delivery.md) registra correção do foco e 24 cenários aprovados. A [preparação offline](offline-lifecycle-validation.md) registra 48 testes aprovados, incluindo pai encerrado com descendente ativo, cancelamento sem confirmação e perda de observação, preservando estado desconhecido quando faltar evidência. Não houve nova autenticação, chamada de modelo ou execução de agente de código. As versões, condições e limites estão nesses registros; não são resultados humanos ou aceite do supervisor de produção.
+O escopo desta rodada inclui condições adicionais do protótipo D1, sua evolução por projetos/conversas e cenários offline de supervisão Windows com processos próprios e dados sintéticos. A [entrega D1](../design/d1-delivery.md) separa os 24 cenários aprovados da versão anterior das verificações do incremento por conversa. A [preparação offline](offline-lifecycle-validation.md) registra 48 testes aprovados, incluindo pai encerrado com descendente ativo, cancelamento sem confirmação e perda de observação, preservando estado desconhecido quando faltar evidência. A [prova nativa](windows-process-containment.md) acrescenta oito casos de Job Object. Não houve nova autenticação, chamada de modelo ou execução de agente de código. As versões, condições e limites estão nesses registros; não são resultados humanos ou aceite do supervisor de produção.
 
 Essa preparação antecipa trabalho independente sem considerar M0 retomado/concluído, aprovar adapter ou iniciar o Core de produção. O [status](../DEVELOPMENT_STATUS.md) conserva o registro de entregas/resultados; o roteiro do piloto existente permanece disponível, sem substituir seu uso por novos questionários.
 

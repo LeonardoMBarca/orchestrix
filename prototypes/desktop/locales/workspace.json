@@ -1,0 +1,518 @@
+{
+  "Implementação diretamente afetada": {
+    "en": "Directly affected implementation",
+    "es": "Implementación directamente afectada"
+  },
+  "Critérios verificáveis da rotação": {
+    "en": "Verifiable rotation criteria",
+    "es": "Criterios verificables de la rotación"
+  },
+  "Decisões do projeto sobre sessões": {
+    "en": "Project decisions about sessions",
+    "es": "Decisiones del proyecto sobre sesiones"
+  },
+  "Módulo ampliado solicitado no perfil": {
+    "en": "Expanded module requested by the profile",
+    "es": "Módulo ampliado solicitado por el perfil"
+  },
+  "Resultado alinhado ao objetivo.": {
+    "en": "Result aligned with the objective.",
+    "es": "Resultado alineado con el objetivo."
+  },
+  "Evidências e revisão vinculadas ao artefato.": {
+    "en": "Evidence and review linked to the artifact.",
+    "es": "Evidencias y revisión vinculadas al artefacto."
+  },
+  "Contexto e arquivos da tentativa": {
+    "en": "Attempt context and files",
+    "es": "Contexto y archivos del intento"
+  },
+  "· base": {
+    "en": "· base",
+    "es": "· base"
+  },
+  "Snapshot enviado nesta demonstração. Cada fonte mostra sua origem, versão e motivo de inclusão. Nenhuma pasta foi lida.": {
+    "en": "Snapshot sent in this demo. Each source shows its origin, version, and reason for inclusion. No folder was read.",
+    "es": "Instantánea enviada en esta demostración. Cada fuente muestra su origen, versión y motivo de inclusión. No se leyó ninguna carpeta."
+  },
+  "Objetivo": {
+    "en": "Objective",
+    "es": "Objetivo"
+  },
+  "Critérios": {
+    "en": "Criteria",
+    "es": "Criterios"
+  },
+  "Fontes do contexto": {
+    "en": "Context sources",
+    "es": "Fuentes del contexto"
+  },
+  "Sessão": {
+    "en": "Session",
+    "es": "Sesión"
+  },
+  "· conversa privada do runtime fora deste pacote. Efetivo e consumo de tokens: desconhecidos.": {
+    "en": "· runtime's private chat outside this package. Effective settings and token usage: unknown.",
+    "es": "· conversación privada del runtime fuera de este paquete. Configuración efectiva y consumo de tokens: desconocidos."
+  },
+  "Instrução desta correção": {
+    "en": "Instructions for this correction",
+    "es": "Instrucciones de esta corrección"
+  },
+  "Decisão incorporada": {
+    "en": "Incorporated decision",
+    "es": "Decisión incorporada"
+  },
+  "Conteúdo da fonte": {
+    "en": "Source content",
+    "es": "Contenido de la fuente"
+  },
+  "caracteres · exemplo integral": {
+    "en": "characters · complete example",
+    "es": "caracteres · ejemplo completo"
+  },
+  "Nenhuma referência de código foi incluída; objetivo e critérios continuam presentes.": {
+    "en": "No code reference was included; the objective and criteria remain present.",
+    "es": "No se incluyó ninguna referencia de código; el objetivo y los criterios siguen presentes."
+  },
+  "Preparar contexto para nova tentativa": {
+    "en": "Prepare context for a new attempt",
+    "es": "Preparar contexto para un nuevo intento"
+  },
+  "Contexto da próxima tentativa": {
+    "en": "Next attempt's context",
+    "es": "Contexto del próximo intento"
+  },
+  "Escolha as referências para novas tentativas. O pacote já associado à tentativa atual permanece com sua versão original.": {
+    "en": "Choose references for new attempts. The package already attached to the current attempt keeps its original version.",
+    "es": "Elige las referencias para nuevos intentos. El paquete asociado al intento actual conserva su versión original."
+  },
+  "Referências de exemplo": {
+    "en": "Example references",
+    "es": "Referencias de ejemplo"
+  },
+  "Objetivo, critérios e base sempre acompanham a tentativa. O perfil ampliado acrescenta session-service.ts.": {
+    "en": "The objective, criteria, and base always accompany the attempt. The expanded profile adds session-service.ts.",
+    "es": "El objetivo, los criterios y la base siempre acompañan al intento. El perfil ampliado añade session-service.ts."
+  },
+  "Salvar contexto futuro": {
+    "en": "Save future context",
+    "es": "Guardar contexto futuro"
+  },
+  "Manifesto ilustrativo da sessão revisora. Ela usa a mesma conexão": {
+    "en": "Illustrative manifest of the reviewer session. It uses the same connection",
+    "es": "Manifiesto ilustrativo de la sesión de revisión. Utiliza la misma conexión"
+  },
+  "com contexto separado; não significa outra conta ou mais cota.": {
+    "en": "with separate context; this does not mean another account or more quota.",
+    "es": "con un contexto separado; esto no significa otra cuenta ni más cuota."
+  },
+  "Origem e diversidade": {
+    "en": "Origin and diversity",
+    "es": "Origen y diversidad"
+  },
+  "Runtime da conexão · diversidade de modelo não comprovada": {
+    "en": "Connection runtime · model diversity not verified",
+    "es": "Runtime de la conexión · diversidad de modelos no comprobada"
+  },
+  "Fontes desta revisão": {
+    "en": "Sources for this review",
+    "es": "Fuentes de esta revisión"
+  },
+  "Objetivo e critérios de": {
+    "en": "Objective and criteria from",
+    "es": "Objetivo y criterios de"
+  },
+  "Diff do artefato r": {
+    "en": "Artifact diff r",
+    "es": "Diff del artefacto r"
+  },
+  "Evidências de r": {
+    "en": "Evidence for r",
+    "es": "Evidencias de r"
+  },
+  "Conversas privadas do implementador não são transportadas. Tokens efetivamente enviados: desconhecidos.": {
+    "en": "The implementer's private chats are not transferred. Tokens actually sent: unknown.",
+    "es": "Las conversaciones privadas del implementador no se transfieren. Tokens enviados efectivamente: desconocidos."
+  },
+  "verificação falha pendente": {
+    "en": "failed check pending",
+    "es": "comprobación fallida pendiente"
+  },
+  "checks e revisão fictícios": {
+    "en": "simulated checks and review",
+    "es": "comprobaciones y revisión ficticias"
+  },
+  "Voltar ao resultado": {
+    "en": "Back to result",
+    "es": "Volver al resultado"
+  },
+  "Revisão da tarefa": {
+    "en": "Task review",
+    "es": "Revisión de la tarea"
+  },
+  "Resultado complementar ilustrativo · acréscimos de exemplo · base": {
+    "en": "Illustrative supplementary result · example additions · base",
+    "es": "Resultado complementario ilustrativo · adiciones de ejemplo · base"
+  },
+  "Critérios: alinhamento ao objetivo e evidências vinculadas.": {
+    "en": "Criteria: alignment with the objective and linked evidence.",
+    "es": "Criterios: alineación con el objetivo y evidencias vinculadas."
+  },
+  "Verificações e revisão: fixtures aprovadas, sem execução real.": {
+    "en": "Checks and review: approved fixtures, no real execution.",
+    "es": "Comprobaciones y revisión: fixtures aprobadas, sin ejecución real."
+  },
+  "Branch interna: orchestrix/": {
+    "en": "Internal branch: orchestrix/",
+    "es": "Rama interna: orchestrix/"
+  },
+  "Aceitar esta tarefa não aplica o Run no destino.": {
+    "en": "Accepting this task does not apply the Run to the destination.",
+    "es": "Aceptar esta tarea no aplica el Run al destino."
+  },
+  "Base alterada · aplicação bloqueada. Artefato produzido em": {
+    "en": "Base changed · application blocked. Artifact produced at",
+    "es": "Base modificada · aplicación bloqueada. Artefacto producido en"
+  },
+  "; destino atual": {
+    "en": "; current destination",
+    "es": "; destino actual"
+  },
+  ". Este protótipo não prepara uma revalidação independente; o resultado anterior permanece disponível.": {
+    "en": ". This prototype does not prepare an independent revalidation; the previous result remains available.",
+    "es": ". Este prototipo no prepara una revalidación independiente; el resultado anterior sigue disponible."
+  },
+  "Correção deste resultado": {
+    "en": "Correction for this result",
+    "es": "Corrección de este resultado"
+  },
+  "Pedir correção desta tarefa": {
+    "en": "Request a correction for this task",
+    "es": "Pedir una corrección de esta tarea"
+  },
+  "Validar resultado complementar": {
+    "en": "Validate supplementary result",
+    "es": "Validar resultado complementario"
+  },
+  "Tarefa validada no Run": {
+    "en": "Task validated in the Run",
+    "es": "Tarea validada en el Run"
+  },
+  "Destino pendente · conversa avulsa": {
+    "en": "Pending destination · standalone chat",
+    "es": "Destino pendiente · conversación independiente"
+  },
+  "Base alterada · aplicação bloqueada": {
+    "en": "Base changed · application blocked",
+    "es": "Base modificada · aplicación bloqueada"
+  },
+  "Run": {
+    "en": "Run",
+    "es": "Run"
+  },
+  "aplicado ·": {
+    "en": "applied ·",
+    "es": "aplicado ·"
+  },
+  "Revisar aplicação deste Run": {
+    "en": "Review application of this Run",
+    "es": "Revisar la aplicación de este Run"
+  },
+  "COMEÇAR": {
+    "en": "GET STARTED",
+    "es": "EMPEZAR"
+  },
+  "Um projeto, um resultado": {
+    "en": "One project, one result",
+    "es": "Un proyecto, un resultado"
+  },
+  "Abra o trabalho com uma conexão e amplie a orquestração quando precisar.": {
+    "en": "Start work with one connection and expand orchestration when needed.",
+    "es": "Empieza el trabajo con una conexión y amplía la orquestación cuando lo necesites."
+  },
+  "PROJETO DE DEMONSTRAÇÃO": {
+    "en": "DEMO PROJECT",
+    "es": "PROYECTO DE DEMOSTRACIÓN"
+  },
+  "Este percurso não acessa pastas nem autentica contas. Use os exemplos para avaliar a experiência.": {
+    "en": "This flow does not access folders or authenticate accounts. Use the examples to evaluate the experience.",
+    "es": "Este recorrido no accede a carpetas ni autentica cuentas. Usa los ejemplos para evaluar la experiencia."
+  },
+  "Caminhos com espaços e acentos são exibidos como uma única localização.": {
+    "en": "Paths with spaces and accents are displayed as a single location.",
+    "es": "Las rutas con espacios y acentos se muestran como una sola ubicación."
+  },
+  "Exemplo: rotação de refresh tokens": {
+    "en": "Example: refresh token rotation",
+    "es": "Ejemplo: rotación de refresh tokens"
+  },
+  "Invalidar tokens utilizados, revogar a família ao detectar reutilização e preservar auditoria. O resultado será código ilustrativo.": {
+    "en": "Invalidate used tokens, revoke the family upon reuse, and preserve audit records. The result will be illustrative code.",
+    "es": "Invalida los tokens utilizados, revoca la familia al detectar reutilización y conserva la auditoría. El resultado será código ilustrativo."
+  },
+  "Uma conexão permite implementar e revisar em sessões separadas. Duas sessões não aumentam a cota.": {
+    "en": "One connection can implement and review in separate sessions. Two sessions do not increase the quota.",
+    "es": "Una conexión permite implementar y revisar en sesiones separadas. Dos sesiones no aumentan la cuota."
+  },
+  "SEU PERCURSO": {
+    "en": "YOUR JOURNEY",
+    "es": "TU RECORRIDO"
+  },
+  "Da intenção ao resultado revisado.": {
+    "en": "From intent to reviewed result.",
+    "es": "De la intención al resultado revisado."
+  },
+  "1. Projeto e conexão": {
+    "en": "1. Project and connection",
+    "es": "1. Proyecto y conexión"
+  },
+  "Identidade visível, sem configurar uma frota.": {
+    "en": "Visible identity, without configuring a fleet.",
+    "es": "Identidad visible, sin configurar una flota."
+  },
+  "2. Objetivo e contexto": {
+    "en": "2. Objective and context",
+    "es": "2. Objetivo y contexto"
+  },
+  "Critérios e fontes antes de iniciar.": {
+    "en": "Criteria and sources before starting.",
+    "es": "Criterios y fuentes antes de empezar."
+  },
+  "3. Trabalho e atenção": {
+    "en": "3. Work and attention",
+    "es": "3. Trabajo y atención"
+  },
+  "Decisões, limites e falhas com próxima ação.": {
+    "en": "Decisions, limits, and failures with a next action.",
+    "es": "Decisiones, límites y fallos con una próxima acción."
+  },
+  "4. Revisar e corrigir": {
+    "en": "4. Review and correct",
+    "es": "4. Revisar y corregir"
+  },
+  "Diff e evidências associados ao artefato.": {
+    "en": "Diff and evidence attached to the artifact.",
+    "es": "Diff y evidencias asociados al artefacto."
+  },
+  "5. Aplicar com controle": {
+    "en": "5. Apply with control",
+    "es": "5. Aplicar con control"
+  },
+  "Tarefa aceita no Run, depois candidato revisado no destino.": {
+    "en": "Task accepted in the Run, then a reviewed candidate at the destination.",
+    "es": "Tarea aceptada en el Run y después un candidato revisado en el destino."
+  },
+  "A demo atual continua disponível até você preparar este cenário. Temas e preferências visuais permanecem salvos.": {
+    "en": "The current demo remains available until you prepare this scenario. Themes and visual settings stay saved.",
+    "es": "La demostración actual sigue disponible hasta que prepares este escenario. Los temas y las preferencias visuales permanecen guardados."
+  },
+  "A base mudou. A aplicação deste resultado está bloqueada; o artefato anterior foi preservado.": {
+    "en": "The base changed. Application of this result is blocked; the previous artifact was preserved.",
+    "es": "La base ha cambiado. La aplicación de este resultado está bloqueada; el artefacto anterior se conservó."
+  },
+  "Aplicar o resultado de": {
+    "en": "Apply the result of",
+    "es": "Aplicar el resultado de"
+  },
+  "Confira o resultado, sua identidade e o destino. Esta confirmação modifica somente dados da demonstração.": {
+    "en": "Check the result, its identity, and the destination. This confirmation only modifies demo data.",
+    "es": "Comprueba el resultado, su identidad y el destino. Esta confirmación solo modifica los datos de la demostración."
+  },
+  "validada": {
+    "en": "validated",
+    "es": "validada"
+  },
+  "Evidências: exemplos aprovados, sem execução real.": {
+    "en": "Evidence: approved examples, no real execution.",
+    "es": "Evidencias: ejemplos aprobados, sin ejecución real."
+  },
+  "Aplicar este Run na demonstração": {
+    "en": "Apply this Run in the demo",
+    "es": "Aplicar este Run en la demostración"
+  },
+  "Descreva uma mudança, um problema ou uma ideia. Vamos transformar seu pedido em um próximo passo claro.": {
+    "en": "Describe a change, a problem, or an idea. Let's turn your request into a clear next step.",
+    "es": "Describe un cambio, un problema o una idea. Transformemos tu pedido en un próximo paso claro."
+  },
+  "Respostas e resultados simulados · conversa em memória nesta demonstração.": {
+    "en": "Simulated responses and results · chat held in memory for this demo.",
+    "es": "Respuestas y resultados simulados · conversación en memoria en esta demostración."
+  },
+  "Reunir o objetivo e as referências do projeto.": {
+    "en": "Gather the objective and project references.",
+    "es": "Reunir el objetivo y las referencias del proyecto."
+  },
+  "Preparar a mudança e seus cenários de verificação.": {
+    "en": "Prepare the change and its verification scenarios.",
+    "es": "Preparar el cambio y sus escenarios de verificación."
+  },
+  "Preparar a mudança e os critérios para conferir o resultado.": {
+    "en": "Prepare the change and the criteria for checking the result.",
+    "es": "Preparar el cambio y los criterios para comprobar el resultado."
+  },
+  "Revisar o resultado; corrigir, se necessário, antes de confirmar a aplicação.": {
+    "en": "Review the result; correct it if needed before confirming application.",
+    "es": "Revisar el resultado; corregirlo si es necesario antes de confirmar la aplicación."
+  },
+  "Pedido preparado. Inicie a demonstração para acompanhar o resultado.": {
+    "en": "Request prepared. Start the demo to follow the result.",
+    "es": "Pedido preparado. Inicia la demostración para seguir el resultado."
+  },
+  "Trabalho em andamento na simulação. Conclua esta etapa para ver o resultado.": {
+    "en": "Work is in progress in the simulation. Complete this step to see the result.",
+    "es": "Trabajo en curso en la simulación. Completa este paso para ver el resultado."
+  },
+  "Resultado disponível. Confira o artefato antes de validar.": {
+    "en": "Result available. Check the artifact before validating it.",
+    "es": "Resultado disponible. Comprueba el artefacto antes de validarlo."
+  },
+  "Revisar resultado": {
+    "en": "Review result",
+    "es": "Revisar resultado"
+  },
+  "Resultado validado na simulação. Destino pendente: esta conversa avulsa ainda não tem repositório associado.": {
+    "en": "Result validated in the simulation. Pending destination: this standalone chat does not yet have an attached repository.",
+    "es": "Resultado validado en la simulación. Destino pendiente: esta conversación independiente todavía no tiene un repositorio asociado."
+  },
+  "Trabalho aplicado somente na demonstração.": {
+    "en": "Work applied only in the demo.",
+    "es": "Trabajo aplicado solo en la demostración."
+  },
+  "A base do projeto mudou. A aplicação deste resultado está bloqueada; o artefato anterior foi preservado.": {
+    "en": "The project base changed. Application of this result is blocked; the previous artifact was preserved.",
+    "es": "La base del proyecto ha cambiado. La aplicación de este resultado está bloqueada; el artefacto anterior se conservó."
+  },
+  "Resultado validado. A aplicação no destino ainda exige sua confirmação.": {
+    "en": "Result validated. Application at the destination still requires your confirmation.",
+    "es": "Resultado validado. La aplicación en el destino aún requiere tu confirmación."
+  },
+  "Rever resultado": {
+    "en": "Review result again",
+    "es": "Volver a revisar el resultado"
+  },
+  "Ver resultado e base": {
+    "en": "View result and base",
+    "es": "Ver resultado y base"
+  },
+  "Revisar aplicação": {
+    "en": "Review application",
+    "es": "Revisar aplicación"
+  },
+  "Abra a tarefa para entender o estado e decidir o próximo passo.": {
+    "en": "Open the task to understand its state and decide the next step.",
+    "es": "Abre la tarea para entender su estado y decidir el próximo paso."
+  },
+  "Contexto e escolhas deste trabalho": {
+    "en": "Context and settings for this work",
+    "es": "Contexto y preferencias de este trabajo"
+  },
+  "Modelo solicitado:": {
+    "en": "Requested model:",
+    "es": "Modelo solicitado:"
+  },
+  ". Raciocínio solicitado:": {
+    "en": ". Requested reasoning:",
+    "es": ". Razonamiento solicitado:"
+  },
+  ". Efetivo: desconhecido.": {
+    "en": ". Effective: unknown.",
+    "es": ". Efectivo: desconocido."
+  },
+  "TRABALHO DESTA CONVERSA": {
+    "en": "WORK IN THIS CHAT",
+    "es": "TRABAJO DE ESTA CONVERSACIÓN"
+  },
+  "EXEMPLO DO PROJETO": {
+    "en": "PROJECT EXAMPLE",
+    "es": "EJEMPLO DEL PROYECTO"
+  },
+  "TRABALHO ANTERIOR": {
+    "en": "PREVIOUS WORK",
+    "es": "TRABAJO ANTERIOR"
+  },
+  "Aplicado · simulação": {
+    "en": "Applied · simulation",
+    "es": "Aplicado · simulación"
+  },
+  "Ver tarefa": {
+    "en": "View task",
+    "es": "Ver tarea"
+  },
+  "Continuar esta tarefa": {
+    "en": "Continue this task",
+    "es": "Continuar esta tarea"
+  },
+  "Descreva o que precisa. Acompanhe o trabalho e revise os resultados nesta conversa.": {
+    "en": "Describe what you need. Follow the work and review results in this chat.",
+    "es": "Describe qué necesitas. Sigue el trabajo y revisa los resultados en esta conversación."
+  },
+  "· simulação": {
+    "en": "· simulation",
+    "es": "· simulación"
+  },
+  "Ex.: corrija o login e inclua testes para a sessão expirada…": {
+    "en": "E.g.: fix login and add tests for an expired session…",
+    "es": "P. ej.: corrige el inicio de sesión e incluye pruebas para una sesión caducada…"
+  },
+  "O próximo passo aparece em cada card.": {
+    "en": "The next step appears on each card.",
+    "es": "El próximo paso aparece en cada tarjeta."
+  },
+  "· exemplo": {
+    "en": "· example",
+    "es": "· ejemplo"
+  },
+  "Destino pendente · espaço independente": {
+    "en": "Pending destination · independent workspace",
+    "es": "Destino pendiente · espacio independiente"
+  },
+  "Conversa de orquestração": {
+    "en": "Orchestration chat",
+    "es": "Conversación de orquestación"
+  },
+  "Seu próximo envio prepara um novo trabalho; a execução começa pelo botão no card.": {
+    "en": "Your next message prepares new work; execution starts with the button on the card.",
+    "es": "Tu próximo envío prepara un nuevo trabajo; la ejecución comienza con el botón de la tarjeta."
+  },
+  "Envie seu primeiro pedido para preparar o trabalho desta conversa.": {
+    "en": "Send your first request to prepare work for this chat.",
+    "es": "Envía tu primer pedido para preparar el trabajo de esta conversación."
+  },
+  "No WSL, use um caminho Linux, por exemplo /home/leo/meu-projeto.": {
+    "en": "In WSL, use a Linux path, for example /home/leo/meu-projeto.",
+    "es": "En WSL, usa una ruta de Linux, por ejemplo /home/leo/meu-projeto."
+  },
+  "No Windows nativo, use um caminho como C:\\Projetos\\Meu projeto.": {
+    "en": "In native Windows, use a path such as C:\\Projetos\\Meu projeto.",
+    "es": "En Windows nativo, usa una ruta como C:\\Projetos\\Meu projeto."
+  },
+  "Autorização pendente · simulação": {
+    "en": "Authorization pending · simulation",
+    "es": "Autorización pendiente · simulación"
+  },
+  "Seu próximo pedido": {
+    "en": "Your next request",
+    "es": "Tu próximo pedido"
+  },
+  "Uma autenticação mais segura": {
+    "en": "More secure authentication",
+    "es": "Una autenticación más segura"
+  },
+  "Corrigir rotação de tokens": {
+    "en": "Fix token rotation",
+    "es": "Corregir la rotación de tokens"
+  },
+  "Projeto de demonstração preparado": {
+    "en": "Demo project prepared",
+    "es": "Proyecto de demostración preparado"
+  },
+  "· uma conexão; nenhuma pasta foi acessada.": {
+    "en": "· one connection; no folder was accessed.",
+    "es": "· una conexión; no se accedió a ninguna carpeta."
+  },
+  "Projeto preparado. Inspecione o contexto antes de iniciar.": {
+    "en": "Project prepared. Inspect the context before starting.",
+    "es": "Proyecto preparado. Inspecciona el contexto antes de empezar."
+  }
+}

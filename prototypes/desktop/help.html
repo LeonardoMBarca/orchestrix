@@ -1,0 +1,201 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <meta name="theme-color" content="#0B1426">
+  <meta name="description" content="Orchestrix guides: start a session, organize projects, arrange your workspace, configure accounts, and review your agents' work.">
+  <title>Help — Orchestrix</title>
+  <link rel="icon" type="image/png" href="assets/brand/transparent/symbol-indigo.png">
+  <link rel="stylesheet" href="identity.css">
+  <link rel="stylesheet" href="help.css">
+  <script src="help.js" defer></script>
+</head>
+<body>
+  <a class="skip-link" href="#guides">Skip to guides</a>
+  <header class="help-header">
+    <a class="help-brand" href="website.html"><img src="assets/brand/transparent/symbol-indigo.png" alt="" width="48" height="48"><span>Orchestrix <small>Help center</small></span></a>
+    <a class="header-link" href="website.html">Explore Orchestrix <span aria-hidden="true">↗</span></a>
+  </header>
+  <main>
+    <div class="help-intro">
+      <p class="eyebrow">A LITTLE GUIDANCE, MORE ROOM TO CREATE</p>
+      <h1>Make the workspace<br><span>your own</span></h1>
+      <p>Start with a conversation, bring your agents together, and find the controls you need when you need them.</p>
+      <form class="help-search" role="search" id="help-search-form">
+        <span class="search-mark" aria-hidden="true">⌕</span>
+        <label class="sr-only" for="help-search">Search guides</label>
+        <input id="help-search" type="search" placeholder="Search sessions, accounts, themes…" autocomplete="off" aria-controls="guides">
+        <button id="clear-search" type="button" hidden>Clear</button>
+      </form>
+      <p class="search-status" id="search-status" role="status" aria-live="polite" aria-atomic="true">9 guides to help you get started</p>
+    </div>
+    <div class="help-layout">
+      <nav class="help-nav" aria-label="Guide topics">
+        <p class="eyebrow">ON THIS PAGE</p>
+        <a href="#quickstart">Your first session</a>
+        <a href="#sessions">Sessions &amp; projects</a>
+        <a href="#layout">Arrange your workspace</a>
+        <a href="#settings">Settings &amp; personal style</a>
+        <a href="#accounts">Accounts &amp; usage</a>
+        <a href="#orchestration">Models &amp; reasoning</a>
+        <a href="#modes">Modes &amp; agent profiles</a>
+        <a href="#review">Progress &amp; review</a>
+        <a href="#recovery">Permissions &amp; recovery</a>
+        <a class="nav-repository" href="https://github.com/LeonardoMBarca/orchestrix">Project on GitHub ↗</a>
+      </nav>
+      <div class="guide-content" id="guides">
+        <p class="empty-search" id="empty-search" hidden>No guides match that search. Try “session”, “accounts”, or “review”.</p>
+
+        <article class="guide" id="quickstart" data-guide>
+          <p class="guide-number">01 / START SMALL</p>
+          <h2>Your first session</h2>
+          <p>You can start with a single account. Multiple accounts, custom modes, and Studio are options you can explore later.</p>
+          <ol>
+            <li>Open <strong>Settings → Accounts</strong> and choose <strong>Subscription</strong> or <strong>API</strong> first, then the provider. Follow the authorization flow offered by that connection.</li>
+            <li>Choose <strong>New session</strong> in the Sessions panel. Start independently, or select a project if the work belongs to one.</li>
+            <li>When your request involves files, select the working folder and review the scope before continuing.</li>
+            <li>Describe what you want to create or change, including what a good result looks like, then send your message.</li>
+          </ol>
+          <div class="guide-note"><strong>A useful first request</strong><p>“Explain this project's structure, identify the main entry points, and suggest one small improvement. Ask before changing files.”</p></div>
+          <p>Questions about an idea can begin without a project. Tasks involving your code need an appropriate working folder and file permissions.</p>
+          <div class="video-guide" data-video-guide="quickstart" hidden></div>
+        </article>
+
+        <article class="guide" id="sessions" data-guide>
+          <p class="guide-number">02 / KEEP THE CONTEXT CLEAR</p>
+          <h2>Sessions &amp; projects</h2>
+          <p>A <strong>session</strong> is a conversation with its own messages and work. A <strong>project</strong> groups related sessions around a working folder, shared instructions, and selected project context.</p>
+          <figure><img src="assets/help/session-tree.svg" alt="Session organization: a project contains two separate conversations, while a standalone conversation sits outside the project. A standalone session can be attached to a project." width="920" height="440" loading="lazy"><figcaption>Related sessions share a project, while each conversation keeps its own history.</figcaption></figure>
+          <div class="guide-columns">
+            <div><h3>Start inside a project</h3><ol><li>Expand the project in Sessions.</li><li>Use its new-session action.</li><li>Write your request in the conversation.</li></ol></div>
+            <div><h3>Start independently</h3><ol><li>Choose <strong>New session</strong>.</li><li>Keep it standalone or choose a working folder.</li><li>Attach it to a project later if you need shared context.</li></ol></div>
+          </div>
+          <h3>Attach an existing session</h3>
+          <p>Use the session's project action to choose an existing project or create one. The conversation stays with the session. Review the new folder and shared context before asking for further file changes.</p>
+          <h3>Find and resume work</h3>
+          <p>Use session search to find a conversation by its title or project. Select a session to resume it; switching sessions preserves the conversation's draft. Open another session when you want a separate line of work.</p>
+          <p>Project context is selected for relevance and permissions. Grouping sessions does not automatically include every conversation or every file in each request.</p>
+          <div class="video-guide" data-video-guide="sessions" hidden></div>
+        </article>
+
+        <article class="guide" id="layout" data-guide>
+          <p class="guide-number">03 / A WORKSPACE THAT FITS</p>
+          <h2>Arrange your workspace</h2>
+          <p>Sessions starts on the left and Navigation on the right. Work shows the current session's tasks when needed. Move each panel between the two sides to match the way you work.</p>
+          <figure><img src="assets/help/workspace-docking.svg" alt="Side docking: separate panels, two tabs sharing the left dock, and a side chooser that highlights the left and right destinations." width="920" height="410" loading="lazy"><figcaption>A shared dock becomes a set of tabs, leaving the conversation room to breathe.</figcaption></figure>
+          <ol>
+            <li>Drag the panel's title or tab toward an available dock.</li>
+            <li>The workspace blurs to highlight the left and right destinations. Release over the side you want, or press <kbd>Escape</kbd> to cancel.</li>
+            <li>If panels occupy the same dock, select the desired tab, such as <strong>Sessions</strong> or <strong>Work</strong>, to switch between them.</li>
+          </ol>
+          <h3>Use the keyboard or a compact screen</h3>
+          <p>Open the panel's position menu to choose a dock without dragging. Use <kbd>Tab</kbd> to focus a tab, then activate it with <kbd>Enter</kbd> or <kbd>Space</kbd>. On smaller screens, panels adapt to the available space; the conversation remains the main workspace.</p>
+          <p>Use <strong>Settings → Panel layout → Reset layout</strong> if you want to return to the default arrangement. The Work panel appears when the current session has tasks to show.</p>
+        </article>
+
+        <article class="guide" id="settings" data-guide>
+          <p class="guide-number">04 / YOUR WAY OF WORKING</p>
+          <h2>Settings &amp; personal style</h2>
+          <p>Open the gear button to bring up Settings in the center of the screen. Your conversation stays behind the window; closing it returns you to the same work and draft.</p>
+          <figure><img src="assets/help/settings-window.svg" alt="A centered Settings window above a conversation, with category tabs, Compact density, a text percentage slider, and a close button." width="920" height="440" loading="lazy"><figcaption>Settings live in a closable window rather than replacing your conversation.</figcaption></figure>
+          <ul>
+            <li><strong>General → Your profile:</strong> set your display name. Compact is the default density; use the text-size slider to choose a scale from 80% to 200%.</li>
+            <li><strong>Accounts:</strong> manage connections and inspect the usage information available for each one.</li>
+            <li><strong>Themes:</strong> choose Studio or another theme. Themes apply immediately and their names stay in English.</li>
+            <li><strong>General → Interface language:</strong> select English, Portuguese, or Spanish. English is the default.</li>
+            <li><strong>Conversation → Personal instructions:</strong> describe how you prefer responses to sound, such as concise, formal, or relaxed. Save these preferences for upcoming work.</li>
+          </ul>
+          <h3>Write helpful response instructions</h3>
+          <p>For example: “Keep explanations concise, mention important assumptions, and use a friendly tone.” These preferences guide responses; they do not grant file permissions, override provider restrictions, or replace a task's acceptance criteria.</p>
+          <p>Click outside the window, use its close button, or press <kbd>Escape</kbd> while working in Settings to dismiss it. Unsaved profile and instruction drafts stay available when you reopen it. Review account and billing choices before saving them.</p>
+        </article>
+
+        <article class="guide" id="accounts" data-guide>
+          <p class="guide-number">05 / KNOW WHAT IS AVAILABLE</p>
+          <h2>Accounts &amp; usage</h2>
+          <p>A connection identifies a provider, account, and runtime. You can use one supported connection or keep several with clear names. Availability and selectable models depend on each adapter's real capabilities.</p>
+          <figure><img src="assets/help/account-usage.svg" alt="Account usage diagram: subscription limits are shown only when reported by the provider, and API balances are shown separately when available. Unknown values stay unknown." width="920" height="370" loading="lazy"><figcaption>Subscription capacity and API billing are different measurements.</figcaption></figure>
+          <ol>
+            <li>Open <strong>Settings → Accounts</strong> to add, rename, inspect, or remove a connection.</li>
+            <li>Choose <strong>Subscription</strong> for a supported runtime account or <strong>API</strong> for a provider key, then select the provider.</li>
+            <li>Enter the provider's required connection details. Azure also needs an endpoint and deployment; AWS Bedrock needs a region. Never put passwords, tokens, or API keys in a conversation or response instructions.</li>
+            <li>Inspect status, capabilities, and the timestamp attached to any reported usage.</li>
+          </ol>
+          <p>API choices include OpenAI, Anthropic, Gemini, Azure AI, AWS Bedrock, and compatible endpoints. Gemini API and the Antigravity runtime are separate connections. A discovered model does not automatically include every tool: web search, reasoning controls, and other capabilities must be confirmed for that model and endpoint.</p>
+          <h3>Understand usage indicators</h3>
+          <p>A percentage is shown only when the runtime provides a usable limit and usage value for that account. Providers may expose different windows or separate limits. <strong>Not available</strong> means that Orchestrix cannot observe the value; it does not mean zero usage or unlimited access.</p>
+          <p>API credit, balance, or spending appears separately when the provider exposes it. Runtime token counts alone cannot establish your remaining subscription quota or your billed amount.</p>
+          <h3>Choose a billing boundary</h3>
+          <p><strong>Subscription Only</strong> keeps paid API connections out of routing and fallback. Enabling an API connection is an explicit choice with its own budget controls. If a permitted connection becomes unavailable, inspect the suggested alternative or wait for capacity; Orchestrix should not silently cross that billing boundary.</p>
+          <div class="guide-note"><strong>Connection controls have real limits</strong><p>If authorization or an operation is unavailable in the current adapter, the interface tells you rather than pretending the account is connected or an action succeeded.</p></div>
+        </article>
+
+        <article class="guide" id="orchestration" data-guide>
+          <p class="guide-number">06 / GIVE THE TASK THE RIGHT RESOURCES</p>
+          <h2>Models &amp; reasoning</h2>
+          <p>Choose a strategy and let Orchestrix work within the models, reasoning levels, and tools actually exposed by your connections. Automatic selection is useful with one account too.</p>
+          <dl class="strategy-list">
+            <div><dt>Efficiency</dt><dd>Favor available capacity and use lighter models or less reasoning when they are sufficient for the task.</dd></div>
+            <div><dt>Balanced</dt><dd>Balance quality, responsiveness, and capacity use.</dd></div>
+            <div><dt>Performance</dt><dd>Favor stronger models for demanding work, while avoiding unnecessary reasoning for straightforward checks.</dd></div>
+            <div><dt>Custom</dt><dd>Adjust preferences and rules to suit your own work.</dd></div>
+          </dl>
+          <p>Complexity, risk, importance, and task type guide the choice. A more expensive model or a higher reasoning level is not automatically better. Simple status checks, such as checking the Git working tree, can use a direct tool when available.</p>
+          <h3>Inspect and adjust a decision</h3>
+          <p>Open Studio to inspect the selected connection, model, reasoning, and relevant context. Apply manual preferences or narrower project and task rules when appropriate. An unsupported preference cannot create a capability the runtime does not expose.</p>
+          <p>If only one model or reasoning setting is available, Orchestrix works within that constraint rather than implying it can select another one.</p>
+        </article>
+
+        <article class="guide" id="modes" data-guide>
+          <p class="guide-number">07 / SAME WORKSPACE, DIFFERENT GOALS</p>
+          <h2>Modes &amp; agent profiles</h2>
+          <p>A <strong>mode</strong> defines the purpose and expected outcome of the work. An <strong>agent profile</strong> guides a participating agent's role, such as how a coder implements changes or how a reviewer checks them.</p>
+          <div class="mode-list"><span>Development</span><span>Scientific Research</span><span>Documentation</span><span>Presentations</span><span>Refactoring</span><span>Improvement Review</span></div>
+          <ol>
+            <li>Choose the mode that best matches your goal before sending a request.</li>
+            <li>State the expected output, relevant materials, and criteria for success.</li>
+            <li>Adjust profile instructions or create a specialized mode when the available controls support it.</li>
+          </ol>
+          <p>Keep the role's purpose intact when editing a built-in profile. For example, ask a coder to reuse existing components or ask a researcher to distinguish citations from hypotheses.</p>
+          <p>Mode names describe intent. Producing files, searching external sources, building a presentation, or checking security still requires the necessary tools, access, and validation. Review the available capability before starting.</p>
+        </article>
+
+        <article class="guide" id="review" data-guide>
+          <p class="guide-number">08 / FOLLOW THE WORK, MAKE THE DECISION</p>
+          <h2>Progress &amp; review</h2>
+          <p>The conversation carries your request and the next step. Studio adds details about context, decisions, and the work's current state.</p>
+          <figure><img src="assets/help/review-path.svg" alt="Review flow: request, work, review, then either request a correction and review again, or confirm application to the chosen target." width="920" height="330" loading="lazy"><figcaption>Validating a result and applying it are separate decisions.</figcaption></figure>
+          <ol>
+            <li>Follow the task's status and any request for clarification or permission.</li>
+            <li>Open the result to inspect changes, explanations, and available checks.</li>
+            <li>If something is missing, request a correction with specific criteria. Review the updated result.</li>
+            <li>Validate the result when its content meets the goal.</li>
+            <li>Review the application target and confirm application only when you want those changes made there.</li>
+          </ol>
+          <p><strong>Validate</strong> means the prepared result meets the criteria. <strong>Apply</strong> confirms a change to the selected target. Check the destination, scope, and permission request before that second decision.</p>
+          <p>Runtime workflows vary. Always use the actual status and supported operations shown for the current task; a label alone is not proof that an operation completed.</p>
+          <div class="video-guide" data-video-guide="review" hidden></div>
+        </article>
+
+        <article class="guide" id="recovery" data-guide>
+          <p class="guide-number">09 / WHEN SOMETHING NEEDS ATTENTION</p>
+          <h2>Permissions &amp; recovery</h2>
+          <dl class="recovery-list">
+            <div><dt>An account cannot connect</dt><dd>Check the connection's status and adapter availability in Accounts. Follow its authorization instructions instead of pasting credentials into chat.</dd></div>
+            <div><dt>Usage is not available</dt><dd>Inspect the provider's own account page when needed. An unreported quota or balance remains unknown.</dd></div>
+            <div><dt>A task asks for access</dt><dd>Review the requested folder, operation, and scope. Grant only the access appropriate to the request or change the task.</dd></div>
+            <div><dt>A task stops or reaches a limit</dt><dd>Inspect the last confirmed status and available recovery actions. Resume or retry when supported, or select another permitted connection after reviewing the consequences.</dd></div>
+            <div><dt>The result is incomplete</dt><dd>Request a correction describing the missing behavior and expected evidence. Revisit the result before application.</dd></div>
+            <div><dt>The workspace arrangement feels wrong</dt><dd>Move panels using their position controls or reset the layout in Settings. Check that the desired tab is selected when panels share a dock.</dd></div>
+          </dl>
+          <p>Keep the task's error message and the last confirmed action when reporting a problem. Avoid sharing credentials, private account data, or unrelated project files.</p>
+          <a class="guide-link" href="https://github.com/LeonardoMBarca/orchestrix/issues">Report an issue on GitHub <span aria-hidden="true">↗</span></a>
+        </article>
+      </div>
+    </div>
+  </main>
+  <footer class="help-footer"><span>Orchestrix · A clear direction for your agents</span><a href="#">Back to top ↑</a></footer>
+</body>
+</html>

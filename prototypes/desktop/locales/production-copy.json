@@ -1,0 +1,334 @@
+{
+  "· capacidade não informada": {
+    "en": "· capacity not reported",
+    "es": "· capacidad no informada"
+  },
+  ". Consulte o gerenciamento de uso do provedor quando ele estiver disponível.": {
+    "en": ". Inspect the provider’s usage management when available.",
+    "es": ". Consulta la gestión de uso del proveedor cuando esté disponible."
+  },
+  "Configuração disponível": {
+    "en": "Configuration ready",
+    "es": "Configuración disponible"
+  },
+  "Configuração pendente": {
+    "en": "Configuration pending",
+    "es": "Configuración pendiente"
+  },
+  "Limite indicado": {
+    "en": "Limit indicated",
+    "es": "Límite indicado"
+  },
+  "Reautorização necessária": {
+    "en": "Reauthorization needed",
+    "es": "Se necesita reautorización"
+  },
+  "Modelo Codex": {
+    "en": "Codex model",
+    "es": "Modelo Codex"
+  },
+  "Modelo Claude": {
+    "en": "Claude model",
+    "es": "Modelo Claude"
+  },
+  "Acesso ao modelo não verificado": {
+    "en": "Model access not verified",
+    "es": "Acceso al modelo no verificado"
+  },
+  "Configuração inicial registrada; autorização do provedor não verificada.": {
+    "en": "Initial configuration recorded; provider authorization not verified.",
+    "es": "Configuración inicial registrada; autorización del proveedor no verificada."
+  },
+  "Registro aguarda confirmação de configuração.": {
+    "en": "Record awaiting configuration confirmation.",
+    "es": "El registro espera la confirmación de configuración."
+  },
+  "Pessoal A": {
+    "en": "Personal A",
+    "es": "Personal A"
+  },
+  "Pessoal B": {
+    "en": "Personal B",
+    "es": "Personal B"
+  },
+  "Pessoal": {
+    "en": "Personal",
+    "es": "Personal"
+  },
+  "Catálogo pendente": {
+    "en": "Catalog pending",
+    "es": "Catálogo pendiente"
+  },
+  "Não confirmada · sem resposta do provedor": {
+    "en": "Not confirmed · no provider response",
+    "es": "Sin confirmar · sin respuesta del proveedor"
+  },
+  "CONEXÕES": {
+    "en": "CONNECTIONS",
+    "es": "CONEXIONES"
+  },
+  "Configuração elegível para novo trabalho": {
+    "en": "Configuration eligible for new work",
+    "es": "Configuración apta para un nuevo trabajo"
+  },
+  "capacidade não informada": {
+    "en": "capacity not reported",
+    "es": "capacidad no informada"
+  },
+  "Cada conexão mantém sua identidade e suas preferências. Mais sessões não aumentam a cota, e limites não ativam cobrança por API automaticamente.": {
+    "en": "Each connection keeps its identity and preferences. More sessions do not increase your quota, and limits never activate API billing automatically.",
+    "es": "Cada conexión mantiene su identidad y preferencias. Más sesiones no aumentan la cuota y los límites no activan automáticamente el cobro por API."
+  },
+  "Aguardando catálogo": {
+    "en": "Waiting for catalog",
+    "es": "Esperando el catálogo"
+  },
+  "Modelos e acesso ainda não foram confirmados. Novos trabalhos aguardam; os existentes preservam sua configuração.": {
+    "en": "Models and access have not been confirmed. New work waits; existing work keeps its configuration.",
+    "es": "Los modelos y el acceso aún no están confirmados. El trabajo nuevo espera y el existente conserva su configuración."
+  },
+  "Escolha incompatível com o catálogo": {
+    "en": "Selection incompatible with catalog",
+    "es": "Selección incompatible con el catálogo"
+  },
+  "Raciocínio configurado:": {
+    "en": "Configured reasoning:",
+    "es": "Razonamiento configurado:"
+  },
+  "; acesso não verificado.": {
+    "en": "; access not verified.",
+    "es": "; acceso no verificado."
+  },
+  "Configuração compatível com o catálogo. A disponibilidade do modelo depende da autorização do provedor.": {
+    "en": "Configuration matches the catalog. Model availability depends on provider authorization.",
+    "es": "La configuración coincide con el catálogo. La disponibilidad del modelo depende de la autorización del proveedor."
+  },
+  "Escolha incompatível com o catálogo desta conexão. Ajuste a preferência ou selecione outra conexão para um novo trabalho. Nenhum fallback para API foi realizado.": {
+    "en": "The selection is incompatible with this connection’s catalog. Adjust the preference or choose another connection for new work. No API fallback was performed.",
+    "es": "La selección no es compatible con el catálogo de esta conexión. Ajusta la preferencia o elige otra conexión para un trabajo nuevo. No se ha usado una API alternativa."
+  },
+  "Nenhuma tentativa vinculada.": {
+    "en": "No linked attempts.",
+    "es": "No hay intentos vinculados."
+  },
+  "Conexão não encontrada.": {
+    "en": "Connection not found.",
+    "es": "No se encontró la conexión."
+  },
+  "Registro confirmado · autorização não verificada": {
+    "en": "Record confirmed · authorization not verified",
+    "es": "Registro confirmado · autorización no verificada"
+  },
+  "Confirmação de registro pendente": {
+    "en": "Record confirmation pending",
+    "es": "Confirmación de registro pendiente"
+  },
+  "Confirmar configuração": {
+    "en": "Confirm configuration",
+    "es": "Confirmar configuración"
+  },
+  "Reconfigurar conexão": {
+    "en": "Reconfigure connection",
+    "es": "Reconfigurar conexión"
+  },
+  "· conexão": {
+    "en": "· connection",
+    "es": "· conexión"
+  },
+  "Nome da conexão": {
+    "en": "Connection name",
+    "es": "Nombre de la conexión"
+  },
+  "Revisão do registro": {
+    "en": "Record revision",
+    "es": "Revisión del registro"
+  },
+  "Ainda não confirmado": {
+    "en": "Not yet confirmed",
+    "es": "Aún no confirmado"
+  },
+  "A configuração identifica a conexão; a autorização e o acesso do provedor precisam de confirmação própria.": {
+    "en": "Configuration identifies the connection; provider authorization and access require their own confirmation.",
+    "es": "La configuración identifica la conexión; la autorización y el acceso del proveedor requieren su propia confirmación."
+  },
+  "Consultar uso": {
+    "en": "Inspect usage",
+    "es": "Consultar uso"
+  },
+  "Diagnóstico da conexão": {
+    "en": "Connection diagnostics",
+    "es": "Diagnóstico de la conexión"
+  },
+  "Confirmar registro de catálogo": {
+    "en": "Confirm catalog record",
+    "es": "Confirmar registro del catálogo"
+  },
+  "Definir catálogo pendente": {
+    "en": "Set catalog pending",
+    "es": "Marcar catálogo pendiente"
+  },
+  "Marcar limite": {
+    "en": "Mark limit",
+    "es": "Marcar límite"
+  },
+  "Requerer nova autorização": {
+    "en": "Require new authorization",
+    "es": "Requerir nueva autorización"
+  },
+  "Marcar acesso negado": {
+    "en": "Mark access denied",
+    "es": "Marcar acceso denegado"
+  },
+  "Marcar catálogo incompatível": {
+    "en": "Mark catalog incompatible",
+    "es": "Marcar catálogo incompatible"
+  },
+  "Restaurar catálogo": {
+    "en": "Restore catalog",
+    "es": "Restaurar catálogo"
+  },
+  "Registrar revogação sem resposta": {
+    "en": "Record unanswered revocation",
+    "es": "Registrar revocación sin respuesta"
+  },
+  "Crie um registro para organizar a conexão. A autorização do provedor é uma etapa separada; este formulário não recebe credenciais.": {
+    "en": "Create a record to organize the connection. Provider authorization is a separate step; this form does not collect credentials.",
+    "es": "Crea un registro para organizar la conexión. La autorización del proveedor es un paso separado; este formulario no recibe credenciales."
+  },
+  "Nome para identificar esta conexão": {
+    "en": "A name to identify this connection",
+    "es": "Nombre para identificar esta conexión"
+  },
+  "Pessoal ou equipe": {
+    "en": "Personal or team",
+    "es": "Personal o equipo"
+  },
+  "Confirme a origem de cobrança para este registro. API é uma escolha separada; limites de assinatura nunca a selecionam automaticamente.": {
+    "en": "Confirm this record’s billing source. API usage is a separate choice; subscription limits never select it automatically.",
+    "es": "Confirma el origen de cobro de este registro. Usar una API es una decisión separada; los límites de suscripción nunca la seleccionan automáticamente."
+  },
+  "Quero usar uma assinatura do provedor nesta conexão.": {
+    "en": "I want to use a provider subscription for this connection.",
+    "es": "Quiero usar una suscripción del proveedor en esta conexión."
+  },
+  "Quero configurar uma API com cobrança separada para esta conexão.": {
+    "en": "I want to configure a separately billed API for this connection.",
+    "es": "Quiero configurar una API con cobro separado para esta conexión."
+  },
+  "Confirmar configuração da conexão": {
+    "en": "Confirm connection configuration",
+    "es": "Confirmar la configuración de la conexión"
+  },
+  "Revise o registro e a origem de cobrança. Esta confirmação salva a configuração; a autorização do provedor não é verificada aqui. Trabalhos anteriores conservam seu registro e contexto.": {
+    "en": "Review the record and billing source. This confirmation saves the configuration; provider authorization is not verified here. Previous work keeps its record and context.",
+    "es": "Revisa el registro y el origen del cobro. Esta confirmación guarda la configuración; la autorización del proveedor no se verifica aquí. El trabajo anterior conserva su registro y contexto."
+  },
+  "· configuração": {
+    "en": "· configuration",
+    "es": "· configuración"
+  },
+  "Conferência da conta declarada": {
+    "en": "Declared account check",
+    "es": "Revisión de la cuenta declarada"
+  },
+  "A conta declarada corresponde a este registro": {
+    "en": "The declared account matches this record",
+    "es": "La cuenta declarada coincide con este registro"
+  },
+  "A conta declarada não corresponde — impedir uso": {
+    "en": "The declared account does not match — prevent use",
+    "es": "La cuenta declarada no coincide — impedir uso"
+  },
+  "Esta modalidade já foi confirmada neste registro.": {
+    "en": "This modality has already been confirmed for this record.",
+    "es": "Esta modalidad ya se ha confirmado para este registro."
+  },
+  "Confirmar o registro não comprova assinatura, acesso a modelos ou cota disponível.": {
+    "en": "Confirming the record does not establish a subscription, model access, or available quota.",
+    "es": "Confirmar el registro no acredita una suscripción, acceso a modelos ni una cuota disponible."
+  },
+  "Salvar configuração": {
+    "en": "Save configuration",
+    "es": "Guardar configuración"
+  },
+  "Uso da conexão": {
+    "en": "Connection usage",
+    "es": "Uso de la conexión"
+  },
+  "Consulte o gerenciamento de uso do provedor quando ele estiver disponível.": {
+    "en": "Inspect the provider’s usage management when available.",
+    "es": "Consulta la gestión de uso del proveedor cuando esté disponible."
+  },
+  "Capacidade disponível: não informada.": {
+    "en": "Available capacity: not reported.",
+    "es": "Capacidad disponible: no informada."
+  },
+  "Registrar capacidade disponível": {
+    "en": "Record available capacity",
+    "es": "Registrar capacidad disponible"
+  },
+  "Registro de catálogo atualizado; acesso do provedor não verificado.": {
+    "en": "Catalog record updated; provider access not verified.",
+    "es": "Registro del catálogo actualizado; acceso del proveedor no verificado."
+  },
+  "Sem confirmação remota; workers e histórico preservados.": {
+    "en": "No remote confirmation; workers and history preserved.",
+    "es": "Sin confirmación remota; workers e historial conservados."
+  },
+  "Capacidade não informada; sem fallback para API": {
+    "en": "Capacity not reported; no API fallback",
+    "es": "Capacidad no informada; sin API alternativa"
+  },
+  "Capacidade marcada como disponível": {
+    "en": "Capacity marked as available",
+    "es": "Capacidad marcada como disponible"
+  },
+  "Registro de catálogo restaurado.": {
+    "en": "Catalog record restored.",
+    "es": "Registro del catálogo restaurado."
+  },
+  "Somente novas escolhas afetadas; tentativas preservadas.": {
+    "en": "Only new choices affected; attempts preserved.",
+    "es": "Solo se afectan las nuevas elecciones; se conservan los intentos."
+  },
+  "Preencha nome, workspace, runtime e modalidade válidos.": {
+    "en": "Enter a valid name, workspace, runtime, and modality.",
+    "es": "Introduce un nombre, espacio de trabajo, runtime y modalidad válidos."
+  },
+  "Escolha outro nome para distinguir as conexões.": {
+    "en": "Choose another name to distinguish connections.",
+    "es": "Elige otro nombre para distinguir las conexiones."
+  },
+  "Registro pendente; autorização do provedor não verificada. Conexões e tentativas em uso preservadas.": {
+    "en": "Record pending; provider authorization not verified. Existing connections and attempts preserved.",
+    "es": "Registro pendiente; autorización del proveedor no verificada. Se conservan las conexiones e intentos en uso."
+  },
+  "Registro pendente criado. Confirme a configuração desta conexão.": {
+    "en": "Pending record created. Confirm this connection’s configuration.",
+    "es": "Registro pendiente creado. Confirma la configuración de esta conexión."
+  },
+  "Este pedido não está mais pendente. Inspecione a conexão e revise sua configuração.": {
+    "en": "This request is no longer pending. Inspect the connection and review its configuration.",
+    "es": "Esta solicitud ya no está pendiente. Inspecciona la conexión y revisa su configuración."
+  },
+  "Confirme a modalidade indicada para salvar este registro.": {
+    "en": "Confirm the indicated modality to save this record.",
+    "es": "Confirma la modalidad indicada para guardar este registro."
+  },
+  "confirmado na configuração": {
+    "en": "confirmed in configuration",
+    "es": "confirmado en la configuración"
+  },
+  "Configuração registrada; autorização, cota e acesso do provedor não verificados": {
+    "en": "Configuration recorded; provider authorization, quota, and access not verified",
+    "es": "Configuración registrada; autorización, cuota y acceso del proveedor no verificados"
+  },
+  "Configuração disponível para novos trabalhos. Autorização do provedor não verificada.": {
+    "en": "Configuration ready for new work. Provider authorization not verified.",
+    "es": "Configuración disponible para trabajo nuevo. Autorización del proveedor no verificada."
+  },
+  "· tentativas anteriores preservadas.": {
+    "en": "· previous attempts preserved.",
+    "es": "· intentos anteriores conservados."
+  }
+}

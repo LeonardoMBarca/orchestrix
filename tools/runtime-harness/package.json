@@ -6,10 +6,11 @@
   "description": "M0 experiment for local coding-agent protocols; not the production Core",
   "scripts": {
     "test": "node --test --test-concurrency=1 tests/*.test.mjs",
+    "test:windows-job": "node --test --test-concurrency=1 tests/windows-job.spec.mjs",
     "probe:fake": "node probe.mjs --fake",
     "probe:codex": "node probe.mjs --codex",
     "probe:codex:live": "node probe.mjs --codex --live",
-    "check": "node --check probe.mjs && node --check src/json-rpc.mjs && node --check src/codex-session.mjs && node --check fixtures/fake-app-server.mjs && node --check fixtures/process-tree.mjs"
+    "check": "node --check probe.mjs && node --check src/json-rpc.mjs && node --check src/codex-session.mjs && node --check fixtures/fake-app-server.mjs && node --check fixtures/process-tree.mjs && node --check fixtures/write-backpressure.mjs && node --check fixtures/windows-job-tree.mjs && node --check tests/write-backpressure.test.mjs && node --check tests/windows-job.spec.mjs"
   },
   "engines": {"node": ">=24"}
 }

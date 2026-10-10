@@ -1,0 +1,70 @@
+{
+  "Mover painel de navegação": {
+    "en": "Move navigation panel",
+    "es": "Mover panel de navegación"
+  },
+  "Mover painel de sessões": {
+    "en": "Move sessions panel",
+    "es": "Mover panel de sesiones"
+  },
+  "Mover painel de trabalho": {
+    "en": "Move work panel",
+    "es": "Mover panel de trabajo"
+  },
+  "Ajuda e tutoriais": {
+    "en": "Help & tutorials",
+    "es": "Ayuda y tutoriales"
+  },
+  "Configurações do aplicativo": {
+    "en": "Settings",
+    "es": "Configuración"
+  },
+  "Buscar sessões, projetos e ações": {
+    "en": "Search sessions, projects and actions",
+    "es": "Buscar sesiones, proyectos y acciones"
+  },
+  "Buscar sessões, projetos e ações…": {
+    "en": "Search sessions, projects and actions…",
+    "es": "Buscar sesiones, proyectos y acciones…"
+  },
+  "Pronto para começar": {
+    "en": "Ready when you are",
+    "es": "Listo para comenzar"
+  },
+  "Sessões": {
+    "en": "Sessions",
+    "es": "Sesiones"
+  },
+  "Painéis do workspace": {
+    "en": "Workspace panels",
+    "es": "Paneles del espacio de trabajo"
+  },
+  "Arraste para reposicionar ou use as setas com Shift": {
+    "en": "Drag to reposition or use Shift with the arrow keys",
+    "es": "Arrastra para mover o usa Mayús con las flechas"
+  },
+  "Altura do painel inferior": {
+    "en": "Bottom panel height",
+    "es": "Altura del panel inferior"
+  },
+  "Largura do painel esquerdo": {
+    "en": "Left panel width",
+    "es": "Ancho del panel izquierdo"
+  },
+  "Largura do painel direito": {
+    "en": "Right panel width",
+    "es": "Ancho del panel derecho"
+  },
+  "Mover para a esquerda": {
+    "en": "Move to left",
+    "es": "Mover a la izquierda"
+  },
+  "Mover para a direita": {
+    "en": "Move to right",
+    "es": "Mover a la derecha"
+  },
+  "Mover para baixo": {
+    "en": "Move to bottom",
+    "es": "Mover abajo"
+  }
+}

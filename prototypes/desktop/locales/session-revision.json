@@ -1,0 +1,237 @@
+{
+  "Esta tarefa ainda não possui um resultado para revisar.": {"en":"This task has no result to review yet.","es":"Esta tarea aún no tiene un resultado para revisar."},
+  "Verificações e revisão aparecem quando o runtime fornecer um resultado.": {"en":"Checks and review appear when the runtime provides a result.","es":"Las verificaciones y la revisión aparecen cuando el runtime proporciona un resultado."},
+  "Confira a conexão e o contexto antes de iniciar este trabalho.": {"en":"Check the connection and context before starting this work.","es":"Revisa la conexión y el contexto antes de iniciar este trabajo."},
+  "ESCOLHAS DA TENTATIVA": {"en":"ATTEMPT SETTINGS","es":"CONFIGURACIÓN DEL INTENTO"},
+  "As preferências solicitadas estão registradas no contexto. Modelo, raciocínio e uso efetivos aguardam confirmação do runtime.": {"en":"Requested preferences are recorded in the context. Effective model, reasoning and usage await runtime confirmation.","es":"Las preferencias solicitadas están registradas en el contexto. El modelo, razonamiento y uso efectivos esperan confirmación del runtime."},
+  "Os resultados e suas verificações aparecerão aqui.": {"en":"Results and their checks will appear here.","es":"Los resultados y sus verificaciones aparecerán aquí."},
+  "Política do projeto": {"en":"Project policy","es":"Política del proyecto"},
+  "Preferências respeitam capacidades, permissões e limites do runtime.": {"en":"Preferences respect runtime capabilities, permissions and limits.","es":"Las preferencias respetan las capacidades, permisos y límites del runtime."},
+  "Resultados e destino exigem revisão antes de aplicar alterações.": {"en":"Results and the destination require review before applying changes.","es":"Los resultados y el destino requieren revisión antes de aplicar cambios."},
+  "Favorito do perfil": {"en":"Profile favorite","es":"Favorito del perfil"},
+  "Modelo": {"en":"Model","es":"Modelo"},
+  "Defina o resultado esperado e como você quer revisá-lo.": {"en":"Define the expected result and how you want to review it.","es":"Define el resultado esperado y cómo quieres revisarlo."},
+  "Título do trabalho": {"en":"Work title","es":"Título del trabajo"},
+  "Criar trabalho": {"en":"Create work","es":"Crear trabajo"},
+  "Plano do trabalho": {"en":"Work plan","es":"Plan de trabajo"},
+  "O runtime ainda não está disponível para esta conexão. O pedido e o contexto foram preservados.": {"en":"The runtime is not available for this connection yet. Your request and context have been preserved.","es":"El runtime aún no está disponible para esta conexión. Tu solicitud y contexto se conservaron."},
+  "Trabalho preparado. Confira a conexão e o contexto antes de iniciar.": {"en":"Work prepared. Check the connection and context before starting.","es":"Trabajo preparado. Revisa la conexión y el contexto antes de comenzar."},
+  "Contexto das próximas tarefas": {"en":"Context for future tasks","es":"Contexto para las próximas tareas"},
+  "Reconciliar execução": {"en":"Reconcile execution","es":"Reconciliar ejecución"},
+  "Este projeto atingiu o limite de 100 sessões.": {"en":"This project has reached its limit of 100 sessions.","es":"Este proyecto alcanzó el límite de 100 sesiones."},
+  "Você atingiu o limite de 100 espaços de sessão neste navegador.": {"en":"You have reached the limit of 100 session spaces in this browser.","es":"Alcanzaste el límite de 100 espacios de sesión en este navegador."},
+  "Este projeto atingiu o limite de 500 trabalhos.": {"en":"This project has reached its limit of 500 work items.","es":"Este proyecto alcanzó el límite de 500 trabajos."},
+  "O projeto não tem espaço para outra sessão. Seu conteúdo foi preservado.": {"en":"The project has no room for another session. Your content has been preserved.","es":"El proyecto no tiene espacio para otra sesión. Tu contenido se conservó."},
+  "PROJETOS": {
+    "en": "PROJECTS",
+    "es": "PROYECTOS"
+  },
+  "Diretório não definido": {
+    "en": "Directory not set",
+    "es": "Directorio sin definir"
+  },
+  "Contexto preservado para esta tentativa. As fontes mostram sua origem, versão e motivo de inclusão.": {
+    "en": "Context preserved for this attempt. Sources show their origin, version and reason for inclusion.",
+    "es": "Contexto conservado para este intento. Las fuentes muestran su origen, versión y motivo de inclusión."
+  },
+  "Um lugar para suas sessões": {
+    "en": "A place for your sessions",
+    "es": "Un lugar para tus sesiones"
+  },
+  "Organize sessões que compartilham um objetivo e um contexto.": {
+    "en": "Organize sessions that share a goal and context.",
+    "es": "Organiza sesiones que comparten un objetivo y contexto."
+  },
+  "Criar projeto": {
+    "en": "Create project",
+    "es": "Crear proyecto"
+  },
+  "Diretório de trabalho": {
+    "en": "Working directory",
+    "es": "Directorio de trabajo"
+  },
+  "Caminho da pasta": {
+    "en": "Folder path",
+    "es": "Ruta de la carpeta"
+  },
+  "Você pode definir o diretório agora ou depois.": {
+    "en": "Set the directory now or later.",
+    "es": "Define el directorio ahora o más adelante."
+  },
+  "Contexto compartilhado": {
+    "en": "Shared context",
+    "es": "Contexto compartido"
+  },
+  "Objetivo, referências e instruções para as sessões deste projeto": {
+    "en": "Goal, references and instructions for this project's sessions",
+    "es": "Objetivo, referencias e instrucciones para las sesiones de este proyecto"
+  },
+  "Criar projeto e sessão": {
+    "en": "Create project and session",
+    "es": "Crear proyecto y sesión"
+  },
+  "SESSÃO": {
+    "en": "SESSION",
+    "es": "SESIÓN"
+  },
+  "SESSÃO DO PROJETO": {
+    "en": "PROJECT SESSION",
+    "es": "SESIÓN DEL PROYECTO"
+  },
+  "Sua conversa e seu próximo passo.": {
+    "en": "Your conversation and your next step.",
+    "es": "Tu conversación y tu siguiente paso."
+  },
+  "Comece do seu jeito": {
+    "en": "Start your way",
+    "es": "Comienza a tu manera"
+  },
+  "Abrir ou criar projeto": {
+    "en": "Open or create project",
+    "es": "Abrir o crear proyecto"
+  },
+  "Reúna sessões e contexto.": {
+    "en": "Bring sessions and context together.",
+    "es": "Reúne sesiones y contexto."
+  },
+  "Encontre seu próximo passo.": {
+    "en": "Find your next step.",
+    "es": "Encuentra tu siguiente paso."
+  },
+  "Definir diretório": {
+    "en": "Set directory",
+    "es": "Definir directorio"
+  },
+  "Associar a projeto": {
+    "en": "Attach to project",
+    "es": "Vincular al proyecto"
+  },
+  "Mensagem": {
+    "en": "Message",
+    "es": "Mensaje"
+  },
+  "Trabalhos da sessão": {
+    "en": "Session work",
+    "es": "Trabajo de la sesión"
+  },
+  "Nova sessão": {
+    "en": "New session",
+    "es": "Nueva sesión"
+  },
+  "Não foi possível salvar as sessões neste navegador. Exporte conteúdo importante antes de fechar.": {
+    "en": "Your sessions could not be saved in this browser. Export important content before closing.",
+    "es": "No se pudieron guardar tus sesiones en este navegador. Exporta el contenido importante antes de cerrar."
+  },
+  "Projetos": {
+    "en": "Projects",
+    "es": "Proyectos"
+  },
+  "Crie um projeto para reunir sessões.": {
+    "en": "Create a project to group sessions.",
+    "es": "Crea un proyecto para reunir sesiones."
+  },
+  "Sessões recentes": {
+    "en": "Recent sessions",
+    "es": "Sesiones recientes"
+  },
+  "Suas sessões independentes aparecem aqui.": {
+    "en": "Your independent sessions appear here.",
+    "es": "Tus sesiones independientes aparecen aquí."
+  },
+  "Vincular ao projeto": {
+    "en": "Attach to project",
+    "es": "Vincular al proyecto"
+  },
+  "Projetos existentes": {
+    "en": "Existing projects",
+    "es": "Proyectos existentes"
+  },
+  "Nome do novo projeto": {
+    "en": "New project name",
+    "es": "Nombre del nuevo proyecto"
+  },
+  "Criar e vincular sessão": {
+    "en": "Create and attach session",
+    "es": "Crear y vincular sesión"
+  },
+  "Não foi possível vincular esta sessão porque os trabalhos têm identificadores duplicados.": {
+    "en": "This session could not be attached because work identifiers overlap.",
+    "es": "No se pudo vincular esta sesión porque los identificadores de trabajo coinciden."
+  },
+  "Diretório da sessão": {
+    "en": "Session directory",
+    "es": "Directorio de la sesión"
+  },
+  "Este destino será usado pelas novas tarefas da sessão.": {
+    "en": "New tasks in this session will use this destination.",
+    "es": "Las nuevas tareas de esta sesión usarán este destino."
+  },
+  "Salvar diretório": {
+    "en": "Save directory",
+    "es": "Guardar directorio"
+  },
+  "Nenhuma conta selecionada": {
+    "en": "No account selected",
+    "es": "Ninguna cuenta seleccionada"
+  },
+  "Preparei o trabalho “": {
+    "en": "I prepared the work “",
+    "es": "Preparé el trabajo “"
+  },
+  "”. Confira o contexto e a conexão antes de iniciar.": {
+    "en": "”. Check the context and connection before starting.",
+    "es": "”. Revisa el contexto y la conexión antes de comenzar."
+  },
+  "”. Conecte uma conta para começar.": {
+    "en": "”. Connect an account to get started.",
+    "es": "”. Conecta una cuenta para comenzar."
+  },
+  "Sessão independente": {
+    "en": "Independent session",
+    "es": "Sesión independiente"
+  },
+  "Contexto do projeto": {
+    "en": "Project context",
+    "es": "Contexto del proyecto"
+  },
+  "As alterações valem para novas tarefas. Tentativas existentes preservam seu contexto.": {
+    "en": "Changes apply to new tasks. Existing attempts keep their context.",
+    "es": "Los cambios se aplican a nuevas tareas. Los intentos existentes conservan su contexto."
+  },
+  "Salvar contexto": {
+    "en": "Save context",
+    "es": "Guardar contexto"
+  },
+  "Nenhuma sessão, projeto ou ação encontrada.": {
+    "en": "No sessions, projects or actions found.",
+    "es": "No se encontraron sesiones, proyectos ni acciones."
+  },
+  "Pedido preparado. Confira a conexão e o contexto antes de iniciar.": {
+    "en": "Request prepared. Check the connection and context before starting.",
+    "es": "Solicitud preparada. Revisa la conexión y el contexto antes de comenzar."
+  },
+  "Conecte uma conta para iniciar este trabalho.": {
+    "en": "Connect an account to start this work.",
+    "es": "Conecta una cuenta para iniciar este trabajo."
+  },
+  "Iniciar trabalho": {
+    "en": "Start work",
+    "es": "Iniciar trabajo"
+  },
+  "Trabalho em andamento. Acompanhe o progresso e confira o resultado.": {
+    "en": "Work in progress. Follow its progress and review the result.",
+    "es": "Trabajo en curso. Sigue su progreso y revisa el resultado."
+  },
+  "Concluir trabalho": {
+    "en": "Finish work",
+    "es": "Finalizar trabajo"
+  },
+  "Tentativa pausada.": {
+    "en": "Attempt paused.",
+    "es": "Intento pausado."
+  },
+  "Retomar trabalho": {
+    "en": "Resume work",
+    "es": "Reanudar trabajo"
+  }
+}

@@ -1,10 +1,119 @@
 # D1 — Piloto inicial de experiência
 
-Roteiro preparado em **8 de outubro de 2026**, após a [conclusão de D0](../research/d0-conclusion.md). **Piloto ainda não executado; gate de D1 aberto.** O piloto individual foi solicitado ao responsável; nenhuma resposta ou sessão humana foi registrada até esta atualização. Os campos de resultados abaixo permanecem em branco para observações reais.
+Roteiro preparado em **8 de outubro de 2026**, atualizado em **10 de outubro de 2026**, incluindo os sete refinamentos seguintes de navegação e configurações, após a [conclusão de D0](../research/d0-conclusion.md). **O responsável adiou explicitamente o piloto até que a interface esteja de acordo com a direção desejada. Execução ainda não confirmada; gate de D1 aberto.** A identidade visual foi aprovada anteriormente; a [revisão de navegação, sessões e Settings](d1-shell-revision.md) e o [contrato vigente do shell](../../design-system/workspace-shell.md) ainda precisam de avaliação de uso. As observações, conclusão das tarefas e resultados da sessão permanecem pendentes, com os campos em branco.
 
-O piloto avalia se o responsável pelo produto consegue conduzir desenvolvimento assistido no aplicativo: formular trabalho, fornecer contexto, acompanhar, ler código/diff, pedir correção e controlar a entrega. O protótipo é uma simulação, sem autenticação, inferência, acesso a arquivos ou operações Git. O resultado deste piloto informa a experiência; os contratos reais continuam em M0/M1/M2/M3.
+O piloto avalia se o responsável pelo produto consegue conduzir desenvolvimento assistido no aplicativo: formular trabalho, fornecer contexto, acompanhar, ler código/diff, pedir correção e controlar a entrega. O estudo permite avaliar a organização da interface sem autenticação, inferência, acesso a arquivos ou operações Git. Os casos de execução históricos usam fixtures internas de teste. O resultado deste piloto informa a experiência; os contratos reais continuam em M0/M1/M2/M3.
 
 Referências: [OX-D03/04/05 e dependências](../DEVELOPMENT_BACKLOG.md), [POS-01 a POS-16](../research/product-positioning.md), [ACC-01 a ACC-07](../research/subscription-account-ux.md), [protocolo de avaliação](../research/experience-decisions.md#8-piloto-e-avaliação-de-uso--roteiro-ainda-não-executado), [protótipo](../../prototypes/desktop/README.md) e [matriz dos casos](d1-scenario-matrix.md).
+
+## Primeiro percurso atual — sete passos pelo chat
+
+**Preparação para retomar após a avaliação da interface, sem novo convite de piloto nesta revisão.** Abra [index.html](../../prototypes/desktop/index.html) diretamente ou a [prévia HTTP](http://127.0.0.1:4173/index.html). Uma entrada normal sem estado salvo tem uma sessão independente, sem contas/projetos/tarefas de estudo preenchidos. Se houver trabalho salvo, use um perfil ou janela de avaliação separados; não apague os rascunhos da pessoa para preparar o caso.
+
+Os nomes abaixo usam English. Idioma fica em **Settings → General → Interface language**; os temas em **Settings → Themes**. Sessions começa à esquerda; Navigation, à direita. Densidade inicial **Compact**, escala **100%**. O objetivo inicial é avaliar a organização sem depender de uma integração de runtime ainda indisponível.
+
+1. **Começar:** localize logo, “What shall we create today?”, cartões de início, sugestões e campo **Message**. Escreva um rascunho e explique qual seria o próximo passo para trabalhar sem projeto.
+2. **Trocar de sessão:** use o único comando principal **New session**, no painel Sessions à esquerda, escreva outro rascunho e volte à primeira pela lista. Confira as mensagens/rascunhos próprios e o destaque da sessão ativa; recarregue para avaliar a retomada no mesmo navegador.
+3. **Organizar:** use **New project** ou **Open or create project**, informe nome, diretório e contexto compartilhado e crie a sessão do projeto. Volte à sessão independente, escolha **Attach to project** e selecione o projeto. Confira se a conversa preservou identidade e rascunho e se o novo contexto/destino ficou claro. O caminho registrado não concede acesso real à pasta.
+4. **Encontrar:** crie outra sessão do projeto e use a busca/lista de Sessions para voltar ao trabalho desejado. Observe se projetos expansíveis e sessões independentes dispensam os dois seletores anteriores.
+5. **Distribuir:** mova Navigation para a esquerda para compartilhar o lado com Sessions e alterne as abas. Observe os dois destinos laterais destacados e o blur temporário enquanto escolhe um lado; cancele uma escolha e confira que o efeito desaparece. Volte Navigation para a direita pelo menu/teclado e use **Settings → Panel layout → Reset layout**. Não há destino inferior. Confira foco, conversa e rascunho durante as mudanças.
+6. **Configurar:** abra a engrenagem e observe a janela centralizada, até 940 × 720px, limitada ao viewport. Escreva um nome/instrução sem salvar, clique fora no chat e reabra Settings: confira o rascunho preservado. Depois salve explicitamente. Em General, altere idioma/densidade e experimente o slider de texto entre 80% e 200%, em passos de 5%; restaure 100%. Em Themes, escolha outra aparência. Verifique que fechar Settings não substitui a conversa ou desfaz preferências visuais já aplicadas.
+7. **Conexões e ajuda:** em Accounts, diferencie ausência de conexão/uso desconhecido de um limite zero. Inicie o cadastro e escolha **Subscription ou API antes do provedor**; confira os campos pertinentes e experimente um valor temporário no campo de chave. O wizard o mantém somente em memória, sem salvar ou enviar ao provedor. Explique a diferença entre configuração salva e autenticação verificada, e por que Subscription Only não habilita fallback API. Abra **Help** e confira que ela abre outra página com busca e guias ilustrados. O [contrato de conexão](api-connection-contract.md) e a [pesquisa oficial](../research/api-provider-discovery-2026-10-10.md) orientam esse caso.
+
+Ao retomar, registrar ajuda fornecida, ações concluídas, interpretações, desconforto e limitações encontradas. Este percurso prepara avaliação de descoberta/navegação, não substitui todos os P0 nem demonstra execução, autorização, quota, correção ou aplicação real. O ciclo completo de resultado → correção → validação → aplicação continuará com condição de execução explicitada, preservando os critérios da matriz e do gate. Quando o runtime ainda estiver indisponível, registrar essa condição em vez de atribuir um resultado inexistente à interface.
+
+### Controles da revisão de sessões
+
+| Área | Referência de facilitação |
+| --- | --- |
+| Conversa | `#chat-message`, `#chat-form`; rascunho da sessão ativa. |
+| Sessões | `.new-session-trigger`, `#session-list`, itens `data-session-id`; ações de criação/associação e busca. |
+| Projeto/diretório | `#session-project-form`, `#entry-name`, `#entry-path`, `#entry-context`; ação `data-action="session-attach"`. |
+| Painéis | `.dock-panel-handle`, abas `data-dock-tab`, menu de posição e controles de Panel layout; somente esquerda/direita. |
+| Settings | `#floating-settings`, seções `data-settings-tab`, fechamento `data-settings-close` ou clique externo; diálogo modeless centralizado, rascunhos preservados ao reabrir. |
+| Texto | `#settings-text-size`: slider 80–200%, passo 5%, padrão 100%; valor e ação de restaurar 100%. |
+| Conexões | Accounts: modalidade Subscription/API, depois provedor/backend; configuração sem prova de autenticação ou quota. |
+| Ajuda | Link externo para `help.html`; a página não ocupa a navegação de conteúdo do app. |
+
+**Evidência histórica anterior aos sete refinamentos:** o check de HTML direto passou sete composições e a jornada de sessões, rascunhos, associação, docking, Settings modeless, idiomas persistidos e ajuda com imagens, sem erros ou requisições externas. Aquela suíte passou 101/101, com manifesto de 52 arquivos e capturas examinadas; o [manifesto anterior a Settings compacta](builds/2026-10-10-before-compact-settings.json) preserva a versão. Esses resultados não certificam a composição atual, cujo fechamento técnico será registrado no [status](../DEVELOPMENT_STATUS.md) e na [revisão do shell](d1-shell-revision.md). Não há aceite humano do piloto.
+
+<a id="primeiro-percurso-atual--seis-passos-pelo-chat"></a>
+
+## Roteiro arquivado — seis passos da versão anterior
+
+O bloco seguinte preserva as instruções já enviadas e sua prontidão técnica. Os controles de demonstração, dropdowns, Options e dados de estudo pertencem à versão anterior à revisão de sessões. Não usá-lo como roteiro da entrada normal atual.
+
+Abra [index.html](../../prototypes/desktop/index.html) diretamente no navegador, ou use a [prévia em 4173](http://127.0.0.1:4173/index.html). Se já houver trabalho aberto, recarregue para voltar ao início da demonstração; não recarregue durante o percurso, pois conversas e trabalhos ficam em memória. Use o projeto de exemplo que já aparece, sem criar outro projeto, conectar contas ou configurar o Studio. O idioma padrão é **English**; os nomes abaixo correspondem a ele. **Language → Português** é opcional, e a escolha anterior pode já estar salva. Em janela mobile, abra **Options → Language** para selecionar o idioma; no desktop os utilitários permanecem abertos.
+
+1. Em **Message for the project**, escreva: “Adicionar uma mensagem acessível quando a busca não encontrar resultados e verificar que ela aparece apenas quando a lista está vazia.” Clique em **Send** e veja o trabalho preparado no cartão.
+2. Nesse cartão, clique em **Start demo** e depois em **Finish simulated work**. Confira a mudança de estado e o próximo passo oferecido.
+3. Clique em **Review result**. No campo **Correction for this result**, escreva: “Explicitar também o comportamento quando a busca volta a ter resultados.” Clique em **Request a correction for this task**; de volta ao chat, conclua essa tentativa com **Finish simulated work**.
+4. Abra **Review result** novamente, confira o resultado e a identificação da nova tentativa/versão e clique em **Validate supplementary result**. Antes de continuar, explique se isso já aplicou o resultado no destino.
+5. No cartão, clique em **Review application**, confira o resultado e o destino apresentados e confirme em **Apply this Run in the demo**. Observe como o cartão informa a aplicação.
+6. Clique em **New chat** na navegação e escreva um rascunho sem enviar. No seletor **Chat**, volte à primeira conversa e confira o pedido e o resultado; retorne à nova conversa e veja se o rascunho foi preservado.
+
+Ao terminar, registre os passos concluídos, o que ficou confuso ou desconfortável, qualquer ajuda recebida e sua resposta sobre a diferença entre validar o resultado e aplicá-lo. Se travar, registre o passo e o que esperava encontrar; não preencher uma conclusão que não ocorreu. Trata-se de um **piloto individual guiado**, com resultados simulados, sem efeitos no código ou Git reais.
+
+Este percurso inicia a avaliação de P0-02, P0-06, P0-07 e P0-09: pedido pequeno, correção versionada, validação/aplicação separadas e preservação ao trocar de conversa. **Não cobre todas as variações desses casos nem os nove casos P0**, incluindo feature dependente, mudanças de base/candidato, eventos durante revisão, lifecycle de contas e controle incerto. As lacunas continuam explícitas na matriz e sua decisão permanece no checklist de passagem; concluir estes seis passos, sozinho, não fecha D1.
+
+### Referência arquivada de controles para a facilitação
+
+| Passo | Controles naquele build |
+| --- | --- |
+| 1 | `#chat-message`; envio em `#chat-form`. |
+| 2 | Cartão `.chat-task-card`: `data-chat-action="start"` e `"finish"`. |
+| 3 | `data-chat-action="review"`; `#supplement-correction`; envio em `#supplement-correction-form`; nova conclusão `data-chat-action="finish"`. |
+| 4 | Revisão `data-chat-action="review"`; diálogo `data-action="confirm-supplement"`. |
+| 5 | `data-chat-action="apply"`; diálogo `data-action="confirm-independent"`. |
+| 6 | `data-action="chat-session-new"`; rascunho `#chat-message`; seletor `#chat-session`. |
+
+**Evidência histórica antes da revisão de painéis:** o refinamento mobile passou **27/27 casos focados** (12 de entrada e 15 de idiomas), com catálogo de **1.012 chaves** e check aprovado. A suíte completa final passou **77/77 em uma única rodada de 2,2 minutos**, sem falhas ou casos ignorados. `npm.cmd run check:file` confirmou sete composições, o percurso curto, rascunho, idiomas persistidos e reflow a 200% via `file://`, sem servidor. Os **73 casos por cobertura consolidada** da revisão de idiomas e os quatro focados da fluidez do site permanecem históricos separados. Consulte o [registro da experiência progressiva](d1-progressive-experience.md#refinamento-da-entrada-mobile--1010) e o [contrato de idiomas](interface-languages.md). Verificação técnica não substitui observações humanas; piloto ainda não confirmado.
+
+**Versão da preparação anterior:** [manifesto arquivado antes dos painéis](builds/2026-10-10-before-session-panels.json), **36 arquivos**, SHA-256 agregado **`896778a77a828b86ed4d12e0e77c82e4154951c10e6fc718d015180901cb727c`**. O [manifesto anterior ao refinamento mobile](builds/2026-10-10-before-mobile.json) conserva o hash `f5077169474953e30c0511ac60d5e561cd5e7115d4fb2d1cfb967bf720c4e965`; escopo/algoritmo estão na [entrega](d1-delivery.md#revisão-atual--1010). Registre alterações posteriores antes do piloto. O campo inteiro ficou na primeira dobra em 390×844 e 320×900, nos três idiomas e tamanho normal; **Send pode exigir rolagem**, assim como a interface com texto a 200%. Avaliar conforto e compreensão no uso humano, separadamente dessas medidas técnicas.
+
+## Referências anteriores e casos detalhados
+
+Os roteiros seguintes conservam o histórico da preparação e os controles de domínio para os casos P0. Language/Options e controles simulados descritos neles pertencem às versões arquivadas. Na revisão atual, idioma fica em Settings → General → Interface language. O piloto só será retomado quando o responsável considerar a interface pronta para essa avaliação.
+
+## Feedback e preparação em 09/10
+
+Registro de comunicação com o responsável, sem sessão reproduzível de uso registrada:
+
+- Ao receber o convite para o piloto, informou não ter entendido o que fazer e pediu orientações concretas. A facilitação forneceu os oito passos abaixo; isso é **orientação direta**, sem execução ou conclusão confirmada.
+- Relatou que gostou da interface, mas a considerou pouco intuitiva e sentiu falta de chat. Quer uma experiência próxima à de um agente de código, percebendo o projeto como o espaço da conversa.
+- Pediu preservar a interface existente, sem mudar tudo. Refinou a direção ainda em 09/10: **manter o início por projetos e o fluxo guiado; permitir várias conversas por projeto e conversas avulsas como ponto de partida**. Projeto e conversa são entidades distintas, com relação opcional. Studio, tarefas, revisão de diff e inspectors são mantidos; a [direção de projetos/conversas](d1-chat-direction.md) detalha a proposta.
+
+São relatos reais e uma orientação de produto. A dificuldade inicial com o pedido de piloto não demonstra, por si só, um defeito da interface. Não há registro de quais ações foram tentadas, tempo, erro de aprovação ou tarefa concluída; não atribuir causa nem preencher resultados humanos a partir desta comunicação.
+
+### Ajuda direta fornecida — oito passos da versão anterior
+
+Este roteiro registra a preparação já enviada. Os rótulos correspondem à versão centrada em **Começar/Trabalho**, anterior ao incremento por conversa. Não é o roteiro principal da próxima avaliação.
+
+1. Abrir o protótipo e usar o botão do projeto para entrar em **Começar**; escolher **Correção curta · 1 tarefa**.
+2. Usar **Preparar projeto de exemplo** e, no diálogo pendente, **Continuar autorização simulada**.
+3. Confirmar a modalidade pelo checkbox e usar **Validar registro simulado**.
+4. Em OX-24, usar **Iniciar demonstração** e **Concluir trabalho simulado**.
+5. Abrir **Alterações**, examinar o diff, escrever o pedido e usar **Pedir correção**.
+6. Voltar a **Trabalho** e usar **Concluir correção simulada**.
+7. Revisar o novo resultado, usar **Validar tarefa no Run…** e confirmar **Validar na demonstração**.
+8. Usar **Revisar aplicação do Run…**, conferir resultado/destino e confirmar **Aplicar na demonstração**.
+
+O participante deve distinguir o passo 7, que aceita a tarefa na branch interna do Run, do passo 8, que aplica o candidato no destino. Essa compreensão ainda precisa ser observada. Nenhuma dessas ações modifica Git real no protótipo.
+
+### Preparação anterior de 09/10 — projetos e conversas
+
+**Resultado histórico do incremento de 09/10: 36/36 testes**, incluindo 24 anteriores retestados e 12 de projetos/conversas. Identificador daquele build: **`da380dda89ea1a3aa0c8fc3fac77de19d8681d8de4ddd6e0ca41c9d9b37c6ae2`**, conforme a [entrega](d1-delivery.md). Esse hash não identifica a revisão de identidade/idiomas atual. Execução do piloto continua pendente.
+
+Contrato disponível: **Abrir projeto** preserva início/preparação e templates guiados; **Projeto ou espaço** e **Conversa** selecionam contextos distintos, com **Nova conversa** e **Conversa avulsa**. Composer/**Enviar** pertencem à conversa ativa. O primeiro pedido prepara tarefa/Run independente, sem substituir o template nem iniciar execução. Cartões oferecem **Ver tarefa**, **Iniciar demonstração**, **Revisar resultado** e **Pedir correção**; este último prepara o comentário na revisão, cujo envio continua explícito. **Novo trabalho nesta conversa** abre outro pedido. Trocas preservam mensagens, rascunho e snapshots **em memória**, inclusive projetos de mesmo nome/IDs diferentes. Temas são globais; recarregar/resetar não é recuperação durável. A avulsa não tem repositório/destino e bloqueia aplicação. **Associação posterior não está incluída neste incremento.**
+
+O exercício inicial usa o projeto de exemplo já disponível e uma nova conversa. O início guiado continua avaliado nos casos P0. Um convite curto foi enviado ao responsável: recarregar → **Nova conversa** → escrever uma mudança → **Enviar** → criar outra conversa e retornar à primeira pelo seletor. Essa instrução é ajuda direta, sem execução ou resultado confirmado. Para avançar, entregar um pedido de cada vez e registrar ajuda fornecida:
+
+1. **Formular:** “Neste projeto de exemplo, crie uma conversa e peça ao agente para preservar o registro de auditoria ao revogar uma sessão. Inclua como conferiria essa mudança.” Observar distinção entre projeto, conversa, mensagem e trabalho preparado. Ajuda, se necessária: **Nova conversa → Mensagem para o projeto → Enviar**. Esse envio prepara um trabalho independente; execução ainda exige **Iniciar demonstração**. Resultados demonstrativos ficam identificados.
+2. **Acompanhar e corrigir:** “Veja o trabalho preparado, acompanhe a conclusão simulada e abra as alterações. Peça uma correção pelo contexto dessa conversa e confira o novo resultado.” Ajuda, se necessária: cartão → **Ver tarefa/Iniciar demonstração** → concluir trabalho simulado → **Revisar resultado**; **Pedir correção** prepara comentário na revisão, onde o envio explícito cria a tentativa de correção. Concluir a correção simulada e revisar o novo resultado. Observar se mensagem e correção ficam vinculadas ao trabalho/artefato esperado, sem trocar silenciosamente tarefa ou conta.
+3. **Aceitar e aplicar:** “Confira as evidências e aceite a tarefa. Antes de aplicar, diga o que já foi aceito e qual destino ainda será alterado. Depois confira o candidato e aplique na demonstração.” Observar separadamente aceite de tarefa e aplicação do Run, conforme P0-07/POS-10/11.
+4. **Trocar e comentar:** “Crie outra conversa neste projeto, deixe um rascunho e volte à primeira. Depois comece uma conversa avulsa e veja por que ela ainda não pode aplicar uma alteração. Volte ao projeto anterior: onde estão cada mensagem e trabalho? O que ficou mais próximo do seu jeito de usar um agente?” Ajuda, se necessária: **Nova conversa**, **Conversa avulsa**, seletores **Projeto ou espaço/Conversa**. Conferir preservação das conversas, rascunho e snapshots sem mistura de tarefas/revisões. Em variação separada, preparar outro projeto de mesmo nome e voltar ao original pelos IDs próprios. Não tentar associação/conversão da avulsa: é limite posterior explícito. Registrar resposta real, sem pressupor que a alteração resolveu a dificuldade.
+
+Perguntas essenciais após agir: “Qual projeto e qual conversa estão ativos?”, “Uma conversa avulsa já aponta para um repositório?”, “Enviar a mensagem começou execução ou preparou trabalho?”, “A qual tarefa/versão foi enviado o pedido de correção?”, “Validar a tarefa já aplicou no destino?” e “Onde abriria detalhes de conta, modelo e contexto?”. Esses passos simplificam a facilitação; não substituem os cenários POS/ACC, os casos críticos nem a avaliação externa posterior. A sessão será identificada como **piloto individual guiado**, sem alegação de uso independente ou ganho de produtividade.
 
 ## Responsáveis e decisão
 
@@ -17,19 +126,21 @@ Referências: [OX-D03/04/05 e dependências](../DEVELOPMENT_BACKLOG.md), [POS-01
 
 Se o responsável fizer um piloto individual guiado por este documento, registrar **piloto individual**, manter os prompts de tarefa separados das notas de facilitação e anotar toda ajuda recebida, inclusive do agente. Não apresentar essa sessão como estudo independente. A avaliação com três a cinco desenvolvedores externos permanece necessária antes de concluir OX-017 em M2.
 
-## Preparação reproduzível
+## Preparação reproduzível histórica — fixtures e rótulos anteriores
 
-1. Abrir o [protótipo local](../../prototypes/desktop/README.md#abrir) e registrar a versão exata, navegador, viewport e escala. Não usar contas, repositórios privados ou credenciais reais.
-2. Escolher Studio em **Personalizar aparência → Preferências → Aparência**, usando **Restaurar Studio**. Usar os mesmos dados para comparar outras aparências no caso P0-09.
-3. Usar **Reiniciar demonstração** antes de cada caso independente. Recarregar também reinicia o trabalho e as conexões. Tema, densidade, tamanho do texto e largura da fila persistem; **Restaurar layout** retorna densidade confortável, texto normal e largura inicial. Recolher/mostrar tarefas e modo foco são controles da sessão, sem promessa de persistência. Resetar o trabalho não substitui restaurar as preferências visuais.
+O bloco seguinte preserva a preparação dos casos de domínio na versão anterior, incluindo controles sintéticos e preferências antigas. Não usar Reset demo, criação de dados ou restauração de densidade confortável como instrução da abertura normal atual. Os sete passos atuais acima orientam navegação/Settings; adaptar a facilitação dos P0 à condição real disponível antes de retomar o piloto.
+
+1. Abrir [index.html](../../prototypes/desktop/index.html) diretamente conforme o [guia local](../../prototypes/desktop/README.md#abrir), sem exigir servidor, e registrar a versão exata, endereço `file://`, navegador, viewport e escala. Não usar contas, repositórios privados ou credenciais reais.
+2. Studio é o tema padrão, com sete alternativas (**oito temas**). Nenhuma mudança de aparência é necessária para o primeiro percurso. Para comparar temas no caso P0-09, usar **Customize appearance → Settings → Appearance** (no mobile, abrir **Options** primeiro), com **Restore Studio**, ou os controles equivalentes em Português. Registrar o idioma efetivo; ele é independente do tema.
+3. Usar **Reset demo** antes de cada caso independente; nos casos detalhados em Português, **Reiniciar demonstração**. Recarregar também reinicia o trabalho e as conexões. Idioma, tema, densidade, tamanho do texto e largura da fila persistem quando o navegador disponibiliza armazenamento; **Reset layout / Restaurar layout** retorna densidade confortável, texto normal e largura inicial. Recolher/mostrar tarefas e modo foco são controles da sessão, sem promessa de persistência. Resetar o trabalho não substitui restaurar as preferências visuais, e o armazenamento de páginas `file://` depende do navegador.
 4. Conferir os estados abaixo pelas telas. A pessoa de facilitação pode preparar uma variação por controles explícitos de demonstração, mas deve registrar o caminho utilizado. Não substituir uma interação ausente por uma explicação verbal e chamá-la de testada.
-5. Consultar a [entrega técnica D1](d1-delivery.md) e conferir que a versão/manifesto usados correspondem ao incremento verificado. A passagem de 09/10 executou `npm.cmd run check` e a suíte Playwright com **24 cenários aprovados**: dez em `d1.spec.mjs`, nove em `workspace.spec.mjs` e cinco em `d1-accessibility.spec.mjs`, usando Chrome 154.0.8037.98 headless, Playwright 1.64.0 e Node 24.19.0 no Windows. Inclui arraste, teclado, persistência, foco após entrada/cadastro, media queries de cores forçadas/movimento reduzido e limites Unicode. Repetir verificações pertinentes se houver mudanças/falhas novas; esse resultado técnico não produz dados humanos nem fecha OX-D05.
+5. Consultar a [entrega técnica D1](d1-delivery.md), o [status atual](../DEVELOPMENT_STATUS.md) e conferir versão/manifesto. A passagem histórica de 09/10 teve **36 cenários aprovados** com Chrome 154.0.8037.98 headless, Playwright 1.64.0 e Node 24.19.0 no Windows. A revisão histórica de idiomas de 10/10 validou **73 casos por cobertura consolidada**, e a revisão de fluidez do site teve quatro casos focados. O refinamento mobile posterior passou **77/77 em uma única rodada**, conforme o registro atual acima. Não reutilizar o hash de 09/10 como versão atual. Esses resultados não produzem dados humanos nem fecham OX-D05.
 
-**Reiniciar demonstração** conserva o seed com OX-24 em revisão, OX-25 em execução, OX-26 esperando decisão e OX-27 com falha terminal confirmada; seus Runs são independentes. O botão do projeto abre **Começar** e permite preparar um novo cenário: **Correção curta · 1 tarefa**, com uma conexão, ou **Feature guiada · 4 tarefas**, com as quatro tarefas em R-08. Preparar o cenário substitui trabalho/conexões demonstrativos e abre a autorização pendente. A tela não lê o path nem converte caminhos entre Windows e WSL. A feature tem percurso de conclusão/revisão/aceite das tarefas complementares, com fixtures identificadas e aplicação final de cinco arquivos; conferir o roteiro abaixo na passagem técnica antes do piloto.
+**Seed e entrada guiada preservados:** **Reiniciar demonstração** retorna à conversa inicial e ao seed com OX-24 em revisão, OX-25 em execução, OX-26 esperando decisão e OX-27 com falha terminal confirmada; seus Runs são independentes. Botão do projeto/**Abrir projeto** permite preparar **Correção curta · 1 tarefa** ou **Feature guiada · 4 tarefas** em R-08. Preparar outro projeto conserva os espaços anteriores em memória; a primeira preparação inicializa a fixture de uma conexão se a coleção estiver intacta. Depois reutiliza registros existentes ou acrescenta um pendente, conforme o [README](../../prototypes/desktop/README.md#dados-e-limites-do-cenário). A tela não lê o path nem converte Windows/WSL. A feature conserva a aplicação final de cinco arquivos.
 
 ### Manifesto de cenários da sessão
 
-Os caminhos abaixo correspondem aos controles do incremento D1; preencher versão e confirmar disponibilidade na passagem técnica. Todos os dados são fictícios. O mesmo manifesto deve permitir repetir um reteste. Os caminhos são notas de facilitação e não instruções a entregar antes de observar o participante.
+Os caminhos abaixo documentam a versão anterior ao incremento por conversa. Servem de referência/regressão dos controles de domínio; confirmar os novos caminhos e a versão entregue antes do próximo piloto. Todos os dados são fictícios. O mesmo manifesto deve permitir repetir um reteste. Os caminhos são notas de facilitação; quando entregues ao participante como ajuda, registrar orientação direta.
 
 | Variação | Dados/estado necessários | Como preparar na versão avaliada |
 | --- | --- | --- |
@@ -48,7 +159,8 @@ Os caminhos abaixo correspondem aos controles do incremento D1; preencher versã
 | --- | --- |
 | Sessão / data / participante / facilitador | ______ |
 | Commit + indicação de alterações locais, ou identificador/hash do build | ______ |
-| URL local e forma de iniciar/resetar | ______ |
+| Endereço `file://` ou URL local; forma de iniciar/resetar | ______ |
+| Idioma da interface e tema usados | ______ |
 | Sistema / navegador / versão | ______ |
 | Viewport CSS / tamanho da janela | ______ |
 | Escala física Windows / zoom navegador / ampliação de texto | ______ |
@@ -56,7 +168,7 @@ Os caminhos abaixo correspondem aos controles do incremento D1; preencher versã
 | Variações prontas / indisponíveis e motivo | ______ |
 | Interrupções ou alterações do protótipo durante a sessão | ______ |
 
-**Tamanho do texto → Ampliado · 200%** é um controle da interface. Ele não é zoom do navegador nem escala física do Windows. Registrar cada condição usada separadamente; não generalizar um resultado para as demais. O piloto inclui a ampliação de texto disponível; zoom/escala e tecnologias assistivas não exercitados continuam pendentes para QA do Desktop real.
+Na preparação histórica, **Tamanho do texto → Ampliado · 200%** era um controle binário da interface. Na revisão atual, **Settings → General** oferece slider 80–200%, passo 5%, padrão 100%. Nenhum deles é zoom do navegador ou escala física do Windows. Registrar cada condição usada separadamente; não generalizar um resultado para as demais. Zoom/escala e tecnologias assistivas não exercitados continuam pendentes para QA do Desktop real.
 
 ## Condução e registro
 
@@ -64,13 +176,15 @@ Apresentação inicial: “Este é um estudo simulado do Orchestrix. Queremos en
 
 Antes de começar, registrar a rotina atual: agente/editor utilizados, como envia contexto, onde revisa e como aplica uma alteração. Essa descrição serve de comparação qualitativa; não fornece uma medição de produtividade.
 
-Durante cada caso, entregar só o **prompt do participante**. O caminho e o resultado esperados ficam com a facilitação. Não ensinar os rótulos corretos antes de observar a interpretação. Uma pausa para pensar ou exploração alternativa não é automaticamente erro.
+Durante cada caso, entregar só o **prompt do participante**. O caminho e o resultado esperados ficam com a facilitação. Na parte exploratória, não ensinar os rótulos corretos antes de observar a interpretação. No piloto guiado solicitado, pode-se orientar a ação quando necessário, registrando a ajuda; conclusão guiada não deve ser descrita como descoberta independente. Uma pausa para pensar ou exploração alternativa não é automaticamente erro.
 
 Anotar início/fim, caminho percorrido, hesitações, ajuda e ações inesperadas. Classificar ajuda como **nenhuma**, **prompt neutro** (“o que você procuraria?”) ou **orientação direta** (nomear a tela/botão). Se uma ação não existir ou a simulação quebrar, registrar **indisponível/bloqueado por protótipo**. Não registrar como erro do participante. Uma explicação do facilitador depois disso não conta como conclusão da tarefa.
 
 Os casos podem ser divididos em sessões para preservar atenção. Registrar as partes e retomar com o mesmo manifesto. Não impor um tempo de conclusão como critério de usabilidade nesta amostra.
 
-## Casos P0
+## Casos P0 — referência da versão anterior e regressão
+
+Os nove grupos abaixo conservam o escopo de avaliação. Seus rótulos e caminhos antecedem a entrada por conversa; adaptar a facilitação ao incremento confirmado sem remover aceite, aplicação, identidade, contexto, estados incertos ou acessibilidade. O roteiro curto acima prepara a primeira sessão guiada, sem declarar estes casos executados.
 
 ### P0-01 — Começar e reconhecer conexões
 
@@ -186,11 +300,13 @@ Os casos podem ser divididos em sessões para preservar atenção. Registrar as 
 
 ### P0-09 — Desenvolver com conforto, teclado e adaptação
 
-**Preparação:** V08, Studio e um tema alternativo com os mesmos dados. Registrar janela, densidade e condição de ampliação efetivos. Comparar ampla/compacta e **Ampliado · 200%** da interface. Outros viewports, zoom navegador e escala física Windows podem ter QA técnica adicional.
+**Atualização da navegação para a futura retomada:** executar o caso com Sessions à esquerda e Navigation à direita, densidade Compact inicial e slider em General. Testar docking somente entre os lados, com cancelamento do blur; Settings centralizada, fechamento externo e reabertura com rascunho preservado. Reset layout restaura o arranjo lateral; escala volta a 100% pela ação própria do slider. As instruções atuais abaixo complementam os critérios históricos sem reutilizar os defaults anteriores.
+
+**Preparação para retomar:** adaptar V08 à versão identificada, usando Studio e um tema alternativo com os mesmos dados. Registrar janela, densidade e escala efetivas. Começar em Compact/100% e comparar janela ampla/estreita, densidade Comfortable e escala até 200% pelo slider. Outros viewports, zoom do navegador e escala física Windows podem ter QA técnica adicional.
 
 **Prompt do participante:** “Continue a revisão usando só o teclado. Abra uma ação pela busca, mude uma aba/arquivo, escreva uma correção, abra e feche uma confirmação e volte ao ponto de trabalho. Depois reduza a janela e amplie o texto da interface a 200%. Organize os painéis para ler confortavelmente, compare a densidade e escolha outra aparência.”
 
-**Notas de facilitação:** testar o separador da fila por arraste e, separadamente, `←`/`→`/`Home`/`End`; recolher/mostrar tarefas; observar densidade confortável/compacta. Recarregar para conferir tema/densidade/texto/largura persistidos. **Restaurar layout** deve recuperar texto normal, largura inicial e densidade confortável; **Restaurar Studio** restaura o tema. Não declarar escala Windows 200% testada por usar o controle de texto da interface.
+**Notas de facilitação atuais:** testar mover painéis entre esquerda/direita por arraste e, separadamente, menu/teclado; conferir abas compartilhadas e blur removido ao concluir/cancelar. Abrir Settings centralizada, escrever rascunho, fechar pelo clique externo e reabrir para recuperá-lo. Comparar Compact/Comfortable e slider 80–200%, passo 5%, em General. Recarregar para conferir preferências salvas. **Reset layout** restaura o arranjo lateral; o slider tem ação própria de restaurar 100%, e **Restore Studio** restaura o tema. Não declarar escala Windows 200% testada por usar o controle de texto da interface. O antigo reset combinado de densidade/texto pertence ao histórico.
 
 **Observar:** `Tab`/`Shift+Tab`, setas nas abas, `Ctrl+K`, `Esc`, retorno de foco e foco visível; atalhos não interceptam texto digitado. Modais/diálogos e logs/diff extensos conservam ações acessíveis. Reflow, recolhimento/redimensionamento e modo foco permitem continuar o fluxo sem editor externo. Navegação e alertas mantêm semântica em cada tema. Ambiente/path longos ficam compreensíveis, sem exigir IDE completo.
 

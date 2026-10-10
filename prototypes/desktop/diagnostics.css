@@ -1,0 +1,87 @@
+/* Scoped diagnostic reports share the Studio palette and continuous text scale. */
+.connection-diagnostics,.diagnostic-card{min-width:0;color:var(--text);font-size:1rem;line-height:1.5;overflow-wrap:anywhere}
+.connection-diagnostics.conn-inspector{display:block}
+.diagnostic-card{padding:20px;border:1px solid var(--line);border-radius:16px;background:var(--panel);margin-bottom:20px}
+.diagnostic-card>header,.diagnostic-heading{display:flex;align-items:center;gap:12px;margin-bottom:16px}
+.diagnostic-heading h3,.diagnostic-card h3{margin:0;font-family:inherit;font-size:1.285714rem;line-height:1.3;letter-spacing:-.025em}
+.diagnostic-heading p,.diagnostic-card header p{margin:4px 0 0;color:var(--muted);font-size:.928571rem}
+.diagnostic-emblem{width:46px;height:46px;display:grid;place-items:center;flex-shrink:0;background:var(--accent-bg);border:1px solid var(--line);border-radius:12px;color:var(--accent)}
+.diagnostic-emblem svg{width:24px;height:24px;fill:none;stroke:currentColor;stroke-width:1.6}
+.diagnostic-progress{display:flex;flex-wrap:wrap;justify-content:space-between;gap:8px 16px;font-size:.928571rem;color:var(--muted);margin-bottom:18px}
+.diagnostic-progress>span:first-child{color:var(--accent);font-weight:550}
+.diagnostic-progress progress{width:100%;height:6px;display:block;accent-color:var(--accent);border:0;border-radius:6px;overflow:hidden}
+.diagnostic-progress progress::-webkit-progress-bar{background:var(--line)}
+.diagnostic-progress progress::-webkit-progress-value{background:var(--accent)}
+.diagnostic-counts{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));margin:0 0 18px;gap:10px}
+.diagnostic-count-label{font-size:.785714rem;font-weight:550;line-height:1.5;color:var(--muted);margin:0 0 8px}
+.diagnostic-status-note{border:1px solid var(--line);border-radius:9px;padding:10px 12px;margin:0 0 16px;font-size:.857143rem;line-height:1.6;color:var(--muted);background:var(--bg)}
+.diagnostic-status-failed{color:var(--danger);background:var(--danger-bg)}
+.diagnostic-status-blocked{color:var(--warn);background:var(--warn-bg)}
+.diagnostic-counts>div{padding:12px 14px;border:1px solid var(--line);border-radius:12px;background:var(--bg);min-width:0}
+.diagnostic-counts dt{font-size:.857143rem;color:var(--muted);line-height:1.5}
+.diagnostic-counts dd{margin:3px 0 0;font-size:1.642857rem;font-weight:650;font-variant-numeric:tabular-nums;line-height:1.3}
+.diagnostic-counts [data-diagnostic-count="available"] dd{color:var(--success)}
+.diagnostic-counts [data-diagnostic-count="unavailable"] dd{color:var(--danger)}
+.diagnostic-counts [data-diagnostic-count="unknown"] dd{color:var(--muted)}
+.diagnostic-intro,.diagnostic-hint{color:var(--muted);line-height:1.6;font-size:.857143rem;margin:8px 0 0}
+.diagnostic-intro{font-size:.928571rem;margin-bottom:18px}
+.diagnostic-actions{display:flex;flex-wrap:wrap;gap:8px;margin:14px 0 18px}
+.diagnostic-actions .button{font:inherit;font-size:.928571rem;min-height:44px;white-space:normal;line-height:1.4;max-width:100%}
+.diagnostic-card .diagnostic-actions{margin-bottom:0}
+.diagnostic-scope,.diagnostic-checklist,.diagnostic-model{border:1px solid var(--line);border-radius:12px;min-width:0;background:var(--bg);margin:12px 0}
+.connection-diagnostics summary{padding:14px 16px;cursor:pointer;font-size:.928571rem;color:var(--text);border-radius:12px;line-height:1.5;min-height:44px;box-sizing:border-box}
+.connection-diagnostics summary:hover{background:var(--accent-bg)}
+.connection-diagnostics summary:focus-visible,.connection-diagnostics .button:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
+.diagnostic-scope>.diagnostic-facts,.diagnostic-scope>.diagnostic-hint{margin:12px 16px 16px}
+.diagnostic-checklist ol{list-style:none;padding:0;margin:0 16px 16px;display:grid;gap:0}
+.diagnostic-checklist li{padding:14px 0;border-top:1px solid var(--line)}
+.diagnostic-checklist li>div:first-child{display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:8px}
+.diagnostic-checklist li strong{font-size:.928571rem;font-weight:550}
+.diagnostic-badge{display:inline-flex;align-items:center;gap:5px;flex-shrink:0;align-self:flex-start;font-size:.785714rem;font-weight:500;line-height:1.4;color:var(--muted);background:var(--panel);border:1px solid var(--line);border-radius:7px;padding:4px 7px;max-width:100%;white-space:normal}
+.diagnostic-badge svg{width:14px;height:14px;fill:none;stroke:currentColor;stroke-width:1.7;flex-shrink:0}
+.diagnostic-available,.diagnostic-passed,.diagnostic-supported{color:var(--success);background:var(--success-bg)}
+.diagnostic-unavailable,.diagnostic-failed,.diagnostic-unsupported{color:var(--danger);background:var(--danger-bg)}
+.diagnostic-pending,.diagnostic-blocked{color:var(--warn);background:var(--warn-bg)}
+.diagnostic-group,.diagnostic-models{margin-top:24px}
+.connection-diagnostics h4{font-size:1.071429rem;margin:0 0 12px;font-weight:600;line-height:1.5;font-family:inherit}
+.diagnostic-feature-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;min-width:0}
+.diagnostic-feature{border:1px solid var(--line);background:var(--panel);border-radius:12px;padding:14px;min-width:0}
+.diagnostic-feature>header{display:flex;align-items:flex-start;justify-content:space-between;gap:8px;flex-wrap:wrap}
+.diagnostic-feature h5{font-family:inherit;font-size:.928571rem;font-weight:550;line-height:1.45;margin:3px 0;min-width:0}
+.diagnostic-feature-meta{display:flex;flex-direction:column;gap:4px;margin-top:10px;font-size:.785714rem;color:var(--muted)}
+.diagnostic-feature-meta>span:before{content:"";display:inline-block;width:3px;height:3px;border-radius:50%;vertical-align:middle;margin-right:6px;background:var(--muted)}
+.diagnostic-facts{font-size:.857143rem;display:grid;gap:10px;margin:14px 0 0;min-width:0}
+.diagnostic-facts>div{display:flex;justify-content:space-between;align-items:flex-start;gap:16px;min-width:0}
+.diagnostic-facts dt{color:var(--muted);flex:1;min-width:0}
+.diagnostic-facts dd{margin:0;text-align:right;flex:1;min-width:0;overflow-wrap:anywhere}
+.diagnostic-provenance{display:flex;flex-direction:column;gap:3px;font-size:.714286rem;color:var(--muted);border-top:1px solid var(--line);padding-top:9px;margin-top:12px}
+.diagnostic-provenance strong{font-weight:500}
+.diagnostic-credit-details{font-size:.785714rem;color:var(--muted);border-top:1px solid var(--line);padding-top:10px;margin-top:12px}
+.diagnostic-credit-details>strong{font-weight:500}
+.diagnostic-policy{padding:18px;border:1px solid var(--line);border-radius:14px;background:var(--accent-bg);margin-top:24px}
+.diagnostic-policy .diagnostic-hint{margin-top:12px}
+.diagnostic-model summary{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}
+.diagnostic-model summary>span:first-child{min-width:0;display:flex;flex-direction:column;gap:4px}
+.diagnostic-model summary>span:first-child:before{content:"›";float:left;display:inline-block;color:var(--accent);margin-right:4px}
+.diagnostic-model[open] summary>span:first-child:before{content:"⌄"}
+.diagnostic-model summary strong{font-weight:550}
+.diagnostic-model summary small{font-size:.785714rem;color:var(--muted);overflow-wrap:anywhere}
+.diagnostic-model-details{padding:0 14px 14px}
+.diagnostic-model-details>.diagnostic-feature-grid{margin-top:14px}
+.diagnostic-empty{padding:20px;border:1px dashed var(--line);border-radius:12px;font-size:.928571rem;color:var(--muted);line-height:1.6}
+.diagnostic-notice{position:fixed;right:20px;bottom:20px;z-index:75;display:flex;align-items:center;gap:14px;max-width:min(520px,calc(100vw - 32px));padding:16px;background:var(--panel);color:var(--text);border:1px solid var(--line);border-radius:14px;box-shadow:0 14px 50px #0006;font-size:.928571rem;flex-wrap:wrap;overflow-wrap:anywhere}
+.diagnostic-notice>div{flex:1;min-width:0;display:flex;flex-direction:column;gap:4px}
+.diagnostic-notice span{color:var(--muted);font-size:.857143rem}
+.diagnostic-notice .button{min-height:44px;white-space:normal;max-width:100%}
+.settings-connection-actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
+.settings-connection-actions .button{flex:1 1 auto;white-space:normal;max-width:100%}
+.conn-row-actions{display:flex;flex-direction:column;align-items:stretch;gap:8px;min-width:0}
+.conn-row-actions .button{white-space:normal;line-height:1.4;min-height:44px;max-width:100%}
+@media(max-width:620px){.diagnostic-feature-grid{grid-template-columns:1fr}.diagnostic-card{padding:14px}.diagnostic-counts{gap:6px}.diagnostic-counts>div{padding:10px 8px}.diagnostic-counts dd{font-size:1.428571rem}.diagnostic-facts>div{flex-direction:column;gap:2px}.diagnostic-facts dd{text-align:left}.diagnostic-policy{padding:14px}.diagnostic-model summary{flex-wrap:wrap}.diagnostic-notice{right:16px;bottom:16px}.diagnostic-actions .button{flex:1 1 auto}}
+html[data-text-size="large"] .diagnostic-feature-grid{grid-template-columns:1fr}
+html[data-text-size="large"] .diagnostic-counts{grid-template-columns:1fr}
+html[data-text-size="large"] .diagnostic-counts>div{display:flex;align-items:center;justify-content:space-between;gap:14px}
+html[data-text-size="large"] .diagnostic-facts>div{flex-direction:column;gap:2px}
+html[data-text-size="large"] .diagnostic-facts dd{text-align:left}
+@media(forced-colors:active){.diagnostic-badge,.diagnostic-emblem,.diagnostic-feature,.diagnostic-policy{border:1px solid CanvasText}}
+@media(prefers-reduced-motion:reduce){.connection-diagnostics *{scroll-behavior:auto!important}}

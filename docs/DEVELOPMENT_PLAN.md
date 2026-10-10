@@ -4,13 +4,23 @@ O Orchestrix deve permitir que o desenvolvedor defina um objetivo, conecte seus 
 
 O caminho proposto começa por pesquisa aprofundada de soluções semelhantes e experiência de uso. Essa pesquisa orienta uma execução confiável e um aplicativo com identidade visual, organização clara e conforto para desenvolver. A autonomia cresce sobre essa base. Múltiplas contas do mesmo provedor fazem parte do domínio desde o início; sua execução simultânea depende das capacidades e condições de integração de cada runtime.
 
-**Estado em 9 de outubro de 2026:** D0 está concluído como pesquisa, com [conclusão, decisões e revisão explícita do critério metodológico](./research/d0-conclusion.md). D1 tem [protótipo e 24 cenários técnicos aprovados](./design/d1-delivery.md); o piloto humano permanece pendente. A [execução do plano](./DEVELOPMENT_STATUS.md) também registra o [primeiro percurso real Codex](./research/runtime-harness-results.md) antecipado e a [preparação offline de lifecycle](./research/offline-lifecycle-validation.md). Autenticação via assinatura, resposta e interrupção foram observadas no primeiro harness; retomada, contenção/término da árvore e contas independentes permanecem pendentes. A continuação offline não retoma M0 nem amplia capacidades reais do provider. O aplicativo de produção ainda não está implementado. Os [ADRs 0001 a 0004](./README.md#architecture-decision-records) continuam sendo as decisões aceitas; o [backlog](./DEVELOPMENT_BACKLOG.md) mantém os gates de piloto e implementação.
+**Estado em 10 de outubro de 2026:** D0 está concluído como pesquisa, com [conclusão, decisões e revisão explícita do critério metodológico](./research/d0-conclusion.md). D1 tem a [revisão de sessões, painéis e Settings](./design/d1-shell-revision.md), com entrada progressiva e identidade aprovada. A rodada histórica anterior à revisão passou **77/77**; a verificação da nova versão consta na [execução do plano](./DEVELOPMENT_STATUS.md). O resultado anterior de 73 casos por cobertura consolidada permanece histórico. A [pasta de padronização visual](../design-system/README.md) orienta as próximas implementações; aprovação estética e testes técnicos não encerram o piloto humano, que permanece pendente. O status também registra o [primeiro percurso real Codex](./research/runtime-harness-results.md) antecipado, a [preparação offline de lifecycle](./research/offline-lifecycle-validation.md) e [nove testes nativos de contenção/watchdog Windows](./research/windows-process-containment.md). Autenticação via assinatura, resposta e interrupção foram observadas no primeiro harness; retomada, supervisão integrada da árvore de runtime real e contas independentes permanecem pendentes. A continuação offline não retoma M0 nem amplia capacidades reais do provider. O aplicativo de produção ainda não está implementado. Os [ADRs 0001 a 0004](./README.md#architecture-decision-records) continuam sendo as decisões aceitas; o [backlog](./DEVELOPMENT_BACKLOG.md) mantém os gates de piloto e implementação.
+
+**Continuação atual em 10/10:** por solicitação do responsável, a revisão da interface precede a retomada do piloto. A navegação usa árvore de sessões/projetos em vez de dois seletores. Sessões começam avulsas ou dentro de um projeto e podem ser vinculadas preservando identidade, histórico, rascunho e snapshots antigos. Sessions começa à esquerda, com um único criador principal. Painéis movem-se entre esquerda/direita e compartilham abas; o workspace recebe blur durante a escolha de lado. A entrada Compact foi reduzida para caber em telas comuns de notebook a 100%. Settings flutuante abre centralizada, maior, fecha ao clicar fora e mantém o rascunho da conversa e reúne perfil, idioma, Themes, contas/uso observado, créditos de API quando expostos, instruções pessoais e políticas. Help abre tutoriais ilustrados no navegador, com estrutura para vídeos futuros. A apresentação evita demo/exemplo/local-first; capacidades de execução e dados de provedores continuam sujeitos aos contratos reais, com desconhecido explícito. O [padrão do shell](../design-system/workspace-shell.md) orienta o Desktop de M2. A conexão começa por Subscription/API, depois provedor, com campos condicionais para Gemini, Azure AI, AWS Bedrock e APIs compatíveis. A [pesquisa oficial](./research/api-provider-discovery-2026-10-10.md) e o [contrato](./design/api-connection-contract.md) orientam descoberta/capabilities em OX-002/OX-003 e conexões de OX-016, sem prometer APIs indisponíveis ou telemetria. Compact é padrão; tamanho de texto usa range percentual. Marcos e gates existentes permanecem.
+
+**Incremento de descoberta imediata (10/10):** [catálogos de recursos e controles padronizados](./design/resource-discovery-increment.md) acrescentam a bridge de leitura ao host de desenvolvimento. Salvar uma API consulta o catálogo específico do backend e registra capacidades com origem/escopo, unknown e parcialidade, sem prompts pagos. A entrega prepara OX-002/OX-003/OX-007/OX-016; login, cofre, execução e gates existentes permanecem.
+
+**Incremento de diagnósticos (10/10):** o [contrato de diagnósticos de conexões](./design/connection-diagnostics.md) acrescenta várias verificações automáticas no cadastro e uma ação de recheck, adequadas ao tipo de conexão e provedor. O relatório separa suporte, configuração/política, disponibilidade e evidência observada, com progresso, bloqueios e dados desconhecidos. Modelo, reasoning/thinking, Fast/Ultrafast, multi-agent nativo e acesso completo são verificados separadamente; Ultra pode incluir delegação no produto do fornecedor, mas seu nome não certifica a combinação efetiva de um adapter. Azure conserva catálogo e deployments/ARM separados; Bedrock considera região, autenticação e inference profiles; Gemini API permanece distinto de Antigravity. Nesta etapa, o diagnóstico lê metadata/configuração autorizadas e não executa prompts, ferramentas ou probes pagos. Runtime sem identidade/adapter validado permanece bloqueado ou desconhecido.
+
+A continuação usa os tickets existentes: OX-001/OX-002 validam leituras e futuras provas controladas por runtime; OX-003 consolida o relatório normalizado; OX-007/OX-008 aplicam a política efetiva por tentativa; OX-012/OX-016 levam cadastro, progresso, inspeção e recheck ao Desktop. Enquanto o Orchestrix coordena workers, delegação nativa aninhada fica desativada por padrão na sua política, sem modificar a configuração pessoal do runtime durante o diagnóstico. Uma opção futura exigirá escopo, benefício e orçamentos definidos. Probes ativos são evolução posterior, com limites e autorização de efeitos/cobrança; Subscription Only continua vedando execução API e fallback pago. O piloto D1 permanece adiado até o responsável aprovar a revisão da interface; nenhum relatório de leitura conclui M0 ou muda a ordem D0 → D1 → M0 → M1 → M2.
 
 ## 1 Objetivo de produto
 
 O usuário deve poder abrir um repositório, conectar uma ou mais contas próprias e pedir algo como: “implemente autenticação e faça uma revisão de segurança”. O Orchestrix prepara um plano, mostra suas escolhas, executa tarefas em ambientes separados, encaminha resultados entre agentes, roda verificações e apresenta a integração para aprovação conforme a política.
 
 O Desktop é um workspace de desenvolvimento assistido: o usuário formula trabalho, fornece contexto, examina código/diffs e pede correções dentro do aplicativo. A qualidade visual e a adaptação da interface fazem parte do produto desde o primeiro alpha. Edição leve com indentação pode ser incluída conforme a pesquisa, sem assumir o escopo de IDE, debugger ou ambiente integrado de testes. As verificações executadas pelo Core continuam produzindo evidências para revisão.
+
+A entrada é pelo chat, com uma sessão avulsa ou dentro de um projeto. Um projeto pode reunir várias conversas e contexto compartilhado; associar uma conversa depois preserva identidade, histórico e tentativas anteriores. A árvore de Sessions substitui seletores sobrepostos. A [direção de chat](./design/d1-chat-direction.md) e o [contrato do shell](../design-system/workspace-shell.md) definem a divulgação progressiva: ações frequentes próximas da conversa, Studio e detalhes técnicos conforme a necessidade, Settings flutuante e tutoriais externos.
 
 Três configurações devem usar o mesmo núcleo:
 
@@ -22,6 +32,10 @@ Três configurações devem usar o mesmo núcleo:
 
 Mais sessões não significam mais cota. Mais contas também não garantem limites independentes: o sistema precisa representar grupos de capacidade compartilhada quando existirem. Uma sessão existente permanece vinculada à conexão que a criou; trocar de conta ou provedor inicia uma nova sessão com um novo Context Pack.
 
+Uma assinatura, um runtime e até um único modelo devem constituir uma configuração útil, com trabalho serial quando necessário. A seleção automática ajusta somente controles realmente expostos; ausência de modelos alternativos não impede uso do chat, contexto, papéis e verificação. APIs próprias são outra modalidade, com autorização e cobrança independentes. O [contrato de conexão](./design/api-connection-contract.md) mantém o cadastro em duas etapas e a possibilidade de inspecionar recursos sem liberar execução paga.
+
+Development continua sendo o uso principal. A versão inicial desejada contempla também Research, Documentation, Presentations, Refactoring e Improvement Review, com critérios adequados aos artefatos e suporte das ferramentas demonstrado. Modos especializados e configuração dos perfis executores seguem o [contrato de modos e perfis](./design/action-modes-and-worker-profiles.md); a apresentação do catálogo não comprova que esses fluxos já foram entregues.
+
 A autonomia terá três níveis configuráveis: acompanhamento manual de tarefas; execução de um plano aprovado; planejamento e replanejamento dentro dos limites autorizados pelo usuário. Em todos eles, o Core mantém a autoridade sobre estado, permissões e integração.
 
 ## 2 Decisões existentes e ajustes necessários
@@ -30,7 +44,7 @@ As decisões aceitas já sustentam o produto: um único runtime é suficiente; m
 
 Para tornar essa visão executável, o desenvolvimento precisa corrigir seis lacunas:
 
-1. O cadastro atual por `codex` ou `claude` precisa representar conexões e contas distintas.
+1. Levar o cadastro de conexões distintas do protótipo ao domínio seguro de produção, preservando identidade, modalidade de autenticação e cobrança.
 2. Tarefa, tentativa, sessão e integração precisam ter estados separados.
 3. Política, contexto básico, eventos e recuperação devem existir no primeiro fluxo útil.
 4. A interface deve acompanhar o primeiro ciclo de implementação e revisão, antes da inteligência avançada.
@@ -49,7 +63,7 @@ O [levantamento e pesquisa aprofundada](./PRODUCT_AND_UX_RESEARCH.md) consolidad
 
 O [complemento competitivo de 09/10](./research/competitive-update-2026-10-09.md) acrescenta Jackalope/Cobalt e evidência de múltiplas contas no Superset, ampliando o levantamento documental para onze famílias. A proposta central já tem concorrentes diretos. O plano deve avaliar vantagem em coordenação, compreensão, conforto e qualidade das decisões, conforme CMP-01 a CMP-05 e o protocolo comparativo proposto. OX-D05 valida entendimento; OX-017 permite medir execução; M3/M4 permitem comparar contas/roteamento. Essas hipóteses não acrescentam gates nem antecipam implementação.
 
-A sequência principal é **D0 → D1 → M0 → M1 → M2**, seguida de M3 a M6. D0 foi consolidado; D1 aplicou seus resultados às jornadas e ao protótipo verificado; o próximo passo é executar/registrar o piloto com o responsável. Depois retomamos os spikes de M0, incluindo o candidato de [autorização própria para uso do plano ChatGPT](./research/subscription-account-ux.md). A avaliação externa continua até o alpha, conforme OX-D05. Protótipo e harness antecipados não fecham D1/M0. Dentro de cada marco, tarefas independentes podem avançar em paralelo.
+A sequência principal é **D0 → D1 → M0 → M1 → M2**, seguida de M3 a M6. D0 foi consolidado; D1 aplicou seus resultados às jornadas e ao protótipo verificado. Por solicitação do responsável, primeiro concluímos a revisão da interface e retomamos o piloto após sua aprovação. Depois retomamos os spikes de M0, incluindo o candidato de [autorização própria para uso do plano ChatGPT](./research/subscription-account-ux.md). A avaliação externa continua até o alpha, conforme OX-D05. Protótipo, diagnósticos de leitura e harness antecipados não fecham D1/M0. Dentro de cada marco, tarefas independentes podem avançar em paralelo.
 
 ## 3 Arquitetura de entrega
 
@@ -76,10 +90,14 @@ Começar com poucos pacotes: `orchestrix-core`, módulos de infraestrutura/adapt
 
 O daemon será o proprietário dos processos e do banco. Desktop e CLI chamam comandos e consultas da mesma API de aplicação. Tipos do domínio não dependem de Tauri. Um transporte local versionado, com acesso restrito ao usuário, oferece comandos identificados, snapshots e eventos com cursor. Isso prepara a extensão VS Code sem implementá-la antecipadamente.
 
+Descoberta e diagnósticos são operações de leitura dos adapters, separadas da execução de tarefas. O host controla credenciais, destinos e limites; o renderer recebe resultados sanitizados. A bridge JavaScript do estudo e o armazenamento de sessões/rascunhos do navegador não substituem cofre, SQLite, identidade de processo ou recuperação de produção. Levar os contratos validados ao Core nos marcos existentes.
+
 ## 4 Modelo de domínio para múltiplas contas
 
 | Conceito | Responsabilidade |
 | --- | --- |
+| Project | Reúne contexto compartilhado, repositório e referências de trabalho, sem ser a identidade de uma conversa. |
+| Conversation | Sessão de chat do aplicativo, avulsa ou associada a um projeto; referencia trabalho e artefatos sem fundir sessões nativas. |
 | Provider | Identifica a plataforma, como OpenAI, Anthropic ou Google. |
 | RuntimeAdapter | Implementa o contrato de integração e traduz capacidades e eventos. |
 | RuntimeInstallation | Guarda executável, versão detectada e estado de instalação. |
@@ -90,6 +108,7 @@ O daemon será o proprietário dos processos e do banco. Desktop e CLI chamam co
 | Task | Guarda objetivo, dependências, critérios de aceite, risco e resultados necessários. |
 | TaskAttempt | Registra uma tentativa, revisão do plano, política efetiva, conexão, contexto, base, worktree e evidências. |
 | RuntimeSession | Referencia a conversação do provedor, vinculada à conexão original. |
+| ConnectionDiagnostics | Snapshot versionado de verificações, recursos e evidências da identidade/escopo de uma conexão. Não autoriza execução. |
 | IntegrationAttempt | Registra aplicação do resultado sobre uma base e sua verificação final. |
 
 `codex-pessoal-a` e `codex-pessoal-b` são duas Connections que usam o mesmo adapter. Implementador e revisor são perfis, e podem usar qualquer conexão elegível. Identidade da conta e papel do agente permanecem conceitos separados.
@@ -100,11 +119,22 @@ O registro de conexões e as referências de autenticação ficam no estado loca
 
 O primeiro router deve ser determinístico. Primeiro elimina candidatos incompatíveis com requisitos obrigatórios: autenticação, modo de cobrança, permissões, capacidades, exigência de revisão e capacidade de execução. Depois aplica preferências ordenadas e disponibilidade. Histórico de desempenho entra apenas quando houver dados suficientes.
 
-A seleção produz um registro com candidatos considerados, razões de exclusão, conexão escolhida, modelo solicitado e efetivo, reasoning solicitado e efetivo e fallback. Quando o runtime não confirma um parâmetro efetivo, o registro mostra `unknown` ou `runtime-managed`.
+A seleção produz um registro com candidatos considerados, razões de exclusão, conexão escolhida, modelo solicitado e efetivo, reasoning solicitado e efetivo, service tier e fallback. Quando o runtime não confirma um parâmetro efetivo, o registro mostra `unknown` ou `runtime-managed`. Consultar capabilities e acesso no escopo e revisão corretos; uma união de capacidades no resumo do diagnóstico não concede todas elas a cada modelo.
 
 Para preferências, manter a precedência já proposta: sistema → usuário → projeto → perfil → categoria/risco → execução → tarefa. Restrições obrigatórias formam um conjunto de limites que overrides não podem ampliar sem autorização da política. Resolver conflitos explicitamente; uma preferência nunca remove uma obrigação.
 
-O usuário poderá escolher presets iniciais como Equilibrado, Qualidade, Economia de assinatura e Personalizado. Cada preset é uma configuração inspecionável. “Modelo mais forte” usa uma ordem declarada pelo adapter ou pelo usuário, sem presumir que nomes de modelos estabelecem um ranking universal. `maximum` significa a configuração de raciocínio mais alta suportada naquela combinação de runtime e modelo.
+As estratégias iniciais são **Efficiency, Performance, Balanced e Custom**, conforme a [direção de roteamento](./design/routing-strategies.md):
+
+| Estratégia | Intenção |
+| --- | --- |
+| Efficiency | Preservar capacidade/cotas, usando modelos e esforço menores quando suficientes para a complexidade, risco e importância da tarefa. |
+| Performance | Priorizar qualidade e modelos adequados ao trabalho exigente, sem elevar reasoning em verificações triviais ou determinísticas. |
+| Balanced | Equilibrar qualidade, tempo e utilização da assinatura com regras explicáveis. |
+| Custom | Permitir ajustar regras, preferências e limites pelos escopos da política. |
+
+Presets especializados, como Scientific Research, Software Architecture, Complex Planning, Debugging e Security Review, refinam a configuração para um domínio. Modo de ação, perfil do executor e estratégia de recursos permanecem conceitos distintos. Cada preset é inspecionável e personalizável; não libera uma ferramenta ou uma modalidade de cobrança proibida. O controle manual conserva prioridade dentro das restrições obrigatórias.
+
+“Modelo mais forte” usa uma ordem explicitamente fundamentada ou configurada, sem ranking universal inferido pelo nome/preço. A intenção `maximum` se traduz para um valor nativo aceito naquela combinação e não implica que mais esforço sempre produza resultado melhor. A V1 usa regras determinísticas por tipo, complexidade, risco, importância e contexto; classificadores sofisticados e otimização por histórico evoluem depois. Consultas mecânicas, como status do Git, usam a ferramenta determinística autorizada, sem chamada de modelo quando ela não é necessária.
 
 Exemplo conceitual de política de projeto, ainda sem contrato público estável:
 
@@ -129,6 +159,8 @@ review:
 Na execução, a política vira um snapshot imutável. Alterações ao vivo afetam novas decisões e emitem eventos; reduzir concorrência impede novas admissões até atingir o limite, sem encerrar automaticamente trabalhos ativos. Uma exigência sem candidato elegível deixa a tarefa bloqueada com uma explicação.
 
 O modo de assinatura precisa verificar a origem da autenticação e eventuais fallbacks do runtime. Remover variáveis de API é apenas uma parte dessa verificação. Se o modo de cobrança não puder ser confirmado, uma política estrita não inicia a execução.
+
+Subscription Only exclui execução API, inclusive APIs cadastradas com free tier ou crédito, e proíbe fallback cobrado silencioso. Uma leitura de catálogo autorizada no cadastro API não altera essa política. Reasoning/Ultra, Fast/Ultrafast, multi-agent nativo e permissões são eixos independentes conforme o [contrato de diagnósticos](./design/connection-diagnostics.md). Enquanto o Orchestrix coordena workers, delegação nativa aninhada fica desativada por padrão na política por tentativa; uma opção futura exige benefício, escopo, orçamentos e mecanismo de aplicação/cancelamento demonstrados.
 
 ## 6 Contexto que acompanha o trabalho
 
@@ -170,6 +202,8 @@ No Antigravity, login salvo e Gemini API key são caminhos diferentes. A integra
 
 Os resultados dos spikes devem registrar versões, comandos, autenticação usada, capacidades observadas e fixtures sem segredos. A matriz detalhada e suas fontes oficiais devem acompanhar o resultado. Nenhum marco inicial depende de todos os adapters estarem prontos.
 
+A [pesquisa de APIs e inventário](./research/api-provider-discovery-2026-10-10.md) acrescenta OpenAI, Anthropic, Gemini, Azure/Foundry, Bedrock, Vertex e backends compatíveis como modalidades distintas dos runtimes por assinatura. Catálogo, parâmetros, região, deployment/profile, ferramentas e uso precisam de contratos específicos; uma lista de nomes não demonstra a combinação de execução. Os [diagnósticos](./design/connection-diagnostics.md) tornam essas diferenças inspecionáveis sem iniciar prompts ou alterar configurações. Os caminhos não integrados continuam identificados como pendentes.
+
 ## 9 Marcos de desenvolvimento
 
 | Marco | Entrega demonstrável | Condição para avançar |
@@ -178,7 +212,7 @@ Os resultados dos spikes devem registrar versões, comandos, autenticação usad
 | D1 Design e validação | Arquitetura de informação, protótipo de alta fidelidade, tokens e avaliação de uso. | Direção visual escolhida e piloto inicial sem problemas críticos para retomar M0; avaliação externa continua antes do alpha. |
 | M0 Viabilidade | Harness de um runtime real e runtime fake, com eventos normalizados, orientados por D0/D1. | Executar, interromper e classificar falhas; decidir transporte, autenticação e limites conhecidos. |
 | M1 Worker confiável | CLI executa tarefa em worktree, persiste tentativas e roda checks. | Reiniciar sem perder artefatos, duplicar execução ou alterar a árvore principal. |
-| M2 Aplicativo útil | Workspace visualmente consistente coordena implementação, revisão e correção com uma conta. | Completar ciclo no app; validar teclado, layouts, estados e compreensão conforme D1, além da execução. |
+| M2 Aplicativo útil | Chat e workspace consistentes coordenam implementação, revisão e correção com uma conta, com sessões/projetos, Settings e diagnósticos. | Completar ciclo no app; validar teclado, layouts, estados e compreensão conforme D1, além da execução e dos artefatos dos modos pretendidos. |
 | M3 Pool de execução | DAG paralelo, múltiplas conexões e segundo provedor. | Respeitar dependências, locks, capacidade por conta/grupo, cooldown e identidade de sessão. |
 | M4 Orquestração automática | Objetivo em linguagem natural gera plano, rotas e contexto; revisões do plano são controladas. | Aprovar plano válido e acompanhar execução; intervenção e replanejamento preservam histórico e trabalho ativo. |
 | M5 Beta e evidência | Memória verificável, instalação reproduzível, métricas e cliente VS Code inicial. | Usuário externo opera sem contexto privado; resultados medidos e protocolo reutilizado. |
@@ -188,19 +222,27 @@ Os resultados dos spikes devem registrar versões, comandos, autenticação usad
 
 Depois de consolidar D0 e o piloto inicial de D1, retomar o harness já preparado, capturando eventos e erros sem executar trabalho extenso. Testar seleção de modelo/raciocínio, retomada, cwd, permissões, timeout e encerramento da árvore de processos no Windows. Investigar isolamento de duas conexões sem depender da troca do login global.
 
+Demonstrar as leituras seguras usadas por cadastro/recheck, com catálogo, identidade, configuração e capabilities da versão selecionada. Separar recursos reportados de configuração carregada e de execução observada. Probes ativos posteriores devem ser limitados, explicitamente escopados e separados da rodada automática de metadata; preservam a origem de cobrança e os gates do harness.
+
 **Demonstração:** iniciar uma tarefa trivial, observar saída estruturada e cancelar com evidência de encerramento. Registrar como suportado, não suportado ou desconhecido cada recurso. Se um runtime falhar no contrato, seguir com outro e manter a limitação documentada.
 
 ### M1 Worker confiável
 
 Implementar tarefa e tentativa, SQLite, eventos, supervisor, worktree, Context Pack básico, política efetiva e verificação. Uma única conexão e concorrência igual a um são suficientes, mas os identificadores já permitem múltiplas conexões.
 
+Persistir projetos/conversas, definições/versionamento de modos e perfis e snapshots dos diagnósticos pertinentes. Aplicar estratégias determinísticas com uma conta/um runtime, validando parâmetros nativos, cobrança e restrições do worker antes de cada tentativa. A política de delegação nativa precisa de enforcement demonstrado; o relatório do protótipo não o substitui.
+
 **Demonstração:** corrigir um defeito pequeno em repositório de teste; uma falha de teste impede aceitação; reiniciar o Core preserva diff, estado e evidências. Este marco valida engenharia, ainda sem prometer um produto completo.
 
 ### M2 Aplicativo útil
 
-Entregar abertura de projeto, cadastro local de conexão, tarefa manual, perfis implementador/revisor, pipeline com correções limitadas, timeline, diff, resultados de checks, controles de pausa/cancelamento e editor básico de política. Usar o mesmo runtime em sessões independentes quando só houver uma conta.
+Entregar abertura de projeto e sessões avulsas/associadas, cadastro Subscription/API, diagnósticos automáticos e recheck, tarefa manual pelo chat, perfis implementador/revisor, pipeline com correções limitadas, timeline, diff, resultados de checks, controles de pausa/cancelamento e editor básico de política. Usar o mesmo runtime em sessões independentes e trabalho serial quando só houver uma conta.
 
 Implementar a direção visual validada em D1: tipografia e espaçamento consistentes, temas, painéis adaptativos/recolhíveis, modo foco, ações contextuais e estados completos. A tela deve priorizar trabalho selecionado e necessidade de atenção, preservando acesso a detalhes técnicos. O fluxo assistido deve funcionar dentro do app; editor externo é uma opção. Se edição leve entrar no alpha, coordenar escrita concorrente e invalidar verificações quando o código mudar.
+
+Portar o [shell aprovado](../design-system/workspace-shell.md): Sessions à esquerda e Navigation à direita por padrão, um criador principal, docking lateral/abas, entrada Compact, Settings centralizada que fecha sem perder o rascunho, idioma e Themes dentro de Settings e Help no navegador. Site e app compartilham marca/tokens; montanhas e partículas permanecem no site. Diagnósticos conservam desconhecido, bloqueio, não aplicável e leitura falha com ações distintas, sem avisos de demo na interface e sem promover dados inventados a prova.
+
+Levar ao Control Center as estratégias, presets especializados, seis modos nativos, criação de modos especializados locais e edição dos campos autorizados dos perfis executores. A versão inicial pretendida precisa demonstrar um fluxo representativo por modo, inclusive fontes em Research, arquivo revisado em Presentations e sugestões sem aplicação automática em Improvement Review. A sequência de implementação pode começar pelo ciclo de código; exibir cartões não encerra os demais fluxos.
 
 O Desktop controla um daemon separado. M2 oferece a suspensão mínima de novas admissões pelo daemon, inclusive pela preferência de fechamento da janela: continuar execução ou impedir o início de novos trabalhos, preservando tentativas já ativas. Suspender admissões não confirma pausa de turno, cancelamento ou término de worker; reabrir reconecta ao estado existente e permite retomar admissões explicitamente. Esse controle do fluxo inicial não depende do scheduler ampliado de M3. “Open in VS Code” pode ser uma ação simples, antes de existir extensão.
 
@@ -240,6 +282,8 @@ O MVP deve abrir um repositório Git, receber um objetivo, gerar plano revisáve
 
 O MVP herda os critérios visuais e de interação de D1/M2: hierarquia clara, identidade coerente, adaptação ao espaço e à tarefa, estados acionáveis e conforto de leitura. O usuário deve desenvolver pelo fluxo assistido no próprio app, com inspeção de código e pedidos de mudança; recursos completos de IDE ou testes interativos não são necessários para isso.
 
+A configuração simples com uma assinatura é obrigatória; múltiplas contas e APIs próprias ampliam possibilidades conforme capacidades demonstradas. Preservar as quatro estratégias, presets, modos/perfis e a opção de configuração manual. Cadastro e diagnósticos devem informar o que é suportado, configurado e observado, sem exigir que a pessoa configure todos os parâmetros antes de conversar. A versão inicial desejada conserva os critérios por modo descritos em M2.
+
 Suportar um runtime continua obrigatório. O objetivo do MVP é incluir dois adapters validados e múltiplas Connections; um provedor que não ofereça isolamento de contas confirmado recebe suporte explícito mais limitado, sem simular duas identidades sobre um único login global.
 
 Ficam para depois: IDE completo, editor avançado, marketplace de plugins, agentes distribuídos, roteamento por aprendizado, consumo especulativo de patches e event sourcing integral. A prioridade é fechar o ciclo de trabalho e demonstrar confiabilidade.
@@ -254,6 +298,9 @@ CI usa runtime fake e fixtures, sem depender de assinatura ou chamadas pagas. Te
 - Cancelamento encerra os processos identificados e mantém os artefatos.
 - Uma conexão não herda sessão ou autenticação de outra.
 - Opção não suportada gera bloqueio ou fallback visível conforme a política.
+- Diagnóstico automático/recheck não executa prompts, altera permissões ou promove fixtures a autenticação; resposta atrasada respeita identidade e revisão.
+- Reasoning, velocidade, multi-agent nativo e sandbox/aprovação conservam evidência independente; dados desconhecidos não viram recursos disponíveis.
+- Subscription Only impede execução API/fallback pago, e a restrição de delegação nativa do worker tem prova de aplicação distinta de sua política declarada.
 - Worktree, integração e intervenção manual preservam mudanças do usuário.
 - Cliente desconectado recupera snapshot e eventos sem alterar o estado do Core.
 
@@ -263,7 +310,7 @@ Verificar também o [aceite de experiência](./PRODUCT_AND_UX_RESEARCH.md#8-crit
 
 ## 12 Ordem de trabalho e decisões pendentes
 
-OX-D01 e OX-D02 encerraram D0 pelo método de pesquisa consolidado, com [cobertura e limites registrados](./research/d0-conclusion.md). O próximo foco é avaliar a [entrega D1](./design/d1-delivery.md) no piloto de OX-D05 e corrigir problemas críticos; só então retomar OX-001 a OX-003 de M0. OX-004 a OX-011 constroem a base de M1 após a viabilidade demonstrada. Dentro desses marcos, contratos, domínio, Git e persistência podem avançar em paralelo depois de estabilizar seus pontos de contato. O Desktop de M2 começa quando houver API observável e gate de design atendido, antes de aguardar planner ou memória sofisticada.
+OX-D01 e OX-D02 encerraram D0 pelo método de pesquisa consolidado, com [cobertura e limites registrados](./research/d0-conclusion.md). O foco atual é concluir a revisão D1 solicitada, incluindo cadastro/diagnósticos e recheck, mantendo o piloto adiado até aprovação da interface pelo responsável. Então avaliar a [entrega D1](./design/d1-delivery.md) no piloto de OX-D05 e corrigir problemas críticos; só depois retomar OX-001 a OX-003 de M0. OX-004 a OX-011 constroem a base de M1 após a viabilidade demonstrada. Dentro desses marcos, contratos, domínio, Git e persistência podem avançar em paralelo depois de estabilizar seus pontos de contato. O Desktop de M2 começa quando houver API observável e gate de design atendido, antes de aguardar planner ou memória sofisticada. Incrementos de leitura/preparação técnica não dispensam esses gates.
 
 Registrar novos ADRs propostos para: contas/conexões/capacidade; estado e auditoria transacionais; protocolo e ciclo de vida do daemon; máquina de estados e integração; autenticação e modo de cobrança por adapter. Numeração e status devem seguir o processo existente; este plano não torna essas propostas automaticamente aceitas.
 

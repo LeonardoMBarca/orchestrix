@@ -1,0 +1,22 @@
+{
+  "date": "2026-10-09",
+  "tool": "image_gen (built-in)",
+  "transparent_background": true,
+  "variants": [
+    {
+      "key": "symbol-indigo",
+      "source": "main-logo-dark.png",
+      "prompt": "Use case: background-extraction. Input image is EDIT TARGET: the existing Orchestrix horizontal logo. Extract ONLY its emblem on the left, not the wordmark or tagline. Preserve that exact emblem: upper broken circular arc has an indigo/lavender to near-white gradient, bottom arc is white, and the curved horizontal band is indigo/lavender. Preserve its contours, proportions and openings faithfully; this is an extraction, not a redesign. Remove ALL graphite background, also inside the ring and all gaps, using true alpha transparency. No dark backing disk or border, no halo, shadow, badge or simulated checkerboard. Deliver one clean smooth-edged transparent PNG on a SQUARE canvas, tightly centred with only about 4% transparent margin per side. The emblem should occupy about 92% of the canvas width and remain fully visible. No lettering or other elements. This is a website symbol and favicon; it needs crisp clean contours and substantial coverage at small sizes."
+    },
+    {
+      "key": "symbol-white",
+      "source": "symbol-dark.png",
+      "prompt": "Use case: background-extraction. Input image is EDIT TARGET: the existing Orchestrix standalone emblem, white upper and lower arcs with an indigo flowing band. Remove ALL dark graphite background, including inside the ring and all gaps, to true alpha transparency. Preserve the exact original white arcs, indigo gradients, contours, proportions, and openings; no redesign. No black border or backing disk, no halo, jagged residue, shadow, badge, text, or checkerboard. Deliver a clean smooth-edged transparent PNG on a SQUARE canvas. Frame the emblem tightly centred with approximately 4% transparent margins on each side; it should occupy 92% of canvas width, all visible. Change only the removed background and transparent canvas framing."
+    },
+    {
+      "key": "symbol-graphite",
+      "source": "symbol-light.png",
+      "prompt": "Use case: background-extraction. Input image is EDIT TARGET: the existing Orchestrix standalone emblem on a light background, graphite upper and lower arcs with an indigo flowing band. Remove ALL light background, including inside the ring and all gaps, to true alpha transparency. Preserve the exact graphite arcs, indigo gradients, contours, proportions, and openings; no redesign. Keep the graphite as part of the logo, but no added black border or backing disk. No halo, jagged residue, shadow, badge, text, or checkerboard. Deliver a clean smooth-edged transparent PNG on a SQUARE canvas. Frame the emblem tightly centred with approximately 4% transparent margins on each side; it should occupy 92% of canvas width, all visible. Change only the removed background and transparent canvas framing."
+    }
+  ]
+}

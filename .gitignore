@@ -216,3 +216,7 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Local generation/audit scratch work and dependency caches
+/artifacts/
+node_modules/

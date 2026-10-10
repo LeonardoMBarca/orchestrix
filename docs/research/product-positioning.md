@@ -81,6 +81,8 @@ As referências justificam padrões, não demonstram vantagem empírica do Orche
 
 ## Decisões propostas para D1
 
+**Ajuste por feedback do responsável em 09/10:** a direção visual agradou, mas a interface foi relatada como pouco intuitiva e sem a experiência esperada de chat. O responsável reforçou a utilidade da entrada por projetos/fluxo guiado, com várias conversas por projeto, além de conversas avulsas como ponto de partida. A conversa conduz pedidos e acompanhamento, mantendo trabalho/tarefas, contexto, revisão e aplicação relacionados. Projeto e conversa são conceitos distintos. Isso orienta a evolução das propostas abaixo; não substitui a avaliação de compreensão nem transforma o chat do aplicativo em uma sessão nativa de provider. A pesquisa competitiva continua sendo referência; esta decisão vem do usuário.
+
 1. **Fluxo principal:** Projeto → Objetivo → Plano/etapas → Execução → Revisão/correção → Aplicação. A pessoa pode iniciar uma correção pequena sem desenhar um DAG ou configurar todos os papéis.
 2. **Configuração gradual:** mostrar preset e conexão disponível no início; revelar modelo, esforço, contexto e política em um resumo inspecionável. Preferências por projeto/papel podem sobrescrever defaults com origem explícita.
 3. **Escolha automática explicável:** iniciar com regras simples de disponibilidade, compatibilidade, preferência e tipo de etapa. Não prometer selecionar o “melhor modelo”; permitir escolha fixa e registrar por que uma alternativa foi excluída.

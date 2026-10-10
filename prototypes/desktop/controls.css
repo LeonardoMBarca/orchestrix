@@ -1,0 +1,107 @@
+/* Shared native selects. The browser retains menu, keyboard and form semantics. */
+:root {
+  --select-background:var(--bg);
+  --select-menu-background:var(--panel);
+  --select-indicator:var(--muted);
+}
+
+:is(.app,.floating-settings,dialog) select {
+  appearance:none;
+  -webkit-appearance:none;
+  box-sizing:border-box;
+  display:block;
+  width:100%;
+  min-width:0;
+  max-width:100%;
+  min-height:max(44px,2.75em);
+  margin:0;
+  padding:.625em .875em;
+  border:1px solid var(--border-control);
+  border-radius:var(--radius,10px);
+  background-color:var(--select-background);
+  color:var(--text);
+  color-scheme:inherit;
+  font-family:inherit;
+  font-size:1rem;
+  font-weight:500;
+  line-height:1.5;
+  text-overflow:ellipsis;
+  cursor:pointer;
+  transition:background-color .15s,border-color .15s,box-shadow .15s;
+}
+
+:is(.app,.floating-settings,dialog) select:not([multiple]):is(:not([size]),[size="0"],[size="1"]) {
+  padding-inline-end:3em;
+  background-image:
+    linear-gradient(45deg,transparent 50%,var(--select-indicator) 50%),
+    linear-gradient(135deg,var(--select-indicator) 50%,transparent 50%),
+    linear-gradient(var(--line),var(--line));
+  background-position:
+    calc(100% - 1.195em) 50%,
+    calc(100% - .875em) 50%,
+    calc(100% - 2.375em) 50%;
+  background-size:.32em .32em,.32em .32em,1px 1.2em;
+  background-repeat:no-repeat;
+}
+
+:is(.app,.floating-settings,dialog) select:not(:disabled):hover {
+  --select-indicator:var(--accent);
+  border-color:var(--accent);
+  background-color:var(--surface);
+}
+
+:is(.app,.floating-settings,dialog) select:focus-visible {
+  --select-indicator:var(--accent);
+  outline:2px solid var(--focus-ring,var(--accent));
+  outline-offset:3px;
+  border-color:var(--accent);
+  box-shadow:0 0 0 3px color-mix(in srgb,var(--accent) 14%,transparent);
+}
+
+:is(.app,.floating-settings,dialog) select:disabled {
+  opacity:.55;
+  cursor:not-allowed;
+  color:var(--muted);
+  box-shadow:none;
+}
+
+:is(.app,.floating-settings,dialog) select:is([aria-invalid="true"],:user-invalid) {
+  --select-indicator:var(--danger);
+  border-color:var(--danger);
+}
+
+:is(.app,.floating-settings,dialog) select option,
+:is(.app,.floating-settings,dialog) select optgroup {
+  background-color:var(--select-menu-background);
+  color:var(--text);
+  font:inherit;
+}
+
+:is(.app,.floating-settings,dialog) select option:disabled {
+  color:var(--muted);
+}
+
+:is(.app,.floating-settings,dialog) select optgroup,
+:is(.app,.floating-settings,dialog) select option:checked {
+  font-weight:600;
+}
+
+@media(prefers-reduced-motion:reduce) {
+  :is(.app,.floating-settings,dialog) select {transition:none}
+}
+
+@media(forced-colors:active) {
+  :is(.app,.floating-settings,dialog) select {
+    appearance:auto;
+    -webkit-appearance:auto;
+    background-image:none!important;
+    border-color:ButtonText;
+    background-color:Canvas;
+    color:CanvasText;
+    box-shadow:none;
+  }
+  :is(.app,.floating-settings,dialog) select:focus-visible {outline-color:Highlight}
+  :is(.app,.floating-settings,dialog) select:disabled {color:GrayText;opacity:1}
+  :is(.app,.floating-settings,dialog) select option,
+  :is(.app,.floating-settings,dialog) select optgroup {background-color:Canvas;color:CanvasText}
+}

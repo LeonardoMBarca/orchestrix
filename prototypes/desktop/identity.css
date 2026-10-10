@@ -1,0 +1,10 @@
+/* Shared Orchestrix identity: presentation site and default Studio workspace. */
+:root {
+  --orx-navy:#0B1426;--orx-sidebar:#0C172A;
+  --orx-surface:#101D34;--orx-surface-raised:#152641;--orx-overlay:#1B2E4B;
+  --orx-text:#FAFAFC;--orx-muted:#AAB8D1;--orx-subtle:#9CAEC9;
+  --orx-line:#2A3B5A;--orx-control-border:#596A92;
+  --orx-indigo:#6366F1;--orx-accent:#A5ACFF;--orx-accent-surface:#252F58;
+  --orx-primary:#555BDC;--orx-primary-hover:#5A60DA;
+  --orx-font:"Inter","Segoe UI",system-ui,-apple-system,BlinkMacSystemFont,sans-serif;
+}

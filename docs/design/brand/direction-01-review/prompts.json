@@ -1,0 +1,131 @@
+{
+  "direction": "Orchestrix — Direção 01 · Minimalista e institucional",
+  "purpose": "Imagens separadas para validação da direção visual fornecida pelo usuário.",
+  "generator": "Built-in image_gen; one generation per asset, referenced user-attached brand board.",
+  "source": "Prancha anexada na conversa. Reconstruções raster, não recortes pixel-exatos.",
+  "transparency": false,
+  "palette": {
+    "deep-graphite": "#0B0F14",
+    "charcoal": "#1A1F29",
+    "electric-indigo": "#6366F1",
+    "neutral-gray": "#E5E7EB",
+    "technical-white": "#FAFAFC"
+  },
+  "assets": [
+    {
+      "file": "images/01-main-logo-light.png",
+      "title": "Logo principal · claro",
+      "prompt": "Use case: precise-object-edit. Input image: the user-attached Orchestrix — Direção 01 brand board is the edit target and sole visual reference. Asset type: separated raster concept for visual validation. Extract and faithfully reconstruct ONLY the main horizontal logo from the upper-left light area of the attached brand board. Large original black/graphite circular O mark with its indigo flowing horizontal bridge, wordmark Orchestrix and the tiny spaced tagline ORQUESTRE · DESENVOLVA · MAIS LONGE. Clean #FAFAFC background. Wide landscape centered composition, generous margins. Preserve the exact silhouette and proportion of the shown mark and the geometric sans wordmark. No section heading or unrelated elements. Preserve the minimal institutional branding direction. Do not redesign the identity or add new concepts. Clean high-resolution raster output."
+    },
+    {
+      "file": "images/02-main-logo-dark.png",
+      "title": "Logo principal · escuro",
+      "prompt": "Use case: precise-object-edit. Input image: the user-attached Orchestrix — Direção 01 brand board is the edit target and sole visual reference. Asset type: separated raster concept for visual validation. Extract and faithfully reconstruct ONLY the main horizontal logo from the dark panel below the upper-left light logo on the board. Original circular O mark, white ring with a subtle lavender upper highlight and indigo flowing horizontal bridge, white Orchestrix wordmark and tiny spaced tagline ORQUESTRE · DESENVOLVA · MAIS LONGE. #0B0F14 dark background. Wide landscape centered composition. Preserve the reference geometry and proportions. No section heading. Preserve the minimal institutional branding direction. Do not redesign the identity or add new concepts. Clean high-resolution raster output."
+    },
+    {
+      "file": "images/03-symbol-light.png",
+      "title": "Símbolo · claro",
+      "prompt": "Use case: precise-object-edit. Input image: the user-attached Orchestrix — Direção 01 brand board is the edit target and sole visual reference. Asset type: separated raster concept for visual validation. Extract and faithfully reconstruct ONLY the standalone symbol in the upper middle Símbolo light section. Original near-circular black graphite O ring, interrupted at the middle by an electric indigo flowing horizontal bridge that rises smoothly at the center; precisely match its original silhouette. Center one large symbol on #FAFAFC, square composition, generous margins. No text, tile, additional marks or invented details. Preserve the minimal institutional branding direction. Do not redesign the identity or add new concepts. Clean high-resolution raster output."
+    },
+    {
+      "file": "images/04-symbol-dark.png",
+      "title": "Símbolo · escuro",
+      "prompt": "Use case: precise-object-edit. Input image: the user-attached Orchestrix — Direção 01 brand board is the edit target and sole visual reference. Asset type: separated raster concept for visual validation. Extract and faithfully reconstruct ONLY the standalone symbol in the dark Símbolo panel. Original near-circular white O ring with smooth indigo flowing horizontal bridge through its middle. Precisely match the original reference silhouette. Center one large symbol on #0B0F14, square composition, generous margins. No text, tile or other marks. Preserve the minimal institutional branding direction. Do not redesign the identity or add new concepts. Clean high-resolution raster output."
+    },
+    {
+      "file": "images/05-app-icon-light.png",
+      "title": "App icon · claro",
+      "prompt": "Use case: precise-object-edit. Input image: the user-attached Orchestrix — Direção 01 brand board is the edit target and sole visual reference. Asset type: separated raster concept for visual validation. Extract and faithfully reconstruct ONLY the light app icon from the Favicon / app icon section: white softly rounded square tile, subtle soft drop shadow, original centered graphite O ring crossed by indigo flowing horizontal bridge. Match the reference mark exactly. Large centered icon with surrounding #FAFAFC background, square composition. No heading or text. Preserve the minimal institutional branding direction. Do not redesign the identity or add new concepts. Clean high-resolution raster output."
+    },
+    {
+      "file": "images/06-app-icon-dark.png",
+      "title": "App icon · escuro",
+      "prompt": "Use case: precise-object-edit. Input image: the user-attached Orchestrix — Direção 01 brand board is the edit target and sole visual reference. Asset type: separated raster concept for visual validation. Extract and faithfully reconstruct ONLY the dark app icon from the Favicon / app icon section: dark charcoal softly rounded square tile with restrained gray gradient and soft shadow, original centered white O ring crossed by indigo flowing horizontal bridge. Match the reference mark exactly. Large centered icon on #0B0F14 surrounding background, square composition. No heading or text. Preserve the minimal institutional branding direction. Do not redesign the identity or add new concepts. Clean high-resolution raster output."
+    },
+    {
+      "file": "images/07-color-deep-graphite.png",
+      "title": "Grafite profundo",
+      "prompt": "Use case: precise-object-edit. Input image: the user-attached Orchestrix — Direção 01 brand board is the edit target and sole visual reference. Asset type: separated raster concept for visual validation. Isolate the first palette concept as a clean standalone swatch card on #FAFAFC. A large flat solid swatch of EXACT #0B0F14 with softly rounded corners, followed by the Portuguese labels: Grafite profundo ; #0B0F14 ; Base, profundidade e foco. Preserve the institutional geometric sans, graphite text and muted secondary text of the reference. One color only, no logo, no other swatches. Spacious square card. Exact hex label is mandatory. Preserve the minimal institutional branding direction. Do not redesign the identity or add new concepts. Clean high-resolution raster output."
+    },
+    {
+      "file": "images/08-color-charcoal.png",
+      "title": "Cinza carvão",
+      "prompt": "Use case: precise-object-edit. Input image: the user-attached Orchestrix — Direção 01 brand board is the edit target and sole visual reference. Asset type: separated raster concept for visual validation. Isolate the second palette concept as a clean standalone swatch card on #FAFAFC. A large flat solid swatch of EXACT #1A1F29 with softly rounded corners, followed by the Portuguese labels: Cinza carvão ; #1A1F29 ; Superfícies e hierarquia. Match the reference geometric sans and understated hierarchy. One color only, no logo, no other swatches. Spacious square card. Exact hex label is mandatory. Preserve the minimal institutional branding direction. Do not redesign the identity or add new concepts. Clean high-resolution raster output."
+    },
+    {
+      "file": "images/09-color-electric-indigo.png",
+      "title": "Índigo elétrico",
+      "prompt": "Use case: precise-object-edit. Input image: the user-attached Orchestrix — Direção 01 brand board is the edit target and sole visual reference. Asset type: separated raster concept for visual validation. Isolate the third palette concept as a clean standalone swatch card on #FAFAFC. A large flat solid swatch of EXACT #6366F1 with softly rounded corners, followed by the Portuguese labels: Índigo elétrico ; #6366F1 ; Acento principal e interação. Match the reference geometric sans and understated hierarchy. One color only, no logo, no other swatches. Spacious square card. Exact hex label is mandatory. Preserve the minimal institutional branding direction. Do not redesign the identity or add new concepts. Clean high-resolution raster output."
+    },
+    {
+      "file": "images/10-color-neutral-gray.png",
+      "title": "Cinza neutro",
+      "prompt": "Use case: precise-object-edit. Input image: the user-attached Orchestrix — Direção 01 brand board is the edit target and sole visual reference. Asset type: separated raster concept for visual validation. Isolate the fourth palette concept as a clean standalone swatch card on #FAFAFC. A large flat solid swatch of EXACT #E5E7EB with softly rounded corners, followed by the Portuguese labels: Cinza neutro ; #E5E7EB ; Fontes e bordas sutis. Match the reference geometric sans and understated hierarchy. One color only, no logo, no other swatches. Spacious square card. Exact hex label is mandatory. Preserve the minimal institutional branding direction. Do not redesign the identity or add new concepts. Clean high-resolution raster output."
+    },
+    {
+      "file": "images/11-color-technical-white.png",
+      "title": "Branco técnico",
+      "prompt": "Use case: precise-object-edit. Input image: the user-attached Orchestrix — Direção 01 brand board is the edit target and sole visual reference. Asset type: separated raster concept for visual validation. Isolate the fifth palette concept as a clean standalone swatch card on #FAFAFC. A large flat solid swatch of EXACT #FAFAFC with a subtle #E5E7EB outline and softly rounded corners, followed by the Portuguese labels: Branco técnico ; #FAFAFC ; Espaço, clareza e equilíbrio. Match the reference geometric sans and understated hierarchy. One color only, no logo, no other swatches. Spacious square card. Exact hex label is mandatory. Preserve the minimal institutional branding direction. Do not redesign the identity or add new concepts. Clean high-resolution raster output."
+    },
+    {
+      "file": "images/12-typography.png",
+      "title": "Tipografia",
+      "prompt": "Use case: precise-object-edit. Input image: the user-attached Orchestrix — Direção 01 brand board is the edit target and sole visual reference. Asset type: separated raster concept for visual validation. Extract and faithfully reconstruct the Tipografia section as a separate wide light card. Large black Aa on the left. Text on the right, verbatim: Sans geométrica e moderna, com aparência técnica e precisa. Prioriza clareza, legibilidade e sofisticação, com boa performance em interfaces e documentação técnica. Small spaced line: LIMPA · MODERNA · TÉCNICA · ATEMPORAL. Heading Tipografia and subtitle Direção tipográfica. Match the original geometric modern sans, black and muted gray typography and #FAFAFC background. Do not invent or name a font family. Wide composition with readable text. Preserve the minimal institutional branding direction. Do not redesign the identity or add new concepts. Clean high-resolution raster output."
+    },
+    {
+      "file": "images/13-background-pattern.png",
+      "title": "Padrão de fundo",
+      "prompt": "Use case: precise-object-edit. Input image: the user-attached Orchestrix — Direção 01 brand board is the edit target and sole visual reference. Asset type: separated raster concept for visual validation. Isolate and faithfully reconstruct ONLY the background dot pattern from the first Elementos auxiliares item. An orderly grid of small muted gray dots, uniform spacing, approximately nine columns and six rows. Original subtle, quiet technical look on #FAFAFC. Centered square composition, generous margins. No heading, caption, logo, extra shapes or texture. Preserve the minimal institutional branding direction. Do not redesign the identity or add new concepts. Clean high-resolution raster output."
+    },
+    {
+      "file": "images/14-modular-nodes.png",
+      "title": "Módulos / nós",
+      "prompt": "Use case: precise-object-edit. Input image: the user-attached Orchestrix — Direção 01 brand board is the edit target and sole visual reference. Asset type: separated raster concept for visual validation. Isolate and faithfully reconstruct ONLY the Módulos / nós graphic from Elementos auxiliares: a small arrangement of interconnected round nodes with thin pale gray orthogonal connector paths, one solid electric indigo central node, pale outlined nodes, two black outlined accent nodes. Keep the original arrangement and understated line weight. Center on #FAFAFC with generous margins. No labels, text, new nodes or decorative effects. Preserve the minimal institutional branding direction. Do not redesign the identity or add new concepts. Clean high-resolution raster output."
+    },
+    {
+      "file": "images/15-flow-lines.png",
+      "title": "Linhas de fluxo",
+      "prompt": "Use case: precise-object-edit. Input image: the user-attached Orchestrix — Direção 01 brand board is the edit target and sole visual reference. Asset type: separated raster concept for visual validation. Isolate and faithfully reconstruct ONLY the Linhas de fluxo graphic from Elementos auxiliares. Three thin mostly horizontal smooth gently bent paths, subtle indigo and pale gray colors, small circular endpoint nodes, same original arrangement. The paths curve between different horizontal levels and communicate orchestration. Center a wide diagram on #FAFAFC with generous margins. No labels, text, arrows, logo or invented paths. Preserve the minimal institutional branding direction. Do not redesign the identity or add new concepts. Clean high-resolution raster output."
+    },
+    {
+      "file": "images/16-interface-shapes.png",
+      "title": "Formas de interface",
+      "prompt": "Use case: precise-object-edit. Input image: the user-attached Orchestrix — Direção 01 brand board is the edit target and sole visual reference. Asset type: separated raster concept for visual validation. Isolate and faithfully reconstruct ONLY the Formas de interface graphic from Elementos auxiliares: one graphite thin-outline rounded square, one electric indigo thin-outline circle, one graphite thin-outline short horizontal pill with pale gray fill, arranged left to right. Preserve the sizes and simple shapes seen in the reference. Center on #FAFAFC with generous margins. No text, icons or extra geometry. Preserve the minimal institutional branding direction. Do not redesign the identity or add new concepts. Clean high-resolution raster output."
+    },
+    {
+      "file": "images/17-loading-empty-state.png",
+      "title": "Loading / estado vazio",
+      "prompt": "Use case: precise-object-edit. Input image: the user-attached Orchestrix — Direção 01 brand board is the edit target and sole visual reference. Asset type: separated raster concept for visual validation. Isolate and faithfully reconstruct ONLY the Loading / estado vazio graphic from Elementos auxiliares: a single pale gray circular progress ring with one short electric indigo to lavender arc on its upper right, rounded arc ends. Match the reference proportions and arc placement. Center a large single ring on #FAFAFC, generous margins. No text, percentages, extra rings or logo. Preserve the minimal institutional branding direction. Do not redesign the identity or add new concepts. Clean high-resolution raster output."
+    },
+    {
+      "file": "images/18-watermark-emblem.png",
+      "title": "Marca d’água / emblema",
+      "prompt": "Use case: precise-object-edit. Input image: the user-attached Orchestrix — Direção 01 brand board is the edit target and sole visual reference. Asset type: separated raster concept for visual validation. Isolate and faithfully reconstruct ONLY the Marca d’água / emblema graphic from Elementos auxiliares: the exact Orchestrix circular O ring crossed by the flowing horizontal bridge, rendered entirely in extremely pale neutral gray as a watermark on #FAFAFC. Match the original symbol silhouette; low contrast but visible. Center one large emblem, square composition, generous margins. No text or extra shapes. Preserve the minimal institutional branding direction. Do not redesign the identity or add new concepts. Clean high-resolution raster output."
+    },
+    {
+      "file": "images/19-brand-concept.png",
+      "title": "Conceito da marca",
+      "prompt": "Use case: precise-object-edit. Input image: the user-attached Orchestrix — Direção 01 brand board is the edit target and sole visual reference. Asset type: separated raster concept for visual validation. Extract and reconstruct ONLY the Conceito section as a separate elegant wide light typography card. Heading: Conceito. Subtitle: Ideia que guia a marca. Main text verbatim: Orchestrix é uma plataforma desktop, local-first e open source para orquestrar múltiplos agentes de IA no desenvolvimento de software. A marca traduz coordenação, precisão e controle em uma forma simples e elegante, unindo engenharia e inteligência para ampliar o potencial de desenvolvedores. Small spaced line: AGENTES · ORQUESTRAÇÃO · CONTROLE · RESULTADOS REAIS. A tiny indigo rule before the closing line. Keep #FAFAFC background, graphite type and understated reference hierarchy. Readable generous layout; no logo or invented copy. Preserve the minimal institutional branding direction. Do not redesign the identity or add new concepts. Clean high-resolution raster output."
+    },
+    {
+      "file": "images/20-application-light.png",
+      "title": "Aplicação · claro",
+      "prompt": "Use case: precise-object-edit. Input image: the user-attached Orchestrix — Direção 01 brand board is the edit target and sole visual reference. Asset type: separated raster concept for visual validation. Extract and faithfully reconstruct ONLY the compact light application of the logo in the bottom-left Aplicações da marca section. Softly rounded white/#FAFAFC horizontal card with subtle pale gray outline. Original graphite circular O mark and indigo flowing bridge, black Orchestrix wordmark, tiny signature ORQUESTRE · DESENVOLVA · MAIS LONGE. Match original geometry. Center card with generous light surrounding margins, wide landscape composition. No heading or caption outside card. Preserve the minimal institutional branding direction. Do not redesign the identity or add new concepts. Clean high-resolution raster output."
+    },
+    {
+      "file": "images/21-application-dark.png",
+      "title": "Aplicação · escuro",
+      "prompt": "Use case: precise-object-edit. Input image: the user-attached Orchestrix — Direção 01 brand board is the edit target and sole visual reference. Asset type: separated raster concept for visual validation. Extract and faithfully reconstruct ONLY the compact dark application of the logo in the bottom-left Aplicações da marca section. Softly rounded #0B0F14 to #1A1F29 horizontal card, original white/lavender circular O mark and indigo flowing bridge, white Orchestrix wordmark, tiny signature ORQUESTRE · DESENVOLVA · MAIS LONGE. Match original geometry. Center card with generous #FAFAFC surrounding margins, wide landscape composition. No heading or external caption. Preserve the minimal institutional branding direction. Do not redesign the identity or add new concepts. Clean high-resolution raster output."
+    },
+    {
+      "file": "images/22-application-monochrome.png",
+      "title": "Aplicação · monocromática",
+      "prompt": "Use case: precise-object-edit. Input image: the user-attached Orchestrix — Direção 01 brand board is the edit target and sole visual reference. Asset type: separated raster concept for visual validation. Extract and faithfully reconstruct ONLY the compact monochromatic application of the logo in the bottom-left Aplicações da marca section. Softly rounded pale gray horizontal card, original black circular O mark crossed by grayscale flowing bridge, black Orchestrix wordmark, tiny signature ORQUESTRE · DESENVOLVA · MAIS LONGE. Only neutral grayscale, no indigo. Match original geometry. Center with generous #FAFAFC margins, wide landscape. No heading or external caption. Preserve the minimal institutional branding direction. Do not redesign the identity or add new concepts. Clean high-resolution raster output."
+    },
+    {
+      "file": "images/23-orchestration-banner.png",
+      "title": "Banner de orquestração",
+      "prompt": "Use case: precise-object-edit. Input image: the user-attached Orchestrix — Direção 01 brand board is the edit target and sole visual reference. Asset type: separated raster concept for visual validation. Extract and faithfully reconstruct ONLY the wide dark orchestration banner at the bottom-right of the board. Dark #0B0F14/#1A1F29 background, restrained indigo accents, blurred code panels in the far-right background. Left copy verbatim: Múltiplos agentes. Um mesmo propósito. Below: Desenvolvimento de software de forma mais inteligente. Center four stacked dark rounded node cards labeled Coder, Reviewer, Tester, Documenter, each with a small icon and indigo endpoint, smooth pale connector paths converging into a circled original Orchestrix mark to their right. Far right small spaced copy: MAIS CONTROLE ; MAIS VELOCIDADE ; MELHORES SOFTWARES. White Orchestrix wordmark bottom right. Match reference visual hierarchy, mark geometry and proportions. Wide panoramic composition. No surrounding board sections or additional text. Preserve the minimal institutional branding direction. Do not redesign the identity or add new concepts. Clean high-resolution raster output."
+    }
+  ]
+}

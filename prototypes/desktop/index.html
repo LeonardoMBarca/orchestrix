@@ -1,47 +1,83 @@
 <!doctype html>
-<html lang="pt-BR" data-direction="studio">
+<html lang="en" data-direction="studio">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="dark light">
-  <title>Orchestrix — estudo do workspace</title>
+  <title>Orchestrix</title>
+  <link rel="stylesheet" href="identity.css">
   <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="experience.css">
+  <link rel="stylesheet" href="shell.css">
+  <link rel="stylesheet" href="settings.css">
+  <link rel="stylesheet" href="resources.css">
+  <link rel="stylesheet" href="diagnostics.css">
+  <link rel="stylesheet" href="controls.css">
+  <link rel="icon" type="image/png" href="assets/brand/transparent/symbol-indigo.png">
+  <script src="locales/catalog.js" defer></script>
+  <script src="i18n.js" defer></script>
   <script src="workspace.js" defer></script>
+  <script src="discovery-client.js" defer></script>
+  <script src="resource-view.js" defer></script>
+  <script src="connection-diagnostics.js" defer></script>
+  <script src="diagnostics-view.js" defer></script>
   <script src="connections.js" defer></script>
+  <script src="experience.js" defer></script>
+  <script src="docking.js" defer></script>
+  <script src="settings.js" defer></script>
   <script src="app.js" defer></script>
 </head>
 <body>
-  <a class="skip-link" href="#content">Ir para o trabalho</a>
+  <a class="skip-link" href="#content" data-i18n="Ir para o conteúdo">Skip to content</a>
   <div class="app" id="app">
-    <aside class="sidebar" aria-label="Navegação principal">
-      <div class="brand"><span class="brand-mark" aria-hidden="true">o<span></span></span><span>orchestrix</span><span class="alpha">D1 · preview</span></div>
-      <button class="project-switch" data-action="onboarding"><span class="project-icon">O</span><span><strong id="project-name">orchestrix</strong><small>Projeto local · demonstração</small></span><span data-icon="chevrons"></span></button>
-      <nav class="nav">
-        <button data-view="work" class="nav-item active"><span data-icon="layers"></span>Trabalho<span class="nav-number" id="work-count">4</span></button>
-        <button data-view="attention" class="nav-item"><span data-icon="inbox"></span>Precisa de você<span class="nav-number accent" id="attention-count">2</span></button>
-        <button data-view="review" class="nav-item"><span data-icon="diff"></span>Alterações</button>
-        <button data-view="history" class="nav-item"><span data-icon="clock"></span>Histórico</button>
-      </nav>
-      <div class="nav-section"><span>CONFIGURAÇÃO DO PROJETO</span></div>
-      <nav class="nav">
-        <button data-view="connections" class="nav-item"><span data-icon="plug"></span>Conexões</button>
-        <button data-view="settings" class="nav-item"><span data-icon="sliders"></span>Preferências</button>
-      </nav>
-      <div class="sidebar-bottom">
-        <button class="theme-settings-link" data-action="appearance">Personalizar aparência <span data-icon="arrow"></span></button>
-        <button class="reset" data-action="reset"><span data-icon="reset"></span>Reiniciar demonstração</button>
-        <div class="demo-note"><span class="demo-dot"></span>Protótipo · dados simulados</div>
-      </div>
-    </aside>
+    <div class="dock-zone dock-left" data-dock-zone="left" id="dock-left">
+      <section class="dock-panel" data-panel="navigation" id="navigation-panel">
+        <div class="dock-panel-handle" tabindex="0" role="button" draggable="true" aria-label="Move navigation panel" data-i18n-aria-label="Mover painel de navegação"><span class="dock-grip" aria-hidden="true">⠿</span><span data-i18n="Navegação">Navigation</span><span class="dock-handle-hint" aria-hidden="true">↔</span></div>
+        <aside class="sidebar" aria-label="Main navigation" data-i18n-aria-label="Navegação principal">
+          <button type="button" class="brand brand-home" data-view="chat" aria-label="Orchestrix — home" data-i18n-aria-label="Orchestrix — início"><span class="identity-symbol" aria-hidden="true"><img class="identity-light" src="assets/brand/transparent/symbol-graphite.png" alt=""><img class="identity-dark" src="assets/brand/transparent/symbol-indigo.png" alt=""></span><span>Orchestrix</span></button>
+          <nav class="nav">
+            <button data-view="chat" class="nav-item active"><span data-icon="message"></span><span data-i18n="Conversa">Chat</span></button>
+            <button data-view="connections" class="nav-item"><span data-icon="plug"></span><span data-i18n="Conexões">Connections</span></button>
+          </nav>
+          <details class="studio-navigation" id="studio-navigation">
+            <summary><span data-icon="sliders"></span><span>Studio</span><span class="studio-chevron" aria-hidden="true">⌄</span></summary>
+            <nav class="nav" aria-label="Studio controls" data-i18n-aria-label="Controles do Studio">
+              <button data-view="work" class="nav-item"><span data-icon="layers"></span><span data-i18n="Trabalho">Work</span><span class="nav-number" id="work-count">0</span></button>
+              <button data-view="attention" class="nav-item"><span data-icon="inbox"></span><span data-i18n="Precisa de você">Needs you</span><span class="nav-number accent" id="attention-count">0</span></button>
+              <button data-view="review" class="nav-item"><span data-icon="diff"></span><span data-i18n="Alterações">Changes</span></button>
+              <button data-view="history" class="nav-item"><span data-icon="clock"></span><span data-i18n="Histórico">History</span></button>
+            </nav>
+          </details>
+          <div class="shell-utilities">
+            <a id="help-link" class="nav-item" href="help.html" target="_blank" rel="noopener noreferrer"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M9.2 9a3 3 0 0 1 5.6 1c0 2-2.8 2-2.8 4m0 3v.1"/></svg><span data-i18n="Ajuda e tutoriais">Help & tutorials</span><span class="external-link-mark" aria-hidden="true">↗</span></a>
+            <button class="nav-item app-settings-trigger" data-action="app-settings"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 3-.5 3-2 1.2-2.8-1-2 3.6L4 12v2.3l-2.3 2.2 2 3.5 2.8-1 2 1.2.5 2.8h4l.5-2.8 2-1.2 2.8 1 2-3.5-2.3-2.2V12l2.3-2.2-2-3.6-2.8 1-2-1.2L13 3Z"/><circle cx="11" cy="12.5" r="3"/></svg><span data-i18n="Configurações do aplicativo">Settings</span></button>
+            <a class="product-link" href="website.html" target="_blank" rel="noopener noreferrer"><span data-i18n="Conheça o Orchestrix">Discover Orchestrix</span><span aria-hidden="true">↗</span></a>
+          </div>
+        </aside>
+      </section>
+    </div>
     <main class="main">
       <header class="topbar">
-        <div class="breadcrumb"><span data-icon="folder"></span><span id="breadcrumb-project">orchestrix</span><span class="slash">/</span><strong id="view-name">Trabalho</strong></div>
-        <div class="topbar-actions"><button class="command-trigger" data-action="commands" aria-label="Buscar ações do workspace"><span data-icon="search"></span><span>Buscar ou executar…</span><kbd>Ctrl K</kbd></button><button class="icon-button focus-toggle" data-action="focus" aria-label="Ativar modo de foco" aria-pressed="false" title="Modo de foco"><span data-icon="focus"></span></button><span class="avatar" title="Seu espaço local">LB</span></div>
+        <div class="breadcrumb"><span data-icon="folder"></span><span id="breadcrumb-project">Orchestrix</span><span id="project-name" hidden></span><span class="slash">/</span><strong id="view-name">Chat</strong></div>
+        <button id="command-trigger" class="command-trigger" data-action="commands" aria-label="Search sessions, projects and actions" data-i18n-aria-label="Buscar sessões, projetos e ações"><span data-icon="search"></span><span data-i18n="Buscar sessões, projetos e ações…">Search sessions, projects and actions…</span><kbd>Ctrl K</kbd></button>
+        <div class="topbar-actions"><button class="icon-button focus-toggle" data-action="focus" aria-label="Enable focus mode" aria-pressed="false" title="Focus mode" data-i18n-title="Modo de foco"><span data-icon="focus"></span></button><button class="avatar" data-action="app-settings" aria-label="Your profile" data-i18n-aria-label="Seu perfil">O</button></div>
       </header>
       <section class="content" id="content" tabindex="-1"></section>
-      <footer class="statusbar"><span><span class="status-dot"></span>Workspace de demonstração</span><span>Sem execução de agentes ou alterações no repositório<span class="footer-shortcut"> · <kbd>?</kbd> atalhos</span></span></footer>
+      <footer class="statusbar"><span><span class="status-dot"></span><span data-i18n="Pronto para começar">Ready when you are</span></span><span><kbd>Ctrl K</kbd> <span data-i18n="Buscar ações">Search actions</span></span></footer>
     </main>
+    <div class="dock-zone dock-right" data-dock-zone="right" id="dock-right">
+      <section class="dock-panel" data-panel="sessions" id="sessions-panel">
+        <div class="dock-panel-handle" tabindex="0" role="button" draggable="true" aria-label="Move sessions panel" data-i18n-aria-label="Mover painel de sessões"><span class="dock-grip" aria-hidden="true">⠿</span><span data-i18n="Sessões">Sessions</span><span class="dock-handle-hint" aria-hidden="true">↔</span></div>
+        <div id="session-list" class="session-list"></div>
+      </section>
+      <section class="dock-panel" data-panel="work" id="work-panel" hidden>
+        <div class="dock-panel-handle" tabindex="0" role="button" draggable="true" aria-label="Move work panel" data-i18n-aria-label="Mover painel de trabalho"><span class="dock-grip" aria-hidden="true">⠿</span><span data-i18n="Trabalho">Work</span><span class="dock-handle-hint" aria-hidden="true">↔</span></div>
+        <div id="work-panel-body"></div>
+      </section>
+    </div>
   </div>
+  <div id="dock-drop-targets" hidden><div data-drop-zone="left" data-i18n="Esquerda">Left</div><div data-drop-zone="right" data-i18n="Direita">Right</div></div>
+  <div id="dock-position-menu" class="dock-position-menu" hidden></div>
   <dialog id="modal" aria-labelledby="modal-title"></dialog>
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
 </body>

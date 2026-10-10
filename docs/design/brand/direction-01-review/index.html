@@ -1,0 +1,475 @@
+<!doctype html>
+<html lang="pt-BR" data-theme="light">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <title>Orchestrix — Direção 01 · Validação visual</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --page: #FAFAFC;
+      --surface: #FFFFFF;
+      --text: #0B0F14;
+      --muted: #555B69;
+      --border: #E5E7EB;
+      --accent: #6366F1;
+      --accent-text: #4346BB;
+      --subtle: #F0F1FA;
+      --shadow: 0 16px 44px rgba(11,15,20,.05);
+    }
+    :root[data-theme="dark"] {
+      color-scheme: dark;
+      --page: #0B0F14;
+      --surface: #1A1F29;
+      --text: #FAFAFC;
+      --muted: #B6BDCD;
+      --border: #343B4B;
+      --accent: #898BFF;
+      --accent-text: #BCBDFF;
+      --subtle: #232840;
+      --shadow: 0 16px 44px rgba(0,0,0,.16);
+    }
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; scroll-padding-top: 112px; }
+    body { margin: 0; color: var(--text); background: var(--page); font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; line-height: 1.5; }
+    a { color: var(--accent-text); text-underline-offset: 4px; }
+    a:hover { text-decoration-thickness: 2px; }
+    a:focus-visible, button:focus-visible { outline: 3px solid var(--accent); outline-offset: 4px; }
+    button { font: inherit; }
+    .skip-link { position: absolute; top: -80px; left: 24px; z-index: 10; padding: 12px 18px; background: var(--surface); }
+    .skip-link:focus { top: 12px; }
+    .topbar { position: sticky; top: 0; z-index: 5; border-bottom: 1px solid var(--border); background: var(--page); }
+    .topbar-inner { max-width: 1400px; margin: auto; padding: 16px 32px; display: flex; align-items: center; justify-content: space-between; gap: 24px; }
+    .brand { font-size: 22px; font-weight: 750; letter-spacing: -.9px; color: var(--text); text-decoration: none; }
+    .brand span { margin-left: 12px; color: var(--muted); font-size: 12px; font-weight: 500; letter-spacing: .5px; }
+    .theme-control { display: flex; align-items: center; gap: 8px; }
+    .theme-label { margin-right: 6px; color: var(--muted); font-size: 12px; }
+    .theme-control button { border: 1px solid var(--border); background: var(--surface); color: var(--muted); padding: 7px 12px; border-radius: 7px; cursor: pointer; }
+    .theme-control button[aria-pressed="true"] { border-color: var(--accent); background: var(--subtle); color: var(--text); }
+    main { max-width: 1400px; padding: 0 32px 64px; margin: auto; }
+    .hero { padding: 54px 0 32px; max-width: 850px; }
+    .eyebrow { color: var(--accent-text); font-size: 12px; font-weight: 700; letter-spacing: 1.9px; text-transform: uppercase; }
+    h1 { margin: 12px 0; font-size: clamp(32px,4.5vw,58px); line-height: 1.1; letter-spacing: -2px; font-weight: 750; }
+    .hero-description { color: var(--muted); font-size: 19px; max-width: 730px; margin: 18px 0 0; }
+    .review-note { max-width: 1050px; border: 1px solid var(--border); border-left: 3px solid var(--accent); border-radius: 0 10px 10px 0; padding: 20px 24px; background: var(--surface); }
+    .review-note p { margin: 0; }
+    .review-note p + p { margin-top: 10px; color: var(--muted); font-size: 14px; }
+    .nav { display: flex; flex-wrap: wrap; gap: 8px; padding: 28px 0 12px; }
+    .nav a { text-decoration: none; color: var(--muted); border: 1px solid var(--border); padding: 8px 13px; border-radius: 7px; font-size: 13px; }
+    .nav a:hover { border-color: var(--accent); color: var(--text); }
+    .section { padding-top: 42px; }
+    .section-heading { display: flex; align-items: baseline; justify-content: space-between; gap: 32px; margin-bottom: 18px; padding-bottom: 16px; border-bottom: 1px solid var(--border); }
+    h2 { margin: 0; font-size: 23px; line-height: 1.2; letter-spacing: -.6px; }
+    .section-heading p { max-width: 640px; margin: 0; color: var(--muted); font-size: 14px; }
+    .grid { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 20px; }
+    .asset-card { margin: 0; border: 1px solid var(--border); border-radius: 12px; overflow: hidden; background: var(--surface); box-shadow: var(--shadow); min-width: 0; }
+    .preview { position: relative; display: flex; align-items: center; justify-content: center; aspect-ratio: 16/10; padding: 14px; overflow: hidden; text-decoration: none; border-bottom: 1px solid var(--border); }
+    .preview-light { background: #FAFAFC; }
+    .preview-dark { background: #0B0F14; }
+    .preview img { display: block; width: 100%; height: 100%; object-fit: contain; }
+    .preview-action { position: absolute; right: 12px; bottom: 12px; color: #FAFAFC; background: #1A1F29; border: 1px solid #515866; border-radius: 5px; padding: 5px 8px; font-size: 11px; opacity: 0; transition: opacity .15s; }
+    .preview:hover .preview-action, .preview:focus-visible .preview-action { opacity: 1; }
+    figcaption { padding: 20px; }
+    .asset-heading { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+    h3 { margin: 0; font-size: 16px; font-weight: 650; letter-spacing: -.25px; }
+    figcaption p { color: var(--muted); font-size: 13px; margin: 9px 0; min-height: 39px; }
+    .filename { display: block; color: var(--muted); font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: 10px; overflow-wrap: anywhere; margin-top: 12px; }
+    .color-value { display: inline-flex; align-items: center; gap: 7px; color: var(--muted); font-size: 12px; }
+    .color-dot { width: 12px; height: 12px; border: 1px solid var(--border); border-radius: 3px; }
+    .asset-links { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 12px; border-top: 1px solid var(--border); margin-top: 16px; padding-top: 14px; font-size: 12px; }
+    .grid-banner { grid-template-columns: 1fr; }
+    .grid-banner .preview { aspect-ratio: 4/1; }
+    .grid-banner figcaption p { min-height: 0; }
+    footer { margin-top: 50px; padding-top: 24px; border-top: 1px solid var(--border); display: flex; flex-wrap: wrap; justify-content: space-between; gap: 18px; color: var(--muted); font-size: 12px; }
+    .footer-links { display: flex; flex-wrap: wrap; gap: 20px; }
+    @media (max-width: 1000px) { .grid { grid-template-columns: repeat(2,minmax(0,1fr)); } .grid-banner { grid-template-columns: 1fr; } .section-heading { display: block; } .section-heading p { margin-top: 10px; } }
+    @media (max-width: 620px) {
+      .topbar-inner { padding: 12px 18px; gap: 12px; }
+      .brand { font-size: 20px; }
+      .brand span, .theme-label { display: none; }
+      .theme-control { gap: 5px; }
+      .theme-control button { padding: 6px 9px; font-size: 12px; }
+      main { padding: 0 18px 40px; }
+      .hero { padding-top: 36px; }
+      h1 { letter-spacing: -1.1px; }
+      .hero-description { font-size: 17px; }
+      .review-note { padding: 17px; }
+      .grid { grid-template-columns: 1fr; }
+      .section { padding-top: 34px; }
+      .preview { aspect-ratio: 16/10; }
+      .grid-banner .preview { aspect-ratio: 16/7; }
+      .preview-action { opacity: 1; }
+    }
+    @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } .preview-action { transition: none; } }
+  </style>
+</head>
+<body>
+  <a class="skip-link" href="#assets">Pular para as imagens</a>
+  <header class="topbar">
+    <div class="topbar-inner">
+      <a class="brand" href="#">Orchestrix <span>Direção 01</span></a>
+      <div class="theme-control" role="group" aria-label="Aparência da galeria">
+        <span class="theme-label">Galeria</span>
+        <button type="button" data-theme-choice="light" aria-pressed="true">Claro</button>
+        <button type="button" data-theme-choice="dark" aria-pressed="false">Escuro</button>
+      </div>
+    </div>
+  </header>
+  <main>
+    <div class="hero">
+      <span class="eyebrow">Identidade visual · 23 imagens</span>
+      <h1>Minimalista e institucional.</h1>
+      <p class="hero-description">Os conceitos da prancha separados para avaliar a marca do Orchestrix, suas cores e suas aplicações.</p>
+    </div>
+    <aside class="review-note" aria-label="Sobre os arquivos desta galeria">
+      <p><strong>Reconstruções raster para validação visual.</strong> Cada PNG foi reconstruído com image_gen a partir da prancha fornecida. São interpretações da referência, sem garantia de recorte pixel-exato.</p>
+      <p>Abra uma imagem para conferir os detalhes ou baixe o PNG individual. Os botões Claro e Escuro mudam a galeria; o conteúdo dos arquivos permanece o mesmo. A família tipográfica da referência não foi identificada.</p>
+    </aside>
+    <nav class="nav" aria-label="Conceitos da identidade">
+      <a href="#marca">Marca principal · 6</a>
+      <a href="#paleta">Paleta · 5</a>
+      <a href="#tipografia">Tipografia · 1</a>
+      <a href="#auxiliares">Elementos auxiliares · 6</a>
+      <a href="#conceito">Conceito · 1</a>
+      <a href="#aplicacoes">Aplicações · 3</a>
+      <a href="#banner">Banner · 1</a>
+    </nav>
+    <div id="assets">
+<section class="section" id="marca" aria-labelledby="marca-title">
+  <div class="section-heading"><h2 id="marca-title">Marca principal</h2><p>Wordmark, símbolo e ícone nas duas superfícies.</p></div>
+  <div class="grid">
+    <figure class="asset-card">
+      <a class="preview preview-light" href="images/01-main-logo-light.png" target="_blank" rel="noopener" aria-label="Abrir imagem: Logo principal · Light">
+        <img src="images/01-main-logo-light.png" alt="Símbolo, nome e assinatura em fundo claro." loading="lazy" decoding="async">
+        <span class="preview-action" aria-hidden="true">Abrir imagem ↗</span>
+      </a>
+      <figcaption>
+        <div class="asset-heading"><h3>Logo principal · Light</h3></div>
+        <p>Símbolo, nome e assinatura em fundo claro.</p>
+        <span class="filename">01-main-logo-light.png</span>
+        <div class="asset-links"><a href="images/01-main-logo-light.png" target="_blank" rel="noopener">Abrir original ↗</a><a href="images/01-main-logo-light.png" download="01-main-logo-light.png">Baixar PNG ↓</a></div>
+      </figcaption>
+    </figure>
+    <figure class="asset-card">
+      <a class="preview preview-dark" href="images/02-main-logo-dark.png" target="_blank" rel="noopener" aria-label="Abrir imagem: Logo principal · Dark">
+        <img src="images/02-main-logo-dark.png" alt="Símbolo, nome e assinatura em fundo escuro." loading="lazy" decoding="async">
+        <span class="preview-action" aria-hidden="true">Abrir imagem ↗</span>
+      </a>
+      <figcaption>
+        <div class="asset-heading"><h3>Logo principal · Dark</h3></div>
+        <p>Símbolo, nome e assinatura em fundo escuro.</p>
+        <span class="filename">02-main-logo-dark.png</span>
+        <div class="asset-links"><a href="images/02-main-logo-dark.png" target="_blank" rel="noopener">Abrir original ↗</a><a href="images/02-main-logo-dark.png" download="02-main-logo-dark.png">Baixar PNG ↓</a></div>
+      </figcaption>
+    </figure>
+    <figure class="asset-card">
+      <a class="preview preview-light" href="images/03-symbol-light.png" target="_blank" rel="noopener" aria-label="Abrir imagem: Símbolo · Light">
+        <img src="images/03-symbol-light.png" alt="Marca gráfica isolada em fundo claro." loading="lazy" decoding="async">
+        <span class="preview-action" aria-hidden="true">Abrir imagem ↗</span>
+      </a>
+      <figcaption>
+        <div class="asset-heading"><h3>Símbolo · Light</h3></div>
+        <p>Marca gráfica isolada em fundo claro.</p>
+        <span class="filename">03-symbol-light.png</span>
+        <div class="asset-links"><a href="images/03-symbol-light.png" target="_blank" rel="noopener">Abrir original ↗</a><a href="images/03-symbol-light.png" download="03-symbol-light.png">Baixar PNG ↓</a></div>
+      </figcaption>
+    </figure>
+    <figure class="asset-card">
+      <a class="preview preview-dark" href="images/04-symbol-dark.png" target="_blank" rel="noopener" aria-label="Abrir imagem: Símbolo · Dark">
+        <img src="images/04-symbol-dark.png" alt="Marca gráfica isolada em fundo escuro." loading="lazy" decoding="async">
+        <span class="preview-action" aria-hidden="true">Abrir imagem ↗</span>
+      </a>
+      <figcaption>
+        <div class="asset-heading"><h3>Símbolo · Dark</h3></div>
+        <p>Marca gráfica isolada em fundo escuro.</p>
+        <span class="filename">04-symbol-dark.png</span>
+        <div class="asset-links"><a href="images/04-symbol-dark.png" target="_blank" rel="noopener">Abrir original ↗</a><a href="images/04-symbol-dark.png" download="04-symbol-dark.png">Baixar PNG ↓</a></div>
+      </figcaption>
+    </figure>
+    <figure class="asset-card">
+      <a class="preview preview-light" href="images/05-app-icon-light.png" target="_blank" rel="noopener" aria-label="Abrir imagem: App icon · Light">
+        <img src="images/05-app-icon-light.png" alt="Ícone com superfície clara e sombra." loading="lazy" decoding="async">
+        <span class="preview-action" aria-hidden="true">Abrir imagem ↗</span>
+      </a>
+      <figcaption>
+        <div class="asset-heading"><h3>App icon · Light</h3></div>
+        <p>Ícone com superfície clara e sombra.</p>
+        <span class="filename">05-app-icon-light.png</span>
+        <div class="asset-links"><a href="images/05-app-icon-light.png" target="_blank" rel="noopener">Abrir original ↗</a><a href="images/05-app-icon-light.png" download="05-app-icon-light.png">Baixar PNG ↓</a></div>
+      </figcaption>
+    </figure>
+    <figure class="asset-card">
+      <a class="preview preview-dark" href="images/06-app-icon-dark.png" target="_blank" rel="noopener" aria-label="Abrir imagem: App icon · Dark">
+        <img src="images/06-app-icon-dark.png" alt="Ícone com superfície escura e sombra." loading="lazy" decoding="async">
+        <span class="preview-action" aria-hidden="true">Abrir imagem ↗</span>
+      </a>
+      <figcaption>
+        <div class="asset-heading"><h3>App icon · Dark</h3></div>
+        <p>Ícone com superfície escura e sombra.</p>
+        <span class="filename">06-app-icon-dark.png</span>
+        <div class="asset-links"><a href="images/06-app-icon-dark.png" target="_blank" rel="noopener">Abrir original ↗</a><a href="images/06-app-icon-dark.png" download="06-app-icon-dark.png">Baixar PNG ↓</a></div>
+      </figcaption>
+    </figure>
+  </div>
+</section>
+
+<section class="section" id="paleta" aria-labelledby="paleta-title">
+  <div class="section-heading"><h2 id="paleta-title">Paleta</h2><p>Os valores abaixo são os hexadecimais impressos na prancha de referência.</p></div>
+  <div class="grid">
+    <figure class="asset-card">
+      <a class="preview preview-light" href="images/07-color-deep-graphite.png" target="_blank" rel="noopener" aria-label="Abrir imagem: Grafite profundo">
+        <img src="images/07-color-deep-graphite.png" alt="Base, profundidade e foco." loading="lazy" decoding="async">
+        <span class="preview-action" aria-hidden="true">Abrir imagem ↗</span>
+      </a>
+      <figcaption>
+        <div class="asset-heading"><h3>Grafite profundo</h3><code class="color-value"><span class="color-dot" style="background:#0B0F14"></span>#0B0F14</code></div>
+        <p>Base, profundidade e foco.</p>
+        <span class="filename">07-color-deep-graphite.png</span>
+        <div class="asset-links"><a href="images/07-color-deep-graphite.png" target="_blank" rel="noopener">Abrir original ↗</a><a href="images/07-color-deep-graphite.png" download="07-color-deep-graphite.png">Baixar PNG ↓</a></div>
+      </figcaption>
+    </figure>
+    <figure class="asset-card">
+      <a class="preview preview-light" href="images/08-color-charcoal.png" target="_blank" rel="noopener" aria-label="Abrir imagem: Cinza carvão">
+        <img src="images/08-color-charcoal.png" alt="Superfícies e hierarquia." loading="lazy" decoding="async">
+        <span class="preview-action" aria-hidden="true">Abrir imagem ↗</span>
+      </a>
+      <figcaption>
+        <div class="asset-heading"><h3>Cinza carvão</h3><code class="color-value"><span class="color-dot" style="background:#1A1F29"></span>#1A1F29</code></div>
+        <p>Superfícies e hierarquia.</p>
+        <span class="filename">08-color-charcoal.png</span>
+        <div class="asset-links"><a href="images/08-color-charcoal.png" target="_blank" rel="noopener">Abrir original ↗</a><a href="images/08-color-charcoal.png" download="08-color-charcoal.png">Baixar PNG ↓</a></div>
+      </figcaption>
+    </figure>
+    <figure class="asset-card">
+      <a class="preview preview-light" href="images/09-color-electric-indigo.png" target="_blank" rel="noopener" aria-label="Abrir imagem: Índigo elétrico">
+        <img src="images/09-color-electric-indigo.png" alt="Acento principal e interação." loading="lazy" decoding="async">
+        <span class="preview-action" aria-hidden="true">Abrir imagem ↗</span>
+      </a>
+      <figcaption>
+        <div class="asset-heading"><h3>Índigo elétrico</h3><code class="color-value"><span class="color-dot" style="background:#6366F1"></span>#6366F1</code></div>
+        <p>Acento principal e interação.</p>
+        <span class="filename">09-color-electric-indigo.png</span>
+        <div class="asset-links"><a href="images/09-color-electric-indigo.png" target="_blank" rel="noopener">Abrir original ↗</a><a href="images/09-color-electric-indigo.png" download="09-color-electric-indigo.png">Baixar PNG ↓</a></div>
+      </figcaption>
+    </figure>
+    <figure class="asset-card">
+      <a class="preview preview-light" href="images/10-color-neutral-gray.png" target="_blank" rel="noopener" aria-label="Abrir imagem: Cinza neutro">
+        <img src="images/10-color-neutral-gray.png" alt="Fontes e bordas sutis." loading="lazy" decoding="async">
+        <span class="preview-action" aria-hidden="true">Abrir imagem ↗</span>
+      </a>
+      <figcaption>
+        <div class="asset-heading"><h3>Cinza neutro</h3><code class="color-value"><span class="color-dot" style="background:#E5E7EB"></span>#E5E7EB</code></div>
+        <p>Fontes e bordas sutis.</p>
+        <span class="filename">10-color-neutral-gray.png</span>
+        <div class="asset-links"><a href="images/10-color-neutral-gray.png" target="_blank" rel="noopener">Abrir original ↗</a><a href="images/10-color-neutral-gray.png" download="10-color-neutral-gray.png">Baixar PNG ↓</a></div>
+      </figcaption>
+    </figure>
+    <figure class="asset-card">
+      <a class="preview preview-light" href="images/11-color-technical-white.png" target="_blank" rel="noopener" aria-label="Abrir imagem: Branco técnico">
+        <img src="images/11-color-technical-white.png" alt="Espaço, clareza e equilíbrio." loading="lazy" decoding="async">
+        <span class="preview-action" aria-hidden="true">Abrir imagem ↗</span>
+      </a>
+      <figcaption>
+        <div class="asset-heading"><h3>Branco técnico</h3><code class="color-value"><span class="color-dot" style="background:#FAFAFC"></span>#FAFAFC</code></div>
+        <p>Espaço, clareza e equilíbrio.</p>
+        <span class="filename">11-color-technical-white.png</span>
+        <div class="asset-links"><a href="images/11-color-technical-white.png" target="_blank" rel="noopener">Abrir original ↗</a><a href="images/11-color-technical-white.png" download="11-color-technical-white.png">Baixar PNG ↓</a></div>
+      </figcaption>
+    </figure>
+  </div>
+</section>
+
+<section class="section" id="tipografia" aria-labelledby="tipografia-title">
+  <div class="section-heading"><h2 id="tipografia-title">Tipografia</h2><p>A referência descreve uma sans geométrica e moderna, mas não nomeia a família tipográfica.</p></div>
+  <div class="grid">
+    <figure class="asset-card">
+      <a class="preview preview-light" href="images/12-typography.png" target="_blank" rel="noopener" aria-label="Abrir imagem: Direção tipográfica">
+        <img src="images/12-typography.png" alt="Clareza, legibilidade e aparência técnica. A fonte final ainda precisa ser definida." loading="lazy" decoding="async">
+        <span class="preview-action" aria-hidden="true">Abrir imagem ↗</span>
+      </a>
+      <figcaption>
+        <div class="asset-heading"><h3>Direção tipográfica</h3></div>
+        <p>Clareza, legibilidade e aparência técnica. A fonte final ainda precisa ser definida.</p>
+        <span class="filename">12-typography.png</span>
+        <div class="asset-links"><a href="images/12-typography.png" target="_blank" rel="noopener">Abrir original ↗</a><a href="images/12-typography.png" download="12-typography.png">Baixar PNG ↓</a></div>
+      </figcaption>
+    </figure>
+  </div>
+</section>
+
+<section class="section" id="auxiliares" aria-labelledby="auxiliares-title">
+  <div class="section-heading"><h2 id="auxiliares-title">Elementos auxiliares</h2><p>Padrões e componentes que estendem a identidade para a interface.</p></div>
+  <div class="grid">
+    <figure class="asset-card">
+      <a class="preview preview-light" href="images/13-background-pattern.png" target="_blank" rel="noopener" aria-label="Abrir imagem: Padrão de fundo">
+        <img src="images/13-background-pattern.png" alt="Grade de pontos: estrutura e profundidade." loading="lazy" decoding="async">
+        <span class="preview-action" aria-hidden="true">Abrir imagem ↗</span>
+      </a>
+      <figcaption>
+        <div class="asset-heading"><h3>Padrão de fundo</h3></div>
+        <p>Grade de pontos: estrutura e profundidade.</p>
+        <span class="filename">13-background-pattern.png</span>
+        <div class="asset-links"><a href="images/13-background-pattern.png" target="_blank" rel="noopener">Abrir original ↗</a><a href="images/13-background-pattern.png" download="13-background-pattern.png">Baixar PNG ↓</a></div>
+      </figcaption>
+    </figure>
+    <figure class="asset-card">
+      <a class="preview preview-light" href="images/14-modular-nodes.png" target="_blank" rel="noopener" aria-label="Abrir imagem: Módulos / nós">
+        <img src="images/14-modular-nodes.png" alt="Nós conectados: coordenação modular." loading="lazy" decoding="async">
+        <span class="preview-action" aria-hidden="true">Abrir imagem ↗</span>
+      </a>
+      <figcaption>
+        <div class="asset-heading"><h3>Módulos / nós</h3></div>
+        <p>Nós conectados: coordenação modular.</p>
+        <span class="filename">14-modular-nodes.png</span>
+        <div class="asset-links"><a href="images/14-modular-nodes.png" target="_blank" rel="noopener">Abrir original ↗</a><a href="images/14-modular-nodes.png" download="14-modular-nodes.png">Baixar PNG ↓</a></div>
+      </figcaption>
+    </figure>
+    <figure class="asset-card">
+      <a class="preview preview-light" href="images/15-flow-lines.png" target="_blank" rel="noopener" aria-label="Abrir imagem: Linhas de fluxo">
+        <img src="images/15-flow-lines.png" alt="Orquestração e controle." loading="lazy" decoding="async">
+        <span class="preview-action" aria-hidden="true">Abrir imagem ↗</span>
+      </a>
+      <figcaption>
+        <div class="asset-heading"><h3>Linhas de fluxo</h3></div>
+        <p>Orquestração e controle.</p>
+        <span class="filename">15-flow-lines.png</span>
+        <div class="asset-links"><a href="images/15-flow-lines.png" target="_blank" rel="noopener">Abrir original ↗</a><a href="images/15-flow-lines.png" download="15-flow-lines.png">Baixar PNG ↓</a></div>
+      </figcaption>
+    </figure>
+    <figure class="asset-card">
+      <a class="preview preview-light" href="images/16-interface-shapes.png" target="_blank" rel="noopener" aria-label="Abrir imagem: Formas de interface">
+        <img src="images/16-interface-shapes.png" alt="Quadrado, círculo e cápsula: simplicidade e sistema." loading="lazy" decoding="async">
+        <span class="preview-action" aria-hidden="true">Abrir imagem ↗</span>
+      </a>
+      <figcaption>
+        <div class="asset-heading"><h3>Formas de interface</h3></div>
+        <p>Quadrado, círculo e cápsula: simplicidade e sistema.</p>
+        <span class="filename">16-interface-shapes.png</span>
+        <div class="asset-links"><a href="images/16-interface-shapes.png" target="_blank" rel="noopener">Abrir original ↗</a><a href="images/16-interface-shapes.png" download="16-interface-shapes.png">Baixar PNG ↓</a></div>
+      </figcaption>
+    </figure>
+    <figure class="asset-card">
+      <a class="preview preview-light" href="images/17-loading-empty-state.png" target="_blank" rel="noopener" aria-label="Abrir imagem: Loading / estado vazio">
+        <img src="images/17-loading-empty-state.png" alt="Anel de progresso: progresso contínuo." loading="lazy" decoding="async">
+        <span class="preview-action" aria-hidden="true">Abrir imagem ↗</span>
+      </a>
+      <figcaption>
+        <div class="asset-heading"><h3>Loading / estado vazio</h3></div>
+        <p>Anel de progresso: progresso contínuo.</p>
+        <span class="filename">17-loading-empty-state.png</span>
+        <div class="asset-links"><a href="images/17-loading-empty-state.png" target="_blank" rel="noopener">Abrir original ↗</a><a href="images/17-loading-empty-state.png" download="17-loading-empty-state.png">Baixar PNG ↓</a></div>
+      </figcaption>
+    </figure>
+    <figure class="asset-card">
+      <a class="preview preview-light" href="images/18-watermark-emblem.png" target="_blank" rel="noopener" aria-label="Abrir imagem: Marca d’água / emblema">
+        <img src="images/18-watermark-emblem.png" alt="Símbolo em baixa intensidade: presença sutil." loading="lazy" decoding="async">
+        <span class="preview-action" aria-hidden="true">Abrir imagem ↗</span>
+      </a>
+      <figcaption>
+        <div class="asset-heading"><h3>Marca d’água / emblema</h3></div>
+        <p>Símbolo em baixa intensidade: presença sutil.</p>
+        <span class="filename">18-watermark-emblem.png</span>
+        <div class="asset-links"><a href="images/18-watermark-emblem.png" target="_blank" rel="noopener">Abrir original ↗</a><a href="images/18-watermark-emblem.png" download="18-watermark-emblem.png">Baixar PNG ↓</a></div>
+      </figcaption>
+    </figure>
+  </div>
+</section>
+
+<section class="section" id="conceito" aria-labelledby="conceito-title">
+  <div class="section-heading"><h2 id="conceito-title">Conceito</h2><p>A ideia da marca apresentada como uma peça própria para validação.</p></div>
+  <div class="grid">
+    <figure class="asset-card">
+      <a class="preview preview-light" href="images/19-brand-concept.png" target="_blank" rel="noopener" aria-label="Abrir imagem: Conceito da marca">
+        <img src="images/19-brand-concept.png" alt="Desktop, local-first e open source; coordenação, precisão e controle." loading="lazy" decoding="async">
+        <span class="preview-action" aria-hidden="true">Abrir imagem ↗</span>
+      </a>
+      <figcaption>
+        <div class="asset-heading"><h3>Conceito da marca</h3></div>
+        <p>Desktop, local-first e open source; coordenação, precisão e controle.</p>
+        <span class="filename">19-brand-concept.png</span>
+        <div class="asset-links"><a href="images/19-brand-concept.png" target="_blank" rel="noopener">Abrir original ↗</a><a href="images/19-brand-concept.png" download="19-brand-concept.png">Baixar PNG ↓</a></div>
+      </figcaption>
+    </figure>
+  </div>
+</section>
+
+<section class="section" id="aplicacoes" aria-labelledby="aplicacoes-title">
+  <div class="section-heading"><h2 id="aplicacoes-title">Aplicações da marca</h2><p>Variações compactas para conferir legibilidade e contraste.</p></div>
+  <div class="grid">
+    <figure class="asset-card">
+      <a class="preview preview-light" href="images/20-application-light.png" target="_blank" rel="noopener" aria-label="Abrir imagem: Aplicação · Light">
+        <img src="images/20-application-light.png" alt="Composição em fundo claro." loading="lazy" decoding="async">
+        <span class="preview-action" aria-hidden="true">Abrir imagem ↗</span>
+      </a>
+      <figcaption>
+        <div class="asset-heading"><h3>Aplicação · Light</h3></div>
+        <p>Composição em fundo claro.</p>
+        <span class="filename">20-application-light.png</span>
+        <div class="asset-links"><a href="images/20-application-light.png" target="_blank" rel="noopener">Abrir original ↗</a><a href="images/20-application-light.png" download="20-application-light.png">Baixar PNG ↓</a></div>
+      </figcaption>
+    </figure>
+    <figure class="asset-card">
+      <a class="preview preview-dark" href="images/21-application-dark.png" target="_blank" rel="noopener" aria-label="Abrir imagem: Aplicação · Dark">
+        <img src="images/21-application-dark.png" alt="Composição em fundo escuro." loading="lazy" decoding="async">
+        <span class="preview-action" aria-hidden="true">Abrir imagem ↗</span>
+      </a>
+      <figcaption>
+        <div class="asset-heading"><h3>Aplicação · Dark</h3></div>
+        <p>Composição em fundo escuro.</p>
+        <span class="filename">21-application-dark.png</span>
+        <div class="asset-links"><a href="images/21-application-dark.png" target="_blank" rel="noopener">Abrir original ↗</a><a href="images/21-application-dark.png" download="21-application-dark.png">Baixar PNG ↓</a></div>
+      </figcaption>
+    </figure>
+    <figure class="asset-card">
+      <a class="preview preview-light" href="images/22-application-monochrome.png" target="_blank" rel="noopener" aria-label="Abrir imagem: Aplicação · Monochrome">
+        <img src="images/22-application-monochrome.png" alt="Composição monocromática." loading="lazy" decoding="async">
+        <span class="preview-action" aria-hidden="true">Abrir imagem ↗</span>
+      </a>
+      <figcaption>
+        <div class="asset-heading"><h3>Aplicação · Monochrome</h3></div>
+        <p>Composição monocromática.</p>
+        <span class="filename">22-application-monochrome.png</span>
+        <div class="asset-links"><a href="images/22-application-monochrome.png" target="_blank" rel="noopener">Abrir original ↗</a><a href="images/22-application-monochrome.png" download="22-application-monochrome.png">Baixar PNG ↓</a></div>
+      </figcaption>
+    </figure>
+  </div>
+</section>
+
+<section class="section" id="banner" aria-labelledby="banner-title">
+  <div class="section-heading"><h2 id="banner-title">Banner</h2><p>O conceito de orquestração aplicado a uma peça de apresentação.</p></div>
+  <div class="grid grid-banner">
+    <figure class="asset-card">
+      <a class="preview preview-dark" href="images/23-orchestration-banner.png" target="_blank" rel="noopener" aria-label="Abrir imagem: Múltiplos agentes. Um mesmo propósito.">
+        <img src="images/23-orchestration-banner.png" alt="Coder, Reviewer, Tester e Documenter convergem para o Orchestrix." loading="lazy" decoding="async">
+        <span class="preview-action" aria-hidden="true">Abrir imagem ↗</span>
+      </a>
+      <figcaption>
+        <div class="asset-heading"><h3>Múltiplos agentes. Um mesmo propósito.</h3></div>
+        <p>Coder, Reviewer, Tester e Documenter convergem para o Orchestrix.</p>
+        <span class="filename">23-orchestration-banner.png</span>
+        <div class="asset-links"><a href="images/23-orchestration-banner.png" target="_blank" rel="noopener">Abrir original ↗</a><a href="images/23-orchestration-banner.png" download="23-orchestration-banner.png">Baixar PNG ↓</a></div>
+      </figcaption>
+    </figure>
+  </div>
+</section>
+    </div>
+    <footer>
+      <span>Direção 01 · Referências para aprovação, antes da normalização para produção.</span>
+      <div class="footer-links"><a href="README.md">Inventário e observações</a><a href="prompts.json">Prompts da geração</a></div>
+    </footer>
+  </main>
+  <script>
+    const themeButtons = document.querySelectorAll("[data-theme-choice]");
+    for (const button of themeButtons) {
+      button.addEventListener("click", () => {
+        const nextTheme = button.dataset.themeChoice;
+        document.documentElement.dataset.theme = nextTheme;
+        for (const option of themeButtons) {
+          option.setAttribute("aria-pressed", String(option === button));
+        }
+      });
+    }
+  </script>
+</body>
+</html>

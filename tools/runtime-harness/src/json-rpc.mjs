@@ -9,11 +9,15 @@ export class HarnessError extends Error {
 
 /** A bounded JSONL stdio client. It owns only the subprocess it spawned. */
 export class JsonRpcProcess extends EventEmitter {
-  constructor({command,args=[],cwd,env=process.env,requestTimeoutMs=10000,maxMessageBytes=1024*1024,exitDrainTimeoutMs=250}) {
+  constructor({command,args=[],cwd,env=process.env,requestTimeoutMs=10000,maxMessageBytes=1024*1024,maxOutboundMessageBytes=1024*1024,maxPendingWriteBytes=2*1024*1024,exitDrainTimeoutMs=250}) {
     super();
     if(!Number.isSafeInteger(exitDrainTimeoutMs)||exitDrainTimeoutMs<1||exitDrainTimeoutMs>10000)throw new HarnessError('arguments','Invalid exit drain timeout');
+    for(const [name,value] of Object.entries({maxMessageBytes,maxOutboundMessageBytes,maxPendingWriteBytes})) {
+      if(!Number.isSafeInteger(value)||value<1)throw new HarnessError('arguments','A positive safe-integer byte limit is required',{limit:name});
+    }
     this.pending=new Map();this.serverRequests=new Set();this.nextId=1;
     this.requestTimeoutMs=requestTimeoutMs;this.maxMessageBytes=maxMessageBytes;
+    this.maxOutboundMessageBytes=maxOutboundMessageBytes;this.maxPendingWriteBytes=maxPendingWriteBytes;
     this.buffer='';this.decoder=new TextDecoder('utf-8',{fatal:true});
     this.closed=false;this.parentExited=false;this.spawned=false;this.failure=null;this.stderrBytes=0;this.messages=0;this.exit=null;
     this.exitDrainTimeoutMs=exitDrainTimeoutMs;this.exitDrainTimer=null;this.stopPromise=null;
@@ -91,7 +95,31 @@ export class JsonRpcProcess extends EventEmitter {
 
   write(message) {
     if(this.closed||this.failure||this.parentExited)throw this.failure||new HarnessError(this.parentExited?'process-exit':'transport','Runtime is unavailable');
-    this.child.stdin.write(`${JSON.stringify(message)}\n`);
+    let frame;
+    try {
+      const serialized=JSON.stringify(message);
+      if(typeof serialized!=='string')throw new Error();
+      frame=`${serialized}\n`;
+    } catch {
+      throw new HarnessError('arguments','Outbound message is not JSON serializable',{dispatch:'not-written'});
+    }
+    // A user-defined toJSON may reenter the client and close its observation.
+    if(this.closed||this.failure||this.parentExited)throw this.failure||new HarnessError(this.parentExited?'process-exit':'transport','Runtime is unavailable');
+    const frameBytes=Buffer.byteLength(frame,'utf8');
+    if(frameBytes>this.maxOutboundMessageBytes)throw new HarnessError('outbound-limit','Outbound message exceeded limit',{dispatch:'not-written',frameBytes,limitBytes:this.maxOutboundMessageBytes});
+    const pendingWriteBytes=this.child.stdin.writableLength;
+    if(pendingWriteBytes>this.maxPendingWriteBytes-frameBytes) {
+      const error=new HarnessError('backpressure','Runtime stdin write budget exceeded',{dispatch:'not-written',pendingWriteBytes,frameBytes,limitBytes:this.maxPendingWriteBytes});
+      this.fail(error);throw error;
+    }
+    try {
+      // false means this frame was accepted into the Writable queue. Never retry
+      // it; later writes must still fit the explicit byte budget above.
+      this.child.stdin.write(frame);
+    } catch {
+      const error=new HarnessError('transport','Unable to write to runtime stdin',{dispatch:'unknown'});
+      this.fail(error);throw error;
+    }
   }
   request(method,params={},timeoutMs=this.requestTimeoutMs) {
     if(this.closed||this.failure||this.parentExited)return Promise.reject(this.failure||new HarnessError(this.parentExited?'process-exit':'transport','Runtime is unavailable'));
@@ -104,12 +132,14 @@ export class JsonRpcProcess extends EventEmitter {
   }
   notify(method,params={}) {this.write({method,params});}
   reply(id,result) {
-    if(!this.serverRequests.delete(id))throw new HarnessError('protocol','Cannot answer an unknown runtime request');
+    if(!this.serverRequests.has(id))throw new HarnessError('protocol','Cannot answer an unknown runtime request');
     this.write({id,result});
+    this.serverRequests.delete(id);
   }
   rejectRequest(id) {
-    if(!this.serverRequests.delete(id))throw new HarnessError('protocol','Cannot answer an unknown runtime request');
+    if(!this.serverRequests.has(id))throw new HarnessError('protocol','Cannot answer an unknown runtime request');
     this.write({id,error:{code:-32601,message:'Client capability unavailable in this probe'}});
+    this.serverRequests.delete(id);
   }
   rejectPending(reason) {for(const pending of this.pending.values()){clearTimeout(pending.timer);pending.reject(reason);}this.pending.clear();}
   fail(reason) {

@@ -1,17 +1,19 @@
 import {test,expect} from '@playwright/test';
 import {mkdir} from 'node:fs/promises';
 import {fileURLToPath} from 'node:url';
+import {openStudio,usePortuguese,openSettings} from './navigation.mjs';
 
-test.beforeEach(async ({page})=>{await page.goto('/');});
+test.beforeEach(async ({page})=>{await usePortuguese(page);await page.goto('/');await openStudio(page);await page.locator('[data-view="work"]').click();});
 async function prepare(page,template='short',agent='codex-a') {
-  await page.locator('[data-action="onboarding"]').click();
-  await page.getByLabel('Trabalho inicial').selectOption(template);
-  await page.getByLabel('Conexão inicial').selectOption(agent);
-  await page.getByRole('button',{name:'Preparar projeto de exemplo'}).click();
-  await expect(page.getByRole('dialog')).toContainText('Autorização pendente');
-  await page.getByRole('button',{name:'Continuar autorização simulada'}).click();
+  await page.evaluate(({template,agent})=>{
+    const data=new FormData();Object.entries({project:'Lifecycle fixture',path:'C:\\Work\\Lifecycle',platform:'native',template,agent}).forEach(([key,value])=>data.set(key,value));
+    OrchestrixApp.prepareScenario(data);
+  },{template,agent});
+  await expect(page.getByRole('dialog')).toContainText('Configuração pendente');
+  await page.getByRole('button',{name:'Confirmar configuração'}).click();
   await page.getByRole('checkbox').check();
-  await page.getByRole('button',{name:'Validar registro simulado'}).click();
+  await page.getByRole('button',{name:'Salvar configuração'}).click();
+  await page.locator('[data-view="work"]').click();
 }
 async function completePrimary(page) {
   await page.locator('[data-task="OX-24"]').click();
@@ -38,6 +40,7 @@ test('entrada curta usa uma conexão com confirmação e percorre o ciclo comple
 });
 
 test('feature bloqueia aplicação até as quatro tarefas serem validadas',async ({page})=>{
+  test.setTimeout(60000);
   await prepare(page,'feature');
   await page.getByRole('button',{name:'Nova tarefa',exact:true}).click();
   await page.getByLabel('Título da tarefa').fill('Outro Run independente');
@@ -88,8 +91,25 @@ test('feature bloqueia aplicação até as quatro tarefas serem validadas',async
   await page.getByRole('button',{name:'Revisar resultado complementar',exact:true}).click();
   await page.getByRole('button',{name:'Validar resultado complementar'}).click();
   await page.getByRole('button',{name:'Rever resultado e aplicação'}).click();
+  await expect(page.getByRole('dialog')).toContainText('Base alterada · aplicação bloqueada');
+  await expect(page.getByRole('dialog')).toContainText('b9f87d3');
+  await expect(page.getByRole('button',{name:'Revisar aplicação deste Run'})).toHaveCount(0);
+  await page.getByRole('dialog').getByRole('button',{name:'Voltar',exact:true}).click();
+  await page.locator('[data-view="review"]').click();
+  await expect(page.getByRole('button',{name:'Run aplicado na demonstração'})).toBeDisabled();
+  await page.locator('[data-view="work"]').click();
+  await page.getByRole('button',{name:'Nova tarefa',exact:true}).click();
+  await page.getByLabel('Título da tarefa').fill('Run independente na base atual');
+  await page.getByLabel('Objetivo e critérios').fill('Preparar novo trabalho sobre a base atual sem reabrir R-08.');
+  await page.getByRole('button',{name:'Criar tarefa simulada'}).click();
+  await expect(page.locator('.detail-meta')).toContainText('OX-29 · R-13');
+  await page.getByRole('button',{name:'Iniciar demonstração',exact:true}).click();
+  await page.getByRole('button',{name:'Concluir resultado complementar simulado'}).click();
+  await page.getByRole('button',{name:'Revisar resultado complementar',exact:true}).click();
+  await page.getByRole('button',{name:'Validar resultado complementar'}).click();
+  await page.getByRole('button',{name:'Rever resultado e aplicação'}).click();
   await page.getByRole('button',{name:'Revisar aplicação deste Run'}).click();
-  await expect(page.getByRole('dialog')).toContainText('R-12');
+  await expect(page.getByRole('dialog')).toContainText('R-13');
   await page.getByRole('button',{name:'Aplicar este Run na demonstração'}).click();
   await page.locator('[data-view="review"]').click();
   await expect(page.getByRole('button',{name:'Run aplicado na demonstração'})).toBeDisabled();
@@ -126,19 +146,19 @@ test('contexto futuro não altera pacote e revisão conserva contexto do produto
 
 test('nova autorização e desconexão preservam tentativa ativa e não afirmam revogação',async ({page})=>{
   await page.locator('[data-view="connections"]').click();
-  await page.getByRole('button',{name:'Adicionar conexão simulada'}).click();
+  await page.getByRole('button',{name:'Adicionar conexão'}).click();
   await page.getByLabel('Nome para reconhecer a conta').fill('Codex extra');
-  await page.getByLabel('Workspace de exemplo').fill('Equipe fictícia');
+  await page.getByLabel('Workspace').fill('Equipe fictícia');
   await page.getByRole('button',{name:'Adicionar registro pendente'}).click();
   await page.locator('.connection-row').filter({hasText:'Codex extra'}).getByRole('button',{name:'Inspecionar conexão'}).click();
-  await page.getByRole('button',{name:'Continuar autorização simulada'}).click();
+  await page.getByRole('button',{name:'Confirmar configuração'}).click();
   await page.getByRole('checkbox').check();
-  await page.getByRole('button',{name:'Validar registro simulado'}).click();
+  await page.getByRole('button',{name:'Salvar configuração'}).click();
   await page.locator('[data-conn-id="codex-a"][data-conn-action="inspect"]').click();
   await page.getByRole('button',{name:'Desconectar para novos trabalhos'}).click();
   await page.getByRole('button',{name:'Bloquear novos trabalhos',exact:true}).click();
   await expect(page.getByRole('dialog')).toContainText('Não confirmado; nenhuma tentativa foi encerrada');
-  await page.getByRole('button',{name:'Simular revogação sem resposta'}).click();
+  await page.getByRole('button',{name:'Registrar revogação sem resposta'}).click();
   await expect(page.getByRole('dialog')).toContainText('Não confirmada · sem resposta');
   await page.getByRole('button',{name:'Fechar',exact:true}).click();
   await page.locator('[data-view="work"]').click();
@@ -153,21 +173,21 @@ test('limite e catálogo incompatível bloqueiam início sem fallback para API',
   await page.locator('[data-view="connections"]').click();
   await page.getByRole('button',{name:'Inspecionar conexão',exact:true}).click();
   await page.locator('.conn-scenarios summary').click();
-  await page.getByRole('button',{name:'Simular descoberta em andamento'}).click();
-  await expect(page.getByRole('dialog')).toContainText('Descobrindo catálogo · simulação');
+  await page.getByRole('button',{name:'Definir catálogo pendente'}).click();
+  await expect(page.getByRole('dialog')).toContainText('Aguardando catálogo');
   await page.locator('.conn-scenarios summary').click();
-  await page.getByRole('button',{name:'Concluir descoberta simulada'}).click();
+  await page.getByRole('button',{name:'Confirmar registro de catálogo'}).click();
   await page.locator('.conn-scenarios summary').click();
-  await page.getByRole('button',{name:'Simular limite',exact:true}).click();
+  await page.getByRole('button',{name:'Marcar limite',exact:true}).click();
   await page.getByRole('button',{name:'Fechar',exact:true}).click();
   await page.locator('[data-view="work"]').click();
   await page.getByRole('button',{name:'Iniciar demonstração',exact:true}).click();
   await expect(page.locator('h1')).toHaveText('Contas distintas, escolhas claras');
   await page.getByRole('button',{name:'Inspecionar conexão',exact:true}).click();
-  await page.getByRole('button',{name:'Gerenciar uso simulado'}).click();
-  await page.getByRole('button',{name:'Simular limite liberado'}).click();
+  await page.getByRole('button',{name:'Consultar uso'}).click();
+  await page.getByRole('button',{name:'Registrar capacidade disponível'}).click();
   await page.locator('.conn-scenarios summary').click();
-  await page.getByRole('button',{name:'Simular catálogo incompatível'}).click();
+  await page.getByRole('button',{name:'Marcar catálogo incompatível'}).click();
   await expect(page.getByRole('dialog')).toContainText('Nenhum fallback para API');
   await page.getByRole('button',{name:'Fechar',exact:true}).click();
   await page.locator('[data-view="work"]').click();
@@ -223,39 +243,46 @@ test('layout por teclado persiste; texto ampliado e entrada WSL permanecem naveg
   await page.getByRole('button',{name:'Recolher tarefas'}).click();
   await expect(page.locator('.worklist')).toBeHidden();
   await page.getByRole('button',{name:'Mostrar tarefas'}).click();
-  await page.getByRole('button',{name:'Personalizar aparência'}).click();
+  await openSettings(page,'general');
   await page.getByLabel('Densidade da interface').selectOption('compact');
-  await page.getByLabel('Tamanho do texto').selectOption('large');
+  await page.getByLabel('Tamanho do texto').fill('200');
+  await page.getByLabel('Tamanho do texto').dispatchEvent('input');
   await page.reload();
   await expect(page.locator('html')).toHaveAttribute('data-density','compact');
   await expect(page.locator('html')).toHaveAttribute('data-text-size','large');
+  await openStudio(page);
   for(const width of [1920,1280,1024,720,390,320]) {
     await page.setViewportSize({width,height:800});
-    for(const view of ['work','review','connections','settings']) {
+    for(const view of ['work','review','connections']) {
       await page.locator(`[data-view="${view}"]`).click();
       expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
     }
   }
-  await page.locator('[data-action="onboarding"]').click();
-  await page.getByLabel('Ambiente de execução').selectOption('wsl');
-  await expect(page.getByLabel('Caminho do repositório · exemplo')).toHaveValue('/home/leo/Meu projeto – sessão');
+  await page.getByRole('button',{name:'Conversa',exact:true}).click();
+  await page.evaluate(()=>OrchestrixApp.openProject());
+  await page.locator('#entry-name').fill('Linux project');
+  await page.locator('#entry-path').fill('/home/leo/Meu projeto – sessão');
+  await page.getByRole('button',{name:'Criar projeto e sessão',exact:true}).click();
+  expect(await page.evaluate(()=>OrchestrixApp.getState().projectPath)).toBe('/home/leo/Meu projeto – sessão');
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
 });
 
 test('modelo nomeado automático seleciona catálogo elegível e conexão fixa incompatível bloqueia',async ({page})=>{
-  await page.locator('[data-view="settings"]').click();
+  await openSettings(page,'orchestration');
   await page.getByLabel('Estratégia de modelo').selectOption('claude-example');
-  await page.getByRole('button',{name:'Salvar preferências simuladas'}).click();
+  await page.getByRole('button',{name:'Salvar orquestração'}).click();
+  await page.evaluate(()=>OrchestrixSettings.close());
   await page.locator('[data-view="work"]').click();
   await page.getByRole('button',{name:'Nova tarefa',exact:true}).click();
   await page.getByLabel('Título da tarefa').fill('Usar modelo Claude ilustrativo');
   await page.getByLabel('Objetivo e critérios').fill('Selecionar uma conexão compatível.');
   await page.getByRole('button',{name:'Criar tarefa simulada'}).click();
   await expect(page.locator('.detail-footer')).toContainText('Claude · pessoal');
-  await page.locator('[data-view="settings"]').click();
+  await openSettings(page,'orchestration');
   await page.getByLabel('Conexão preferida').selectOption('codex-a');
   await expect(page.getByLabel('Estratégia de modelo')).toHaveValue('claude-example');
-  await page.getByRole('button',{name:'Salvar preferências simuladas'}).click();
+  await page.getByRole('button',{name:'Salvar orquestração'}).click();
+  await page.evaluate(()=>OrchestrixSettings.close());
   await page.locator('[data-view="work"]').click();
   await page.getByRole('button',{name:'Nova tarefa',exact:true}).click();
   await page.getByLabel('Título da tarefa').fill('Catálogo incompatível');
@@ -266,9 +293,11 @@ test('modelo nomeado automático seleciona catálogo elegível e conexão fixa i
 });
 
 test('capturas dos novos estados D1',async ({page})=>{
+  test.setTimeout(60000);
   const folder=fileURLToPath(new URL('../artifacts/',import.meta.url));await mkdir(folder,{recursive:true});
-  await page.locator('[data-action="onboarding"]').click();
+  await page.evaluate(()=>OrchestrixApp.openProject());
   await page.screenshot({path:`${folder}d1-entry.png`,fullPage:true});
+  await page.keyboard.press('Escape');
   await page.locator('[data-view="connections"]').click();
   await page.locator('[data-conn-id="codex-b"][data-conn-action="inspect"]').click();
   await page.screenshot({path:`${folder}d1-connection.png`,fullPage:true});

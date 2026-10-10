@@ -77,8 +77,10 @@ export class CodexSession {
       for(const message of this.earlyNotifications.splice(0))this.observe(message);
       return result.turn.id;
     } catch(error) {
-      // Only a correlated RPC rejection without contradictory notifications proves no turn started.
-      if(error.kind==='rpc'&&!this.earlyNotifications.length&&!this.client.failure&&!this.client.closed)this.turnAdmission='idle';
+      // A local pre-write rejection proves this start was not submitted. Once a
+      // transport has failed, even a refused new frame cannot recover admission.
+      const notSubmitted=error instanceof HarnessError&&['arguments','outbound-limit'].includes(error.kind)&&error.metadata.dispatch==='not-written';
+      if((error.kind==='rpc'||notSubmitted)&&!this.earlyNotifications.length&&!this.client.failure&&!this.client.closed)this.turnAdmission='idle';
       else {this.turnAdmission='uncertain';this.event('attempt.observation.unknown',{phase:'turn-start',reason:error.kind||'local-error'});}
       throw error;
     } finally {this.startPending=false;this.earlyNotifications=[];}

@@ -1,0 +1,189 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-10-10T18:58:43.777Z",
+  "scope": "D1 static prototype: app, website, video page, local assets and locale sources/catalog; excludes tools, tests, server and documentation",
+  "algorithm": "SHA-256 of UTF-8 JSON.stringify(files), sorted by relative path; each entry has path, bytes and sha256 of exact file bytes. generatedAt is excluded.",
+  "buildSha256": "896778a77a828b86ed4d12e0e77c82e4154951c10e6fc718d015180901cb727c",
+  "files": [
+    {
+      "path": "app.js",
+      "bytes": 95217,
+      "sha256": "6f3ddc3b34028955cdf94538a275097b0d7c7fb67702ee7e4e30003953a9bdbc"
+    },
+    {
+      "path": "assets/brand/app-icon-dark.png",
+      "bytes": 1241841,
+      "sha256": "952d9a2a603e24cea233b3e4b36c8dd935cc4a97c425d9bb81184d5617fb991a"
+    },
+    {
+      "path": "assets/brand/app-icon-light.png",
+      "bytes": 1146985,
+      "sha256": "d7acf9ae6c70d41a72b4b700e5fe22d21f3b957e3d27135d149042d787a009b9"
+    },
+    {
+      "path": "assets/brand/favicon-transparent.png",
+      "bytes": 388461,
+      "sha256": "4023f26506f457f85c300dfce465dd76da9cb6ff1f465ea2c07ae1631bd03b47"
+    },
+    {
+      "path": "assets/brand/main-logo-dark.png",
+      "bytes": 1170901,
+      "sha256": "0b581c208dfa58084281ced2ce9843aa63f2de151ab49f235f2fede7e411c0fa"
+    },
+    {
+      "path": "assets/brand/main-logo-light.png",
+      "bytes": 1097630,
+      "sha256": "daf3750c26390fa309ed13d469fd4ce2ce231517bb360285e024df09225425be"
+    },
+    {
+      "path": "assets/brand/orchestration-banner.png",
+      "bytes": 1384063,
+      "sha256": "1a542e7e076cc11c7664b3c4ef840c23317b2fc5816681d4e443012cb6df5741"
+    },
+    {
+      "path": "assets/brand/symbol-dark.png",
+      "bytes": 1167934,
+      "sha256": "68d1d87943e626969b3c363ad5bd4b35f7346d36bda376dc413bd2b9d6fb768b"
+    },
+    {
+      "path": "assets/brand/symbol-light.png",
+      "bytes": 1112890,
+      "sha256": "b9caaf6b73e486ad1befc3531cfc49e3138f7db9722275096086d0b18e5692d9"
+    },
+    {
+      "path": "assets/brand/transparent/index.html",
+      "bytes": 3263,
+      "sha256": "2e34f5cc16889cdbf34a241cbae1455fd75bad0b4d896fed55c5fe1e31674ea3"
+    },
+    {
+      "path": "assets/brand/transparent/prompts.json",
+      "bytes": 2923,
+      "sha256": "b4c74ea208f157d1f16d9ba964cadb7e6e6fdc5fe6ae221eb4d69039e4495b8b"
+    },
+    {
+      "path": "assets/brand/transparent/symbol-graphite.png",
+      "bytes": 599473,
+      "sha256": "5d8a9ca0cac1250e68fa217120526be4fb69369debe16fa8d0f568b079c138da"
+    },
+    {
+      "path": "assets/brand/transparent/symbol-indigo.png",
+      "bytes": 680096,
+      "sha256": "84b66bf03100f1afcf8ae0578fb2b14d42227754f0af262f37463b8b62443679"
+    },
+    {
+      "path": "assets/brand/transparent/symbol-white.png",
+      "bytes": 637977,
+      "sha256": "b95a2fa694fb1cdcfc44fc231884ef9699afa65118e726513cff68275438669e"
+    },
+    {
+      "path": "assets/icons/github-mark-white.svg",
+      "bytes": 1559,
+      "sha256": "ccd84c89b1056345608fc3489357f8acc7397e49a3cdc2d418b6c8016911d47b"
+    },
+    {
+      "path": "assets/visuals/night-flight.png",
+      "bytes": 2043139,
+      "sha256": "64b643b57ad878c1797be2196a11a5724ba821029d31614e7f6af49897088ce2"
+    },
+    {
+      "path": "connections.js",
+      "bytes": 25177,
+      "sha256": "7574782fe75427f0714979e673730a4677be82aa79ad5667d15af30e487d18b1"
+    },
+    {
+      "path": "experience.css",
+      "bytes": 14408,
+      "sha256": "9ba84826de958f46aa8874ddb88b0dce049cbdb756c57d03056448dbffd05d3b"
+    },
+    {
+      "path": "experience.js",
+      "bytes": 10428,
+      "sha256": "091a1b1cfd65c80fd87bba1308c6074e2221d729ae0097fd216d4854a79891ba"
+    },
+    {
+      "path": "i18n.js",
+      "bytes": 3574,
+      "sha256": "34a9c72218ad722fbd71ef8655a89a4caf7b65f68fb1aa45e82c7c3e10e80eb6"
+    },
+    {
+      "path": "identity.css",
+      "bytes": 540,
+      "sha256": "0be26201cd9f7e6e262532495630eb19d03e9861ee3eae94f50cffe691a13ad3"
+    },
+    {
+      "path": "index.html",
+      "bytes": 6376,
+      "sha256": "c2fec1e6ca98b95bec79c91b7f0ee558ac813ca5d612e8c782b9677b135498a1"
+    },
+    {
+      "path": "locales/app.json",
+      "bytes": 92202,
+      "sha256": "566ed6949f3a6337860273dd32a4b42d4352b9712abf18e1d5814bed182b6d76"
+    },
+    {
+      "path": "locales/catalog.js",
+      "bytes": 158709,
+      "sha256": "329d4419d30f233f4afdd3f84d13ebd5635ba8eb3fa3312bee48b9b4ac673932"
+    },
+    {
+      "path": "locales/chrome.json",
+      "bytes": 2728,
+      "sha256": "40c47df5d31bf34983d58cf29133691dd49e5f06f3eab7854b243223811c82d8"
+    },
+    {
+      "path": "locales/connections.json",
+      "bytes": 28670,
+      "sha256": "8e2a2bec1a40598d917f32a5b9ea3d549fdedcbaa1cf2d81b3950667e7927f55"
+    },
+    {
+      "path": "locales/experience.json",
+      "bytes": 12138,
+      "sha256": "4207fa9f983474acbf4f34be882408490357b627de61d40a4ebb685802f8888e"
+    },
+    {
+      "path": "locales/workspace.json",
+      "bytes": 22344,
+      "sha256": "060da6139222f239a05b8999974e8c5a8148f2702adc2abdf433b16d0b8460ee"
+    },
+    {
+      "path": "styles.css",
+      "bytes": 53020,
+      "sha256": "fbc1b2a1395bdc6cabde926518f78f877ea65aa81d9114899f8113e132a52051"
+    },
+    {
+      "path": "video-config.json",
+      "bytes": 101,
+      "sha256": "d79b085477925644ae14fd6b7b188ec4a65c4018a9bdfcb6d156b1b907de6792"
+    },
+    {
+      "path": "watch.html",
+      "bytes": 3353,
+      "sha256": "aecd08bf4253383246a0e3438b5c6113cebb4b09bc74cecbb1392a26d176aced"
+    },
+    {
+      "path": "watch.js",
+      "bytes": 1907,
+      "sha256": "8040466696a1d87146fe29a0537415b21f5f5fcaf33159eac45eefba64ddc3c2"
+    },
+    {
+      "path": "website.css",
+      "bytes": 43666,
+      "sha256": "1e3fcb7430a98dc52fe07f91a3e684436f120642ca841f57db6bd8e3005bb3d2"
+    },
+    {
+      "path": "website.html",
+      "bytes": 27654,
+      "sha256": "d25449d76510f8b82ac4fa9f3905a9b2afb8bb4718a488259904d496443a56cd"
+    },
+    {
+      "path": "website.js",
+      "bytes": 24736,
+      "sha256": "7c068e1610030a87b2442d33622f90ae735437c45237695342b6ef87c8581ec9"
+    },
+    {
+      "path": "workspace.js",
+      "bytes": 27744,
+      "sha256": "2541902f6318f08e7f7c500bb763b956b8f7e4de132dcbe63c8480f9fd7673a2"
+    }
+  ]
+}

@@ -1,0 +1,8 @@
+# Static build manifests hash exact bytes; keep text assets consistent across platforms.
+prototypes/desktop/*.html text eol=lf
+prototypes/desktop/*.css text eol=lf
+prototypes/desktop/*.js text eol=lf
+prototypes/desktop/video-config.json text eol=lf
+prototypes/desktop/locales/*.json text eol=lf
+prototypes/desktop/locales/*.js text eol=lf
+prototypes/desktop/assets/**/*.svg text eol=lf

@@ -1,0 +1,169 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <meta name="theme-color" content="#0B1426">
+  <meta name="description" content="Meet Orchestrix, an open source platform where you can build through chat, coordinate coding agents, and stay in control at your own pace.">
+  <title>Orchestrix</title>
+  <link rel="stylesheet" href="identity.css">
+  <link rel="stylesheet" href="website.css">
+  <link rel="icon" type="image/png" href="assets/brand/transparent/symbol-indigo.png">
+  <script src="website.js" defer></script>
+</head>
+<body data-motion="paused">
+  <div class="night-landscape" aria-hidden="true"><img src="assets/visuals/night-flight.png" alt="" width="1672" height="941" fetchpriority="high"></div>
+  <canvas id="ambient-field" aria-hidden="true"></canvas>
+  <a class="skip-link" href="#main">Skip to content</a>
+  <svg class="icon-definitions" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+    <defs>
+      <symbol id="i-arrow" viewBox="0 0 24 24"><path d="M5 12h14m-6-6 6 6-6 6"/></symbol>
+      <symbol id="i-chat" viewBox="0 0 24 24"><path d="M7 18 3 21V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v11a2 2 0 0 1-2 2H7Z"/><path d="M7 8h10M7 12h7"/></symbol>
+      <symbol id="i-folder" viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h5l2 3h7a2 2 0 0 1 2 2v9H3V7Z"/></symbol>
+      <symbol id="i-sliders" viewBox="0 0 24 24"><path d="M4 6h5m4 0h7M4 12h9m4 0h3M4 18h2m4 0h10"/><circle cx="11" cy="6" r="2"/><circle cx="15" cy="12" r="2"/><circle cx="8" cy="18" r="2"/></symbol>
+      <symbol id="i-check" viewBox="0 0 24 24"><path d="m5 12 4 4L19 6"/></symbol>
+      <symbol id="i-plug" viewBox="0 0 24 24"><path d="M9 3v5m6-5v5M7 8h10v4a5 5 0 0 1-10 0V8Zm5 9v4"/></symbol>
+      <symbol id="i-lock" viewBox="0 0 24 24"><rect x="5" y="10" width="14" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></symbol>
+      <symbol id="i-code" viewBox="0 0 24 24"><path d="m8 6-6 6 6 6m8-12 6 6-6 6m-3-15-2 18"/></symbol>
+      <symbol id="i-external" viewBox="0 0 24 24"><path d="M14 3h7v7m0-7L10 14M9 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-4"/></symbol>
+      <symbol id="i-play" viewBox="0 0 24 24"><path d="m8 5 11 7-11 7V5Z"/></symbol>
+      <symbol id="i-pause" viewBox="0 0 24 24"><path d="M8 5v14M16 5v14"/></symbol>
+      <symbol id="i-restart" viewBox="0 0 24 24"><path d="M4 9a8 8 0 1 1 0 6m0-11v5h5"/></symbol>
+      <symbol id="i-research" viewBox="0 0 24 24"><path d="M9 3h6m-5 0v6L4 19a1 1 0 0 0 1 2h14a1 1 0 0 0 1-2L14 9V3M8 15h8"/></symbol>
+      <symbol id="i-document" viewBox="0 0 24 24"><path d="M14 3H5v18h14V8l-5-5Zm0 0v5h5M8 12h8m-8 4h6"/></symbol>
+      <symbol id="i-present" viewBox="0 0 24 24"><path d="M3 4h18M5 4v12h14V4M12 16v5m-4 0 4-5 4 5M8 12l3-3 2 2 3-4"/></symbol>
+      <symbol id="i-refactor" viewBox="0 0 24 24"><path d="M7 4v9a5 5 0 0 0 5 5h5m-3-3 3 3-3 3M17 4v5a5 5 0 0 1-5 5H7"/><circle cx="7" cy="3" r="1"/><circle cx="17" cy="3" r="1"/></symbol>
+      <symbol id="i-improve" viewBox="0 0 24 24"><path d="M9 18h6m-6 3h6m-6-6a6 6 0 1 1 6 0v3H9v-3ZM12 2v1M3 9H2m20 0h-1M5 3l1 1m12 0 1-1"/></symbol>
+    </defs>
+  </svg>
+  <header class="site-header">
+    <div class="page-width header-content">
+      <a class="brand" href="#" aria-label="Orchestrix, home"><span class="brand-symbol"><img src="assets/brand/transparent/symbol-indigo.png" alt="" width="1254" height="1254"></span><span>Orchestrix</span></a>
+      <nav aria-label="Site navigation"><a href="#demo"><svg class="icon" aria-hidden="true"><use href="#i-code"/></svg> How it works</a><a href="#experience"><svg class="icon" aria-hidden="true"><use href="#i-chat"/></svg> The experience</a><a href="#download"><svg class="icon" aria-hidden="true"><use href="#i-arrow"/></svg> Download</a><a class="nav-github" href="https://github.com/LeonardoMBarca/orchestrix"><img class="github-icon" src="assets/icons/github-mark-white.svg" alt="" width="20" height="20"> GitHub</a></nav>
+      <a class="button button-header" href="#download">Download Orchestrix <svg class="icon" aria-hidden="true"><use href="#i-arrow"/></svg></a>
+    </div>
+  </header>
+  <main id="main">
+    <section class="hero-section" id="hero" aria-labelledby="hero-title">
+      <div class="hero page-width">
+        <div class="hero-copy">
+          <p class="eyebrow"><span class="status-dot"></span> YOUR AGENTS, IN SYNC · OPEN SOURCE</p>
+          <h1 id="hero-title">Your idea and<br>your agents<br><span>in sync</span></h1>
+          <p class="hero-description">Build through chat with one account or several, bringing your agents together around the same goal. Guide your idea and follow its progress like a pilot on a night flight over the mountains.</p>
+          <div class="hero-actions"><a class="button button-primary" href="#download">Download Orchestrix <svg class="icon" aria-hidden="true"><use href="#i-arrow"/></svg></a><a class="text-link video-link" href="watch.html"><svg class="icon" aria-hidden="true"><use href="#i-play"/></svg> See Orchestrix in action</a></div>
+        </div>
+        <div class="hero-visual" aria-hidden="true">
+          <div class="visual-overline"><span class="tiny-line"></span> MULTIPLE AGENTS, ONE SHARED PURPOSE</div>
+          <div class="constellation">
+            <svg id="hero-network" class="constellation-lines" viewBox="0 0 640 520" fill="none">
+              <ellipse cx="320" cy="260" rx="224" ry="177"/><ellipse cx="320" cy="260" rx="279" ry="222"/>
+              <path class="signal-line" data-orbit-connector="request" d="M205 260C168 260 178 131 122 131"/><circle data-orbit-dot="request" cx="122" cy="131" r="3"/>
+              <path class="signal-line" data-orbit-connector="context" d="M435 260C470 260 455 77 500 77"/><circle data-orbit-dot="context" cx="500" cy="77" r="3"/>
+              <path class="signal-line" data-orbit-connector="code" d="M205 260C170 260 207 421 166 421"/><circle data-orbit-dot="code" cx="166" cy="421" r="3"/>
+              <path class="signal-line" data-orbit-connector="review" d="M435 260C472 260 465 377 516 377"/><circle data-orbit-dot="review" cx="516" cy="377" r="3"/>
+            </svg>
+            <div class="emblem-aura"></div>
+            <div class="hero-emblem"><img src="assets/brand/transparent/symbol-indigo.png" alt="" width="1254" height="1254"></div>
+            <div class="orbit-node node-request" data-orbit-node="request"><svg class="icon"><use href="#i-chat"/></svg><span>Your idea</span></div>
+            <div class="orbit-node node-context" data-orbit-node="context"><svg class="icon"><use href="#i-folder"/></svg><span>Context</span></div>
+            <div class="orbit-node node-code" data-orbit-node="code"><svg class="icon"><use href="#i-code"/></svg><span>Code</span></div>
+            <div class="orbit-node node-review" data-orbit-node="review"><svg class="icon"><use href="#i-check"/></svg><span>Review</span></div>
+            <span class="constellation-coordinate coordinate-top">01 — COORDINATE</span><span class="constellation-coordinate coordinate-bottom">02 — CREATE</span>
+          </div>
+          <div class="visual-footnote"><span>ORCHESTRATE · BUILD · GO FURTHER</span><span class="tiny-line"></span></div>
+        </div>
+      </div>
+      <div class="hero-bottom page-width"><a class="scroll-cue" href="#demo"><span>From conversation to result</span><span aria-hidden="true">↓</span></a><span class="flight-caption">EXPLORE WHAT COMES NEXT</span></div>
+    </section>
+    <div class="principles-strip page-width" aria-label="Product principles"><span><svg class="icon" aria-hidden="true"><use href="#i-lock"/></svg> Your work, your control</span><span><svg class="icon" aria-hidden="true"><use href="#i-code"/></svg> Open source</span><span><svg class="icon" aria-hidden="true"><use href="#i-chat"/></svg> Conversation first</span><span><svg class="icon" aria-hidden="true"><use href="#i-sliders"/></svg> Control at your own pace</span></div>
+
+    <section class="demo-section page-width section-space" id="demo" aria-labelledby="demo-title">
+      <div class="section-heading"><div><p class="eyebrow">01 / A CONVERSATION SETS EVERYTHING IN MOTION</p><h2 id="demo-title">From one request<br><span>to a clear path</span></h2></div><p>Choose a goal and follow the path: from conversation to context, from your agents to your review.</p></div>
+      <div class="scenario-picker" role="group" aria-label="Choose a request" data-enhanced hidden><button type="button" data-scenario="fix" aria-pressed="true">Fix a problem</button><button type="button" data-scenario="create" aria-pressed="false">Create a feature</button><button type="button" data-scenario="understand" aria-pressed="false">Understand code</button></div>
+      <div class="product-demo" id="product-demo" data-stage="0" data-scenario="fix">
+        <div class="demo-chrome"><span><span class="status-dot"></span> FROM IDEA TO REVIEW</span><a href="watch.html">See the full workflow <svg class="icon" aria-hidden="true"><use href="#i-play"/></svg></a></div>
+        <ol class="demo-steps" aria-label="Workflow steps">
+          <li><button type="button" data-demo-step="0" aria-current="step" data-enhanced hidden><span>01</span> Request</button><span class="step-fallback">01 · Request</span></li>
+          <li><button type="button" data-demo-step="1" data-enhanced hidden><span>02</span> Context</button><span class="step-fallback">02 · Context</span></li>
+          <li><button type="button" data-demo-step="2" data-enhanced hidden><span>03</span> Agents</button><span class="step-fallback">03 · Agents</span></li>
+          <li><button type="button" data-demo-step="3" data-enhanced hidden><span>04</span> Review</button><span class="step-fallback">04 · Review</span></li>
+        </ol>
+        <div class="demo-body">
+          <div class="demo-conversation">
+            <div class="message-byline"><span class="user-avatar">Y</span><span>You</span><span class="message-meta">The starting point</span></div>
+            <p class="demo-request" id="demo-request">Can you make search more helpful when there are no results?</p>
+            <div class="demo-narrative"><span class="brand-symbol"><img src="assets/brand/transparent/symbol-indigo.png" alt="" width="1254" height="1254" loading="lazy"></span><div><h3 id="demo-stage-title">It all starts with your goal</h3><p id="demo-stage-copy">Describe what you need and let Orchestrix organize the next steps around your conversation.</p></div></div>
+            <div class="context-card"><span class="small-label">SELECTED CONTEXT</span><p id="demo-context">Project Aurora · search screen · results component</p></div>
+            <div class="demo-controls" data-enhanced hidden><div class="step-controls"><button id="demo-prev" class="icon-button" type="button" aria-label="Previous step" disabled><svg class="icon reverse" aria-hidden="true"><use href="#i-arrow"/></svg></button><button id="demo-next" class="button button-small" type="button">Next step <svg class="icon" aria-hidden="true"><use href="#i-arrow"/></svg></button></div><div class="play-controls"><button id="demo-play" class="quiet-button" type="button" aria-pressed="false"><svg class="icon" aria-hidden="true"><use href="#i-play"/></svg><span class="play-label">Play workflow</span></button><button id="demo-restart" class="icon-button" type="button" aria-label="Restart workflow"><svg class="icon" aria-hidden="true"><use href="#i-restart"/></svg></button></div></div>
+          </div>
+          <div class="demo-workspace">
+            <div class="workspace-heading"><span class="small-label">COORDINATED WORK</span><span class="workspace-hint">One shared goal</span></div>
+            <div class="agent-flow">
+              <div class="flow-origin"><span class="brand-symbol"><img src="assets/brand/transparent/symbol-indigo.png" alt="" width="1254" height="1254" loading="lazy"></span><span>Orchestrix</span></div>
+              <div class="agent-grid">
+                <svg class="agent-connections" viewBox="0 0 600 62" preserveAspectRatio="none" aria-hidden="true"><path d="M300 0V8C300 40 100 11 100 54V62"/><path d="M300 0V62"/><path d="M300 0V8C300 40 500 11 500 54V62"/><path class="flow-pulse pulse-planner" d="M300 0V8C300 40 100 11 100 54V62"/><path class="flow-pulse pulse-coder" d="M300 0V62"/><path class="flow-pulse pulse-reviewer" d="M300 0V8C300 40 500 11 500 54V62"/></svg>
+                <article class="agent-node" data-agent="planner"><span class="agent-number">01</span><h4>Plan</h4><p>Understand and organize</p><span class="agent-state"><i></i> Goal</span></article>
+                <article class="agent-node" data-agent="coder"><span class="agent-number">02</span><h4>Build</h4><p>Prepare the result</p><span class="agent-state"><i></i> Code</span></article>
+                <article class="agent-node" data-agent="reviewer"><span class="agent-number">03</span><h4>Review</h4><p>Check and explain</p><span class="agent-state"><i></i> Quality</span></article>
+              </div>
+            </div>
+            <div class="plan-card"><span class="small-label">THE PROPOSED PATH</span><p id="demo-plan">Understand search, prepare an empty-state message, and present the change for review.</p></div>
+            <div class="result-card"><div><span class="result-mark"><svg class="icon" aria-hidden="true"><use href="#i-check"/></svg></span><h4 id="demo-result-title">A change for you to review</h4></div><p id="demo-result-copy">The result returns to the conversation with an explanation of what changed, leaving the decision to apply it with you.</p><pre class="demo-diff"><code id="demo-diff">+ if (results.length === 0) {
++   return &lt;EmptyState message="Nothing here yet." /&gt;;
++ }</code></pre><span class="review-label">Ready for your review</span></div>
+          </div>
+        </div>
+        <p id="demo-live" class="sr-only" role="status" aria-live="polite" aria-atomic="true"></p>
+      </div>
+    </section>
+
+    <section class="experience-section" id="experience" aria-labelledby="experience-title">
+      <div class="page-width section-space">
+        <div class="experience-intro"><div><p class="eyebrow">02 / AT YOUR OWN PACE</p><h2 id="experience-title">Start with chat<br><span>and go deeper when you want</span></h2></div><p>Start comfortably with chat and explore more context and choices whenever you want to follow the decisions behind the work.</p></div>
+        <div class="experience-choice"><div class="segmented-control" role="group" aria-label="Experience detail level" data-enhanced hidden><button type="button" data-experience="chat" aria-pressed="true">Essential chat</button><button type="button" data-experience="studio" aria-pressed="false">Studio <svg class="icon" aria-hidden="true"><use href="#i-sliders"/></svg></button></div><p id="experience-description">Your request, the conversation, and the next step, with just what you need to move forward.</p></div>
+        <div class="experience-preview" id="experience-preview" data-mode="chat">
+          <div class="experience-bar"><span class="preview-project"><svg class="icon" aria-hidden="true"><use href="#i-folder"/></svg> Project Aurora <span aria-hidden="true">/</span> Improve search</span><span class="preview-mode-label">A project conversation</span></div>
+          <div class="experience-content">
+            <aside class="project-outline" aria-label="Project organization"><span class="small-label">YOUR SPACE</span><div class="outline-project"><svg class="icon" aria-hidden="true"><use href="#i-folder"/></svg> Aurora</div><span class="outline-session selected">Improve search</span><span class="outline-session">A new idea</span><span class="outline-session">Review sign-up</span><div class="outline-divider"></div><span class="small-label">STANDALONE CONVERSATION</span><span class="outline-session">Explore an idea</span><p>One project,<br>multiple conversations</p></aside>
+            <div class="experience-conversation">
+              <div class="conversation-title"><span class="brand-symbol"><img src="assets/brand/transparent/symbol-indigo.png" alt="" width="1254" height="1254" loading="lazy"></span><span>Let’s keep building your idea</span></div>
+              <p class="conversation-user">I like it and would love a more welcoming search message.</p>
+              <div class="conversation-reply"><h3>Here’s a more welcoming option</h3><p>“Nothing matched your search, so try another keyword or explore a category.”</p><div class="conversation-result"><svg class="icon" aria-hidden="true"><use href="#i-check"/></svg><div><strong>Updated copy ready for review</strong><span>You can request another change before applying it.</span></div><span class="preview-pill">Ready</span></div></div>
+              <div class="illustrative-composer"><span>Continue the conversation…</span><div><span class="automatic-label"><i></i> Automatic orchestration</span><span class="send-decoration" aria-hidden="true"><svg class="icon"><use href="#i-arrow"/></svg></span></div></div>
+            </div>
+            <aside class="studio-inspector" id="studio-inspector" aria-label="Studio details" hidden><div class="inspector-title"><svg class="icon" aria-hidden="true"><use href="#i-sliders"/></svg><h3>Behind the conversation</h3></div><section><h4>Selected context</h4><p><code>SearchResults.tsx</code><br>Goal and current conversation</p><span class="inspector-note">Only relevant context</span></section><section><h4>Execution decisions</h4><dl><div><dt>Agent</dt><dd>Development account</dd></div><div><dt>Model</dt><dd>Automatic</dd></div><div><dt>Reasoning</dt><dd>Based on the task</dd></div></dl><span class="inspector-note">Adjustable preferences</span></section><section><h4>Change review</h4><p>1 component · copy change</p><span class="inspector-review"><svg class="icon" aria-hidden="true"><use href="#i-check"/></svg> Waiting for your decision</span></section></aside>
+          </div>
+        </div>
+        <div class="experience-afterword"><span class="afterword-line"></span><p>The same conversation, with the level of detail that works for you.</p><a class="text-link" href="watch.html">Explore the experience <svg class="icon" aria-hidden="true"><use href="#i-play"/></svg></a></div>
+      </div>
+    </section>
+
+    <section class="capabilities-section page-width section-space" id="capabilities" aria-labelledby="capabilities-title">
+      <div class="section-heading"><div><p class="eyebrow">03 / DIFFERENT GOALS, SHARED COORDINATION</p><h2 id="capabilities-title">Code is just the beginning<br><span>of what you can create</span></h2></div><p>Choose a mode to guide your work, from development to research, with agents sharing the same goal, context, and criteria for the result. We call them coding agents, but no single name can capture everything they can help you create.</p></div>
+      <div class="capabilities-grid">
+        <article class="capability-card"><span class="capability-icon"><svg class="icon" aria-hidden="true"><use href="#i-code"/></svg></span><span class="mode-name">Development</span><h3>Software development</h3><p>Build features, solve problems, and improve your code with coordinated implementation and review.</p><span class="capability-example">From idea to reviewed change</span></article>
+        <article class="capability-card"><span class="capability-icon"><svg class="icon" aria-hidden="true"><use href="#i-research"/></svg></span><span class="mode-name">Research</span><h3>Scientific research</h3><p>Find papers, explore project materials, and prepare analyses or drafts with sources and considerations.</p><span class="capability-example">Sources, hypotheses, and arguments</span></article>
+        <article class="capability-card"><span class="capability-icon"><svg class="icon" aria-hidden="true"><use href="#i-document"/></svg></span><span class="mode-name">Documentation</span><h3>Documentation</h3><p>Organize project knowledge into consistent documentation using the structure and standards you define.</p><span class="capability-example">Knowledge that grows with the project</span></article>
+        <article class="capability-card"><span class="capability-icon"><svg class="icon" aria-hidden="true"><use href="#i-present"/></svg></span><span class="mode-name">Presentations</span><h3>Presentations</h3><p>Turn a conversation, documents, or research into presentations for classes, projects, and decisions, in PowerPoint or PDF.</p><span class="capability-example">From content to a clear story</span></article>
+        <article class="capability-card"><span class="capability-icon"><svg class="icon" aria-hidden="true"><use href="#i-refactor"/></svg></span><span class="mode-name">Refactoring</span><h3>Refactoring</h3><p>Improve code structure within a clear scope, preserving behavior and explaining each change.</p><span class="capability-example">Improve with intention</span></article>
+        <article class="capability-card"><span class="capability-icon"><svg class="icon" aria-hidden="true"><use href="#i-improve"/></svg></span><span class="mode-name">Improvement Review</span><h3>Improvements</h3><p>Explore code, documents, or projects and get specific suggestions, with reasoning and a path to implementation.</p><span class="capability-example">A good idea with a next step</span></article>
+      </div>
+      <div class="custom-modes-note"><svg class="icon" aria-hidden="true"><use href="#i-sliders"/></svg><div><h3>A mode that fits the way you work</h3><p>Customize the choices in built-in modes or create a specialized mode for your project, keeping the goals and criteria that guide the work.</p></div></div>
+    </section>
+
+    <section class="agent-profiles-section" id="agent-profiles" aria-labelledby="agent-profiles-title"><div class="page-width section-space profile-layout">
+      <div class="profile-copy"><p class="eyebrow">04 / A SHARED GOAL WITH CLEAR ROLES</p><h2 id="agent-profiles-title">Shape your work<br><span>with agents that fit your style</span></h2><p>Your chosen mode sets the direction, while profiles define how the coder writes code, the reviewer checks changes, and the researcher organizes sources.</p><p>Adjust instructions, standards, and criteria for each role while keeping the purpose of your chosen mode.</p><div class="profile-tags"><span>Instructions</span><span>Project standards</span><span>Review criteria</span></div></div>
+      <div class="profile-preview"><div class="profile-preview-header"><svg class="icon" aria-hidden="true"><use href="#i-code"/></svg><div><strong>Coder</strong><span>Development mode</span></div><span class="profile-native">Built-in profile · customizable</span></div><div class="profile-setting"><span>Direction</span><p>Implement the task goal while preserving the project’s style.</p></div><div class="profile-setting"><span>Your preferences</span><p>Keep changes small and readable, reuse existing components, and explain decisions and points to watch.</p></div><div class="profile-setting"><span>Role criteria</span><p>Respect the scope, review the result, and maintain continuity across the work.</p></div><div class="profile-preview-footer"><svg class="icon" aria-hidden="true"><use href="#i-check"/></svg> Customization that keeps the purpose</div></div>
+    </div></section>
+
+    <section class="control-section page-width section-space" id="control" aria-labelledby="control-title">
+      <div class="control-copy"><p class="eyebrow">05 / AUTOMATIC, WITH DIRECTION</p><h2 id="control-title">Give every task<br><span>the right resources,<br>with one account or several</span></h2><p>Start with one account or bring together Codex, Claude, and other agents, with model, reasoning, and context adapting to each task’s complexity and importance.</p><p>Prioritize efficiency, quality, or balance, and adjust the rules whenever you want more control.</p><div class="strategy-tags" aria-label="Orchestration strategies"><span>Efficiency</span><span>Balanced</span><span>Performance</span><span>Custom</span></div><a class="text-link github-link" href="https://github.com/LeonardoMBarca/orchestrix"><img class="github-icon" src="assets/icons/github-mark-white.svg" alt="" width="20" height="20"> Follow on GitHub <svg class="icon" aria-hidden="true"><use href="#i-external"/></svg></a></div>
+      <div class="control-story"><article><span class="story-number">01</span><div><h3>Connect and start</h3><p>Start with what you need and use one account or several, each with its own identity and capabilities.</p></div><svg class="icon" aria-hidden="true"><use href="#i-plug"/></svg></article><article><span class="story-number">02</span><div><h3>Set your direction</h3><p>Understand and adjust automatic choices, using more reasoning where it makes a difference and direct actions for simple checks.</p></div><svg class="icon" aria-hidden="true"><use href="#i-sliders"/></svg></article><article><span class="story-number">03</span><div><h3>Review before applying</h3><p>Review the result, understand the changes, and request adjustments before deciding what to apply to your project.</p></div><svg class="icon" aria-hidden="true"><use href="#i-check"/></svg></article></div>
+    </section>
+
+    <section class="download-section" id="download" aria-labelledby="download-title"><div class="page-width section-space"><div class="section-intro centered"><p class="eyebrow">YOUR OWN SPACE, ON YOUR COMPUTER</p><h2 id="download-title">Your next space<br><span>to create</span></h2><p>We’re building Orchestrix for Windows, Linux, and macOS, with installers coming soon for each platform.</p></div><div class="download-grid"><article class="download-card"><span class="platform-icon windows-icon" aria-hidden="true"><i></i><i></i><i></i><i></i></span><h3>Windows</h3><p>Desktop app</p><span class="release-state">Coming soon</span></article><article class="download-card"><span class="platform-icon" aria-hidden="true"><svg viewBox="0 0 32 32"><path d="m11 7-8 9 8 9m10-18 8 9-8 9m-3-21-4 28"/></svg></span><h3>Linux</h3><p>Desktop app</p><span class="release-state">Coming soon</span></article><article class="download-card"><span class="platform-icon" aria-hidden="true"><svg viewBox="0 0 32 32"><rect x="3" y="5" width="26" height="19" rx="3"/><path d="M11 29h10m-5-5v5"/></svg></span><h3>macOS</h3><p>Desktop app</p><span class="release-state">Coming soon</span></article></div><div class="download-invitation"><a class="text-link video-link" href="watch.html"><svg class="icon" aria-hidden="true"><use href="#i-play"/></svg> See Orchestrix in action</a></div></div></section>
+  </main>
+  <footer class="site-footer"><div class="page-width footer-main"><a class="brand" href="#" aria-label="Orchestrix, back to top"><span class="brand-symbol"><img src="assets/brand/transparent/symbol-indigo.png" alt="" width="1254" height="1254" loading="lazy"></span><span>Orchestrix</span></a><p>Multiple agents,<br>one shared purpose</p><a class="text-link github-link" href="https://github.com/LeonardoMBarca/orchestrix"><img class="github-icon" src="assets/icons/github-mark-white.svg" alt="" width="20" height="20"> Follow on GitHub <svg class="icon" aria-hidden="true"><use href="#i-external"/></svg></a></div><div class="page-width footer-bottom"><span>AN OPEN TOOL FOR A MORE CAPABLE FUTURE</span><span>OPEN SOURCE · BUILT BY DEVELOPERS</span></div></footer>
+</body>
+</html>

@@ -1,0 +1,26 @@
+# Diagnóstico automático de conexões — entrega de 10/10/2026
+
+O cadastro inicia um diagnóstico específico para a modalidade e o provedor. Connections mostra progresso e resumo; **Settings → Accounts → View diagnostics** abre o relatório, com **Recheck connection**, cancelamento, verificações expansíveis, fontes e detalhes por modelo. O cadastro a partir do chat usa um aviso discreto com ação, preservando a conversa e seu rascunho.
+
+O [módulo determinístico](../../prototypes/desktop/connection-diagnostics.js) organiza vinte verificações: configuração, identidade, catálogo, acesso, reasoning, contexto, ferramentas, streaming, web, saída estruturada, velocidade, agentes nativos, sandbox, aprovações, full access, cotas, créditos, particularidades do provedor e políticas de coordenação. [Interface](../../prototypes/desktop/diagnostics-view.js) e [estilos](../../prototypes/desktop/diagnostics.css) seguem Studio e EN/PT-BR/ES.
+
+## Resultado e fronteira
+
+Suporte, disponibilidade, configuração e política são campos separados. As contagens do resumo representam recursos com acesso confirmado, recusado ou desconhecido; não representam checks aprovados nem uma nota de qualidade da conta. Um modelo listado pode ter suporte a reasoning conhecido e execução ainda não verificada. Confirmar que uma função não é suportada aprova sua verificação, sem tornar a função disponível.
+
+API e runtime usam escopos distintos. Azure conserva catálogo e deployment/ARM separados; Bedrock usa região, backend de controle e perfis de inferência; Gemini Developer não conecta Antigravity. Fast/Ultrafast, esforço Ultra, multi-agent nativo e configuração do runtime são independentes. Full access exige observar sandbox e política de aprovação apropriados; isso não concede permissão ao Orchestrix. A delegação nativa é desativada por padrão na política planejada dos workers, sem alterar a configuração externa durante o diagnóstico.
+
+A bridge atual lê catálogos API autorizados. O diagnóstico não executa prompts, ferramentas ou probes de inferência. Sem adapter/identidade vinculada, runtimes permanecem bloqueados ou desconhecidos. Telemetria fornecida por uma observação válida pode ser mostrada; a bridge não implementa fontes administrativas de saldo/cota. Credenciais continuam transitórias; conexões e relatórios estão em memória. Cancelamento, revisão, desconexão e escopo invalidam respostas tardias e capacidades antigas não reaparecem como atuais.
+
+O [contrato e pesquisa oficial](connection-diagnostics.md), o [plano](../DEVELOPMENT_PLAN.md) e os tickets existentes no [backlog](../DEVELOPMENT_BACKLOG.md) registram os próximos adapters, provas ativas limitadas, persistência e aplicação efetiva de políticas. Subscription Only continua excluindo execução API e fallback pago. D1/piloto e M0 permanecem abertos.
+
+## Verificação
+
+- **25/25** testes do módulo de diagnóstico: escopo/revisão, desconhecidos, evidências, cancelamento, erros, isolamento entre contas/recursos, Fast/Ultrafast, permissões e telemetria inválida/segredos.
+- **24/24** contratos host/browser e **20/20** do pacote provider discovery. Total: **69 testes Node aprovados**.
+- Suíte existente da interface: **144/144 em uma rodada de 5,4 minutos**. Diagnóstico: **10/10 em uma rodada separada de 34,5s**, incluindo cadastro automático, aviso no chat, erro/retry, recheck/cancelamento, respostas tardias, duas contas, runtime pendente, telemetria e EN/PT/ES/mobile200. São **154 casos por cobertura consolidada**, sem alegar uma rodada única de 154. A primeira tentativa dos novos testes passou 8/9; o último tinha uma expectativa singular para um título traduzido no plural. A expectativa foi corrigida, sem reduzir o requisito de tradução.
+- `npm run check` aprovado com **1.534 chaves**. `npm run check:file` aprovado em **13 composições** e percurso de sessões, Settings, idiomas/docks e ajuda, sem erros, imagens quebradas ou requisições externas.
+- Quatro capturas do diagnóstico foram examinadas em 1440×960 e 390×844 com texto a 200%, sem overflow horizontal nas condições verificadas. Estão mapeadas no [catálogo textual](visual-asset-catalog.md). Dados de testes são sintéticos/interceptados; não houve consulta a uma conta real.
+- Para revisar o trabalho acumulado antes do commit, o harness offline passou **58/58** e check de sintaxe. Os **nove casos Windows** foram validados por cobertura consolidada: 5/9 na primeira rodada e 4/4 em rechecagem isolada de 17,77s. As quatro falhas iniciais ocorreram antes de `ready`, sob carga concorrente de browsers; não foram contadas como provas de contenção. Nenhum runtime real foi executado. Ver [contenção Windows](../research/windows-process-containment.md).
+
+Build estático: [63 arquivos](d1-build-manifest.json), SHA-256 `b381d12d3e48a7d30bb675158b95f3896c27474fed3defbb574cb53977e294ee`. O [build anterior de recursos](builds/2026-10-10-before-connection-diagnostics.json) preserva 59 arquivos/digest `f05ab28458b1b78afe3bdf9a33fda6c0a32f95c9607bec77c843b4a8eaa02800`. Os textos estáticos são fixados em LF por [.gitattributes](../../.gitattributes), para conservar os bytes do manifesto em checkouts Windows/Linux/macOS. Host, adapters, testes e documentação ficam fora desse manifesto e possuem os checks próprios acima.

@@ -1,0 +1,666 @@
+{
+  "Provedor":{"en":"Provider","es":"Proveedor"},
+  "Endpoint":{"en":"Endpoint","es":"Endpoint"},
+  "Deployment":{"en":"Deployment","es":"Deployment"},
+  "Pendente":{"en":"Pending","es":"Pendiente"},
+  "Modo rápido":{"en":"Fast mode","es":"Modo rápido"},
+  "Não":{"en":"No","es":"No"},
+  "Sim":{"en":"Yes","es":"Sí"},
+  "Tokens":{"en":"Tokens","es":"Tokens"},
+  "Cota disponível":{"en":"Available quota","es":"Cuota disponible"},
+  "Créditos restantes":{"en":"Remaining credits","es":"Créditos restantes"},
+  "Créditos utilizados":{"en":"Spent credits","es":"Créditos utilizados"},
+  "Créditos informados pela fonte":{"en":"Credits reported by the source","es":"Créditos informados por la fuente"},
+  "As informações disponíveis foram verificadas.":{"en":"The available information has been checked.","es":"Se ha verificado la información disponible."},
+  "Algumas capacidades ainda não foram verificadas.":{"en":"Some capabilities have not been verified yet.","es":"Algunas capacidades aún no se han verificado."},
+  "A conexão depende de autenticação ou de um adaptador oficial.":{"en":"The connection requires authentication or an official adapter.","es":"La conexión requiere autenticación o un adaptador oficial."},
+  "Não foi possível concluir todas as verificações.":{"en":"Some checks could not be completed.","es":"No se pudieron completar todas las verificaciones."},
+  "Configuração da conexão": {
+    "en": "Connection configuration",
+    "es": "Configuración de la conexión"
+  },
+  "Catálogo do provedor": {
+    "en": "Provider catalog",
+    "es": "Catálogo del proveedor"
+  },
+  "Acesso aos recursos": {
+    "en": "Resource access",
+    "es": "Acceso a los recursos"
+  },
+  "Agentes nativos do provedor": {
+    "en": "Provider native agents",
+    "es": "Agentes nativos del proveedor"
+  },
+  "Sandbox de execução": {
+    "en": "Execution sandbox",
+    "es": "Sandbox de ejecución"
+  },
+  "Aprovações de execução": {
+    "en": "Execution approvals",
+    "es": "Aprobaciones de ejecución"
+  },
+  "Acesso completo à máquina": {
+    "en": "Full machine access",
+    "es": "Acceso completo a la máquina"
+  },
+  "Cotas da conta": {
+    "en": "Account quotas",
+    "es": "Cuotas de la cuenta"
+  },
+  "Créditos da API": {
+    "en": "API credits",
+    "es": "Créditos de la API"
+  },
+  "Configuração específica do provedor": {
+    "en": "Provider configuration",
+    "es": "Configuración del proveedor"
+  },
+  "Política de delegação nativa": {
+    "en": "Native delegation policy",
+    "es": "Política de delegación nativa"
+  },
+  "Orquestração do Orchestrix": {
+    "en": "Orchestrix orchestration",
+    "es": "Orquestación de Orchestrix"
+  },
+  "Região e perfil": {
+    "en": "Region and profile",
+    "es": "Región y perfil"
+  },
+  "Operações de geração": {
+    "en": "Generation operations",
+    "es": "Operaciones de generación"
+  },
+  "Delegação nativa do provedor": {
+    "en": "Provider native delegation",
+    "es": "Delegación nativa del proveedor"
+  },
+  "Diagnóstico na fila": {
+    "en": "Diagnostic queued",
+    "es": "Diagnóstico en espera"
+  },
+  "Verificando a conexão": {
+    "en": "Checking connection",
+    "es": "Verificando la conexión"
+  },
+  "Diagnóstico concluído": {
+    "en": "Diagnostic complete",
+    "es": "Diagnóstico completado"
+  },
+  "Diagnóstico cancelado": {
+    "en": "Diagnostic cancelled",
+    "es": "Diagnóstico cancelado"
+  },
+  "Diagnóstico interrompido": {
+    "en": "Diagnostic interrupted",
+    "es": "Diagnóstico interrumpido"
+  },
+  "Confirmado": {
+    "en": "Confirmed",
+    "es": "Confirmado"
+  },
+  "Falhou": {
+    "en": "Failed",
+    "es": "Falló"
+  },
+  "Bloqueado": {
+    "en": "Blocked",
+    "es": "Bloqueado"
+  },
+  "Não se aplica": {
+    "en": "Not applicable",
+    "es": "No corresponde"
+  },
+  "Não verificado": {
+    "en": "Not verified",
+    "es": "No verificado"
+  },
+  "Suportado": {
+    "en": "Supported",
+    "es": "Compatible"
+  },
+  "Não suportado": {
+    "en": "Unsupported",
+    "es": "No compatible"
+  },
+  "Suporte não informado": {
+    "en": "Support not reported",
+    "es": "Compatibilidad no informada"
+  },
+  "Desativado pela política": {
+    "en": "Disabled by policy",
+    "es": "Desactivado por la política"
+  },
+  "Ativado pela política": {
+    "en": "Enabled by policy",
+    "es": "Activado por la política"
+  },
+  "Requer permissão do usuário": {
+    "en": "Requires user permission",
+    "es": "Requiere permiso del usuario"
+  },
+  "Gerenciado pelo Orchestrix": {
+    "en": "Managed by Orchestrix",
+    "es": "Gestionado por Orchestrix"
+  },
+  "Política herdada": {
+    "en": "Inherited policy",
+    "es": "Política heredada"
+  },
+  "Política não informada": {
+    "en": "Policy not reported",
+    "es": "Política no informada"
+  },
+  "Metadados do provedor": {
+    "en": "Provider metadata",
+    "es": "Metadatos del proveedor"
+  },
+  "Documentação do provedor": {
+    "en": "Provider documentation",
+    "es": "Documentación del proveedor"
+  },
+  "Observação oficial do runtime": {
+    "en": "Official runtime observation",
+    "es": "Observación oficial del runtime"
+  },
+  "Metadados do runtime": {
+    "en": "Runtime metadata",
+    "es": "Metadatos del runtime"
+  },
+  "Política do Orchestrix": {
+    "en": "Orchestrix policy",
+    "es": "Política de Orchestrix"
+  },
+  "Estado da conexão": {
+    "en": "Connection state",
+    "es": "Estado de la conexión"
+  },
+  "Consulta do catálogo": {
+    "en": "Catalog query",
+    "es": "Consulta del catálogo"
+  },
+  "Níveis de raciocínio": {
+    "en": "Reasoning levels",
+    "es": "Niveles de razonamiento"
+  },
+  "Modos disponíveis": {
+    "en": "Available modes",
+    "es": "Modos disponibles"
+  },
+  "Tokens de entrada": {
+    "en": "Input tokens",
+    "es": "Tokens de entrada"
+  },
+  "Tokens de saída": {
+    "en": "Output tokens",
+    "es": "Tokens de salida"
+  },
+  "Janela de contexto": {
+    "en": "Context window",
+    "es": "Ventana de contexto"
+  },
+  "Modalidades": {
+    "en": "Modalities",
+    "es": "Modalidades"
+  },
+  "Recursos informados": {
+    "en": "Reported resources",
+    "es": "Recursos informados"
+  },
+  "Recursos com suporte": {
+    "en": "Supported resources",
+    "es": "Recursos compatibles"
+  },
+  "Recursos sem suporte": {
+    "en": "Unsupported resources",
+    "es": "Recursos no compatibles"
+  },
+  "Recursos sem informação": {
+    "en": "Resources without metadata",
+    "es": "Recursos sin metadatos"
+  },
+  "Cota restante": {
+    "en": "Remaining quota",
+    "es": "Cuota restante"
+  },
+  "Cota utilizada": {
+    "en": "Used quota",
+    "es": "Cuota utilizada"
+  },
+  "Renovação da cota": {
+    "en": "Quota reset",
+    "es": "Renovación de la cuota"
+  },
+  "Saldo": {
+    "en": "Balance",
+    "es": "Saldo"
+  },
+  "Moeda": {
+    "en": "Currency",
+    "es": "Moneda"
+  },
+  "Perfil AWS": {
+    "en": "AWS profile",
+    "es": "Perfil AWS"
+  },
+  "Escopo": {
+    "en": "Scope",
+    "es": "Ámbito"
+  },
+  "Camada de serviço": {
+    "en": "Service tier",
+    "es": "Nivel de servicio"
+  },
+  "Camada rápida": {
+    "en": "Fast tier",
+    "es": "Nivel rápido"
+  },
+  "Versão de agentes nativos": {
+    "en": "Native agents version",
+    "es": "Versión de agentes nativos"
+  },
+  "Agentes nativos configurados": {
+    "en": "Configured native agents",
+    "es": "Agentes nativos configurados"
+  },
+  "Política de aprovação": {
+    "en": "Approval policy",
+    "es": "Política de aprobación"
+  },
+  "Estado observado": {
+    "en": "Observed state",
+    "es": "Estado observado"
+  },
+  "Acesso verificado": {
+    "en": "Verified access",
+    "es": "Acceso verificado"
+  },
+  "A configuração é verificada sem executar uma tarefa.": {
+    "en": "Configuration is checked without running a task.",
+    "es": "La configuración se verifica sin ejecutar una tarea."
+  },
+  "As observações precisam pertencer a esta conexão e à revisão atual.": {
+    "en": "Observations must belong to this connection and its current revision.",
+    "es": "Las observaciones deben pertenecer a esta conexión y a su revisión actual."
+  },
+  "Somente os recursos informados nesta consulta fazem parte deste diagnóstico.": {
+    "en": "This diagnostic includes only resources reported by this query.",
+    "es": "Este diagnóstico incluye solo los recursos informados por esta consulta."
+  },
+  "A listagem de modelos não confirma permissão para executar tarefas.": {
+    "en": "Listing models does not confirm permission to execute tasks.",
+    "es": "Listar modelos no confirma el permiso para ejecutar tareas."
+  },
+  "Os níveis disponíveis dependem do modelo e do runtime.": {
+    "en": "Available levels depend on the model and runtime.",
+    "es": "Los niveles disponibles dependen del modelo y del runtime."
+  },
+  "O tamanho de contexto só é mostrado quando informado pela fonte.": {
+    "en": "Context size is shown only when reported by the source.",
+    "es": "El tamaño del contexto se muestra solo cuando la fuente lo informa."
+  },
+  "Suporte a ferramentas não concede acesso aos arquivos da máquina.": {
+    "en": "Tool support does not grant access to files on your machine.",
+    "es": "La compatibilidad con herramientas no concede acceso a los archivos de tu máquina."
+  },
+  "A camada rápida é independente do nível de raciocínio.": {
+    "en": "The fast tier is independent of the reasoning level.",
+    "es": "El nivel rápido es independiente del nivel de razonamiento."
+  },
+  "Suporte do modelo, configuração do runtime e política de delegação são verificados separadamente.": {
+    "en": "Model support, runtime configuration and delegation policy are checked separately.",
+    "es": "La compatibilidad del modelo, la configuración del runtime y la política de delegación se verifican por separado."
+  },
+  "O sandbox limita as operações executadas pelo runtime.": {
+    "en": "The sandbox limits operations executed by the runtime.",
+    "es": "El sandbox limita las operaciones ejecutadas por el runtime."
+  },
+  "A política de aprovação é uma configuração de execução do usuário.": {
+    "en": "The approval policy is a user execution setting.",
+    "es": "La política de aprobación es una configuración de ejecución del usuario."
+  },
+  "Acesso completo exige uma permissão de execução explícita; uma API de nuvem não concede acesso à máquina.": {
+    "en": "Full access requires explicit execution permission; a cloud API does not grant access to your machine.",
+    "es": "El acceso completo requiere permiso explícito de ejecución; una API de nube no concede acceso a tu máquina."
+  },
+  "Cotas desconhecidas permanecem sem estimativa.": {
+    "en": "Unknown quotas remain without an estimate.",
+    "es": "Las cuotas desconocidas permanecen sin estimación."
+  },
+  "Créditos só são mostrados quando fornecidos por uma fonte observável.": {
+    "en": "Credits are shown only when supplied by an observable source.",
+    "es": "Los créditos se muestran solo cuando los proporciona una fuente observable."
+  },
+  "A delegação nativa fica desativada por padrão quando o Orchestrix coordena o trabalho.": {
+    "en": "Native delegation is disabled by default while Orchestrix coordinates the work.",
+    "es": "La delegación nativa está desactivada por defecto mientras Orchestrix coordina el trabajo."
+  },
+  "A orquestração do Orchestrix é independente dos agentes nativos de um provedor.": {
+    "en": "Orchestrix orchestration is independent of a provider's native agents.",
+    "es": "La orquestación de Orchestrix es independiente de los agentes nativos de un proveedor."
+  },
+  "Conexão": {
+    "en": "Connection",
+    "es": "Conexión"
+  },
+  "Método de autenticação": {
+    "en": "Authentication method",
+    "es": "Método de autenticación"
+  },
+  "Versão do runtime": {
+    "en": "Runtime version",
+    "es": "Versión del runtime"
+  },
+  "Revisão": {
+    "en": "Revision",
+    "es": "Revisión"
+  },
+  "Disponíveis": {
+    "en": "Available",
+    "es": "Disponibles"
+  },
+  "Indisponíveis": {
+    "en": "Unavailable",
+    "es": "No disponibles"
+  },
+  "Não verificados": {
+    "en": "Not verified",
+    "es": "No verificados"
+  },
+  "Diagnóstico ainda não realizado": {
+    "en": "Diagnostic not run yet",
+    "es": "Diagnóstico aún no realizado"
+  },
+  "verificações concluídas": {
+    "en": "checks completed",
+    "es": "verificaciones completadas"
+  },
+  "Progresso do diagnóstico": {
+    "en": "Diagnostic progress",
+    "es": "Progreso del diagnóstico"
+  },
+  "Ver diagnóstico": {
+    "en": "View diagnostic",
+    "es": "Ver diagnóstico"
+  },
+  "Cancelar diagnóstico": {
+    "en": "Cancel diagnostic",
+    "es": "Cancelar diagnóstico"
+  },
+  "Verificar novamente": {
+    "en": "Recheck connection",
+    "es": "Verificar de nuevo"
+  },
+  "Ver conexão": {
+    "en": "View connection",
+    "es": "Ver conexión"
+  },
+  "Fonte de observação": {
+    "en": "Observation source",
+    "es": "Fuente de observación"
+  },
+  "Origem da informação": {
+    "en": "Information source",
+    "es": "Origen de la información"
+  },
+  "Observado nesta conexão": {
+    "en": "Observed on this connection",
+    "es": "Observado en esta conexión"
+  },
+  "Sem observação confirmada": {
+    "en": "No confirmed observation",
+    "es": "Sin observación confirmada"
+  },
+  "Escopo e fontes do diagnóstico": {
+    "en": "Diagnostic scope and sources",
+    "es": "Ámbito y fuentes del diagnóstico"
+  },
+  "Iniciado em": {
+    "en": "Started",
+    "es": "Iniciado"
+  },
+  "Concluído em": {
+    "en": "Completed",
+    "es": "Completado"
+  },
+  "Este resultado pertence à conexão e à revisão indicadas. Uma alteração requer uma nova verificação.": {
+    "en": "This result belongs to the connection and revision shown. Changes require a new check.",
+    "es": "Este resultado pertenece a la conexión y a la revisión indicadas. Los cambios requieren una nueva verificación."
+  },
+  "Verificações da conexão": {
+    "en": "Connection checks",
+    "es": "Verificaciones de la conexión"
+  },
+  "Verificação do provedor": {
+    "en": "Provider check",
+    "es": "Verificación del proveedor"
+  },
+  "Ativado no runtime": {
+    "en": "Enabled in the runtime",
+    "es": "Activado en el runtime"
+  },
+  "Desativado no runtime": {
+    "en": "Disabled in the runtime",
+    "es": "Desactivado en el runtime"
+  },
+  "Estado do runtime não informado": {
+    "en": "Runtime state not reported",
+    "es": "Estado del runtime no informado"
+  },
+  "Quem coordena o trabalho": {
+    "en": "Who coordinates the work",
+    "es": "Quién coordina el trabajo"
+  },
+  "O nível de raciocínio, a camada rápida e os agentes nativos são capacidades independentes. O nome de um modo não confirma sua ativação no runtime.": {
+    "en": "Reasoning level, fast tier and native agents are independent capabilities. A mode's name does not confirm that it is enabled in the runtime.",
+    "es": "El nivel de razonamiento, el nivel rápido y los agentes nativos son capacidades independientes. El nombre de un modo no confirma su activación en el runtime."
+  },
+  "Estado observado no runtime": {
+    "en": "Observed runtime state",
+    "es": "Estado observado en el runtime"
+  },
+  "Planejada no Orchestrix": {
+    "en": "Planned in Orchestrix",
+    "es": "Planificada en Orchestrix"
+  },
+  "Gerenciada pelo Orchestrix": {
+    "en": "Managed by Orchestrix",
+    "es": "Gestionada por Orchestrix"
+  },
+  "Permissões da máquina": {
+    "en": "Machine permissions",
+    "es": "Permisos de la máquina"
+  },
+  "A política de delegação do Orchestrix não altera a configuração do provedor neste diagnóstico.": {
+    "en": "Orchestrix's delegation policy does not change the provider's configuration in this diagnostic.",
+    "es": "La política de delegación de Orchestrix no modifica la configuración del proveedor en este diagnóstico."
+  },
+  "Recursos observados": {
+    "en": "Observed resources",
+    "es": "Recursos observados"
+  },
+  "O acesso de execução é verificado separadamente do catálogo.": {
+    "en": "Execution access is checked separately from the catalog.",
+    "es": "El acceso de ejecución se verifica por separado del catálogo."
+  },
+  "Nenhum recurso observado nesta conexão.": {
+    "en": "No observed resources on this connection.",
+    "es": "No hay recursos observados en esta conexión."
+  },
+  "Veja o que está disponível, o que depende de permissão e o que o provedor ainda não informou.": {
+    "en": "See what is available, what requires permission and what the provider has not reported yet.",
+    "es": "Consulta qué está disponible, qué requiere permiso y qué no ha informado aún el proveedor."
+  },
+  "Inicie uma verificação para consultar os recursos desta conexão.": {
+    "en": "Start a check to inspect this connection's resources.",
+    "es": "Inicia una verificación para consultar los recursos de esta conexión."
+  },
+  "Capacidades dos modelos": {
+    "en": "Model capabilities",
+    "es": "Capacidades de los modelos"
+  },
+  "Velocidade e colaboração": {
+    "en": "Speed and collaboration",
+    "es": "Velocidad y colaboración"
+  },
+  "Permissões de execução": {
+    "en": "Execution permissions",
+    "es": "Permisos de ejecución"
+  },
+  "Uso e configuração do provedor": {
+    "en": "Usage and provider settings",
+    "es": "Uso y configuración del proveedor"
+  },
+  "Fechar aviso": {
+    "en": "Dismiss notice",
+    "es": "Cerrar aviso"
+  },
+  "Disponibilidade dos recursos": {
+    "en": "Resource availability",
+    "es": "Disponibilidad de los recursos"
+  },
+  "Camadas de serviço": {
+    "en": "Service tiers",
+    "es": "Niveles de servicio"
+  },
+  "Camada padrão": {
+    "en": "Default tier",
+    "es": "Nivel predeterminado"
+  },
+  "Versões de agentes nativos": {
+    "en": "Native agents versions",
+    "es": "Versiones de agentes nativos"
+  },
+  "Sandbox configurado": {
+    "en": "Configured sandbox",
+    "es": "Sandbox configurado"
+  },
+  "Aprovação configurada": {
+    "en": "Configured approval policy",
+    "es": "Política de aprobación configurada"
+  },
+  "Permissão de execução confirmada": {
+    "en": "Execution permission confirmed",
+    "es": "Permiso de ejecución confirmado"
+  },
+  "Configuração permite acesso completo": {
+    "en": "Configuration allows full access",
+    "es": "La configuración permite acceso completo"
+  },
+  "Configurado": {
+    "en": "Configured",
+    "es": "Configurado"
+  },
+  "Catálogo de administração separado": {
+    "en": "Separate management catalog",
+    "es": "Catálogo de administración separado"
+  },
+  "Acesso de inferência confirmado": {
+    "en": "Inference access confirmed",
+    "es": "Acceso de inferencia confirmado"
+  },
+  "Região configurada": {
+    "en": "Region configured",
+    "es": "Región configurada"
+  },
+  "Perfis de inferência observados": {
+    "en": "Observed inference profiles",
+    "es": "Perfiles de inferencia observados"
+  },
+  "Acesso de execução confirmado": {
+    "en": "Execution access confirmed",
+    "es": "Acceso de ejecución confirmado"
+  },
+  "Runtime Antigravity": {
+    "en": "Antigravity runtime",
+    "es": "Runtime Antigravity"
+  },
+  "Política aplicada ao runtime": {
+    "en": "Policy applied to runtime",
+    "es": "Política aplicada al runtime"
+  },
+  "Configuração do runtime alterada": {
+    "en": "Runtime configuration changed",
+    "es": "Configuración del runtime modificada"
+  },
+  "Delegação nativa necessária": {
+    "en": "Native delegation required",
+    "es": "Delegación nativa necesaria"
+  },
+  "Confirme a autenticação no provedor antes de consultar os recursos.": {
+    "en": "Confirm provider authentication before querying resources.",
+    "es": "Confirma la autenticación del proveedor antes de consultar los recursos."
+  },
+  "O serviço de descoberta não está disponível nesta sessão.": {
+    "en": "The discovery service is unavailable in this session.",
+    "es": "El servicio de descubrimiento no está disponible en esta sesión."
+  },
+  "Não há um adaptador oficial disponível para verificar esta conexão.": {
+    "en": "No official adapter is available to verify this connection.",
+    "es": "No hay un adaptador oficial disponible para verificar esta conexión."
+  },
+  "A credencial desta sessão não está disponível.": {
+    "en": "The credential for this session is unavailable.",
+    "es": "La credencial de esta sesión no está disponible."
+  },
+  "A identidade e a autenticação do runtime ainda não foram confirmadas.": {
+    "en": "The runtime's identity and authentication have not been confirmed yet.",
+    "es": "La identidad y la autenticación del runtime aún no se han confirmado."
+  },
+  "A consulta de catálogo não verifica a identidade de inferência.": {
+    "en": "A catalog query does not verify inference identity.",
+    "es": "Una consulta del catálogo no verifica la identidad de inferencia."
+  },
+  "O acesso de execução ainda não foi verificado.": {
+    "en": "Execution access has not been verified yet.",
+    "es": "El acceso de ejecución aún no se ha verificado."
+  },
+  "A consulta retornou um catálogo parcial.": {
+    "en": "The query returned a partial catalog.",
+    "es": "La consulta devolvió un catálogo parcial."
+  },
+  "A consulta não corresponde ao escopo desta conexão.": {
+    "en": "The query does not match this connection's scope.",
+    "es": "La consulta no corresponde al ámbito de esta conexión."
+  },
+  "O catálogo recebido não pôde ser validado.": {
+    "en": "The received catalog could not be validated.",
+    "es": "No se pudo validar el catálogo recibido."
+  },
+  "Revise a configuração desta conexão.": {
+    "en": "Review this connection's configuration.",
+    "es": "Revisa la configuración de esta conexión."
+  },
+  "O provedor ainda não disponibilizou uma consulta de catálogo compatível.": {
+    "en": "The provider has not supplied a compatible catalog query yet.",
+    "es": "El proveedor aún no ha proporcionado una consulta compatible del catálogo."
+  },
+  "A consulta de recursos está em andamento.": {
+    "en": "The resource query is in progress.",
+    "es": "La consulta de recursos está en curso."
+  },
+  "O diagnóstico foi cancelado. Resultados tardios não serão aplicados.": {
+    "en": "The diagnostic was cancelled. Late results will not be applied.",
+    "es": "El diagnóstico se canceló. Los resultados tardíos no se aplicarán."
+  },
+  "Não foi possível concluir a consulta de recursos.": {
+    "en": "The resource query could not be completed.",
+    "es": "No se pudo completar la consulta de recursos."
+  },
+  "A observação pertence a outro escopo de conexão.": {
+    "en": "The observation belongs to another connection scope.",
+    "es": "La observación pertenece a otro ámbito de conexión."
+  },
+  "A observação pertence a uma revisão anterior da conexão.": {
+    "en": "The observation belongs to an earlier connection revision.",
+    "es": "La observación pertenece a una revisión anterior de la conexión."
+  },
+  "A fonte não informou este recurso.": {
+    "en": "The source did not report this capability.",
+    "es": "La fuente no informó de esta capacidad."
+  },
+  "A fonte confirmou que este recurso não é suportado.": {
+    "en": "The source confirmed that this capability is unsupported.",
+    "es": "La fuente confirmó que esta capacidad no es compatible."
+  }
+}

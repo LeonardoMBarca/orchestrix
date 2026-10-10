@@ -5,8 +5,12 @@
   "description": "Prototype with simulated data, independent of the production Desktop stack",
   "scripts": {
     "start": "node server.mjs",
-    "check": "node --check app.js && node --check workspace.js && node --check connections.js && node --check server.mjs",
-    "test": "playwright test"
+    "manifest": "node tools/create-manifest.mjs",
+    "check:file": "node tools/check-file-entry.mjs",
+    "locales": "node tools/build-locales.mjs",
+    "check": "node tools/build-locales.mjs --check && node --check i18n.js && node --check app.js && node --check workspace.js && node --check connections.js && node --check discovery-client.js && node --check resource-view.js && node --check connection-diagnostics.js && node --check diagnostics-view.js && node --check host-discovery.mjs && node --check experience.js && node --check docking.js && node --check settings.js && node --check help.js && node --check website.js && node --check watch.js && node --check server.mjs && node --check tools/create-manifest.mjs && node --check tools/check-file-entry.mjs",
+    "test": "playwright test",
+    "test:discovery": "node --test tests-host/*.test.mjs && node --test ../../tools/provider-discovery/tests/*.test.mjs"
   },
   "devDependencies": {
     "@playwright/test": "1.64.0"

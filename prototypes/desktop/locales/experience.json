@@ -1,0 +1,322 @@
+{
+  "UM NOVO ESPAÇO": {
+    "en": "A NEW WORKSPACE",
+    "es": "UN NUEVO ESPACIO"
+  },
+  "Seu projeto começa aqui": {
+    "en": "Your project starts here",
+    "es": "Tu proyecto empieza aquí"
+  },
+  "Dê um nome ao espaço, escolha o projeto e continue pela conversa.": {
+    "en": "Name your workspace, choose a project, and continue in the chat.",
+    "es": "Ponle nombre al espacio, elige un proyecto y continúa en la conversación."
+  },
+  "Voltar à conversa": {
+    "en": "Back to chat",
+    "es": "Volver a la conversación"
+  },
+  "Preparar seu espaço": {
+    "en": "Set up your workspace",
+    "es": "Prepara tu espacio"
+  },
+  "Use um caminho de exemplo para testar. Nesta demonstração, nenhuma pasta é acessada.": {
+    "en": "Use an example path to try it out. This demo does not access any folders.",
+    "es": "Usa una ruta de ejemplo para probarlo. Esta demostración no accede a ninguna carpeta."
+  },
+  "Nome do projeto": {
+    "en": "Project name",
+    "es": "Nombre del proyecto"
+  },
+  "Caminho do repositório · exemplo": {
+    "en": "Repository path · example",
+    "es": "Ruta del repositorio · ejemplo"
+  },
+  "O projeto reúne suas conversas. Você pode começar com uma mudança pequena.": {
+    "en": "Your project keeps its chats together. You can start with a small change.",
+    "es": "El proyecto reúne tus conversaciones. Puedes empezar con un cambio pequeño."
+  },
+  "Conexão inicial": {
+    "en": "Initial connection",
+    "es": "Conexión inicial"
+  },
+  "Codex · conta própria de exemplo": {
+    "en": "Codex · example personal account",
+    "es": "Codex · cuenta propia de ejemplo"
+  },
+  "Claude Code · conta própria de exemplo": {
+    "en": "Claude Code · example personal account",
+    "es": "Claude Code · cuenta propia de ejemplo"
+  },
+  "Vamos conferir a conexão antes de iniciar qualquer trabalho.": {
+    "en": "We will check the connection before starting any work.",
+    "es": "Comprobaremos la conexión antes de iniciar cualquier trabajo."
+  },
+  "Opções do projeto": {
+    "en": "Project options",
+    "es": "Opciones del proyecto"
+  },
+  "Ambiente de execução": {
+    "en": "Execution environment",
+    "es": "Entorno de ejecución"
+  },
+  "Windows nativo": {
+    "en": "Native Windows",
+    "es": "Windows nativo"
+  },
+  "WSL · Linux": {
+    "en": "WSL · Linux",
+    "es": "WSL · Linux"
+  },
+  "Trabalho inicial": {
+    "en": "Initial work",
+    "es": "Trabajo inicial"
+  },
+  "Começar pelo chat": {
+    "en": "Start with chat",
+    "es": "Empezar por la conversación"
+  },
+  "Correção curta · 1 tarefa": {
+    "en": "Quick fix · 1 task",
+    "es": "Corrección breve · 1 tarea"
+  },
+  "Feature guiada · 4 tarefas": {
+    "en": "Guided feature · 4 tasks",
+    "es": "Funcionalidad guiada · 4 tareas"
+  },
+  "Correção curta e Feature guiada abrem exemplos de autenticação para explorar revisão e orquestração. Começar pelo chat usa o seu próprio pedido.": {
+    "en": "Quick fix and Guided feature open authentication examples to explore review and orchestration. Start with chat uses your own request.",
+    "es": "Corrección breve y Funcionalidad guiada abren ejemplos de autenticación para explorar la revisión y la orquestación. Empezar por la conversación utiliza tu propio pedido."
+  },
+  "Preparar projeto de exemplo": {
+    "en": "Set up example project",
+    "es": "Preparar proyecto de ejemplo"
+  },
+  "SIMPLES PARA COMEÇAR": {
+    "en": "EASY TO START",
+    "es": "FÁCIL PARA EMPEZAR"
+  },
+  "Primeiro, uma conversa.": {
+    "en": "First, a chat.",
+    "es": "Primero, una conversación."
+  },
+  "Use seus agentes": {
+    "en": "Use your agents",
+    "es": "Usa tus agentes"
+  },
+  "Uma conta já é suficiente para começar.": {
+    "en": "One account is enough to get started.",
+    "es": "Una cuenta es suficiente para empezar."
+  },
+  "Conte o que precisa": {
+    "en": "Tell us what you need",
+    "es": "Cuenta qué necesitas"
+  },
+  "O projeto pode reunir várias conversas.": {
+    "en": "A project can have several chats.",
+    "es": "Un proyecto puede tener varias conversaciones."
+  },
+  "Acompanhe e revise": {
+    "en": "Follow along and review",
+    "es": "Sigue el trabajo y revísalo"
+  },
+  "Os resultados e próximos passos aparecem no chat.": {
+    "en": "Results and next steps appear in the chat.",
+    "es": "Los resultados y los próximos pasos aparecen en la conversación."
+  },
+  "Quando quiser mais controle, abra o Studio para inspecionar contexto, preferências e alterações.": {
+    "en": "When you want more control, open Studio to inspect context, settings, and changes.",
+    "es": "Cuando quieras más control, abre Studio para inspeccionar el contexto, las preferencias y los cambios."
+  },
+  "Projeto ou espaço": {
+    "en": "Project or workspace",
+    "es": "Proyecto o espacio"
+  },
+  "Novo projeto": {
+    "en": "New project",
+    "es": "Nuevo proyecto"
+  },
+  "Sem repositório associado · esta conversa tem um destino pendente.": {
+    "en": "No repository attached · this chat has a pending destination.",
+    "es": "Sin repositorio asociado · esta conversación tiene un destino pendiente."
+  },
+  "Detalhes do projeto": {
+    "en": "Project details",
+    "es": "Detalles del proyecto"
+  },
+  "SEU ESPAÇO PARA DESENVOLVER": {
+    "en": "YOUR SPACE TO DEVELOP",
+    "es": "TU ESPACIO PARA DESARROLLAR"
+  },
+  "O que vamos criar hoje?": {
+    "en": "What shall we create today?",
+    "es": "¿Qué vamos a crear hoy?"
+  },
+  "Uma ideia, seus agentes e um próximo passo.": {
+    "en": "An idea, your agents, and a next step.",
+    "es": "Una idea, tus agentes y un próximo paso."
+  },
+  "CONVERSA AVULSA": {
+    "en": "STANDALONE CHAT",
+    "es": "CONVERSACIÓN INDEPENDIENTE"
+  },
+  "CONVERSA DO PROJETO": {
+    "en": "PROJECT CHAT",
+    "es": "CONVERSACIÓN DEL PROYECTO"
+  },
+  "Seu pedido, o progresso e os resultados, em uma conversa.": {
+    "en": "Your request, progress, and results, in one chat.",
+    "es": "Tu pedido, el progreso y los resultados, en una conversación."
+  },
+  "Novo trabalho nesta conversa": {
+    "en": "New work in this chat",
+    "es": "Nuevo trabajo en esta conversación"
+  },
+  "Você": {
+    "en": "You",
+    "es": "Tú"
+  },
+  "Orchestrix": {
+    "en": "Orchestrix",
+    "es": "Orchestrix"
+  },
+  "Resposta simulada": {
+    "en": "Simulated response",
+    "es": "Respuesta simulada"
+  },
+  "Conversando sobre:": {
+    "en": "Discussing:",
+    "es": "Hablando sobre:"
+  },
+  ". Um envio registra orientação; não altera a tentativa em andamento.": {
+    "en": ". Sending records guidance; it does not change the attempt in progress.",
+    "es": ". El envío registra indicaciones; no cambia el intento en curso."
+  },
+  "Ideias para começar": {
+    "en": "Ideas to get started",
+    "es": "Ideas para empezar"
+  },
+  "Corrigir um problema": {
+    "en": "Fix a problem",
+    "es": "Corregir un problema"
+  },
+  "Quero corrigir um problema no meu projeto. Ajude-me a entender a causa e propor uma solução.": {
+    "en": "I want to fix a problem in my project. Help me understand the cause and propose a solution.",
+    "es": "Quiero corregir un problema en mi proyecto. Ayúdame a entender la causa y proponer una solución."
+  },
+  "Criar uma funcionalidade": {
+    "en": "Create a feature",
+    "es": "Crear una funcionalidad"
+  },
+  "Quero criar uma funcionalidade no meu projeto. Vamos definir o comportamento e os critérios para revisar o resultado.": {
+    "en": "I want to create a feature in my project. Let's define its behavior and the criteria for reviewing the result.",
+    "es": "Quiero crear una funcionalidad en mi proyecto. Definamos su comportamiento y los criterios para revisar el resultado."
+  },
+  "Entender meu código": {
+    "en": "Understand my code",
+    "es": "Entender mi código"
+  },
+  "Ajude-me a entender a estrutura do meu projeto e identificar os próximos passos.": {
+    "en": "Help me understand my project's structure and identify the next steps.",
+    "es": "Ayúdame a entender la estructura de mi proyecto e identificar los próximos pasos."
+  },
+  "Prepare seu espaço": {
+    "en": "Prepare your workspace",
+    "es": "Prepara tu espacio"
+  },
+  "COMECE DO SEU JEITO": {
+    "en": "START YOUR WAY",
+    "es": "EMPIEZA A TU MANERA"
+  },
+  "Sem configurar tudo de uma vez.": {
+    "en": "No need to configure everything at once.",
+    "es": "Sin configurar todo a la vez."
+  },
+  "Conectar conta": {
+    "en": "Connect account",
+    "es": "Conectar cuenta"
+  },
+  "Traga os agentes que você já usa.": {
+    "en": "Bring the agents you already use.",
+    "es": "Trae los agentes que ya utilizas."
+  },
+  "Abrir projeto": {
+    "en": "Open project",
+    "es": "Abrir proyecto"
+  },
+  "Um lugar para todas as suas conversas.": {
+    "en": "One place for all your chats.",
+    "es": "Un lugar para todas tus conversaciones."
+  },
+  "Explorar demonstração": {
+    "en": "Explore the demo",
+    "es": "Explorar la demostración"
+  },
+  "Veja um trabalho pronto para revisar.": {
+    "en": "See work that is ready for review.",
+    "es": "Ve un trabajo listo para revisar."
+  },
+  "Você pode experimentar agora com contas e projetos de exemplo.": {
+    "en": "You can try it now with example accounts and projects.",
+    "es": "Puedes probarlo ahora con cuentas y proyectos de ejemplo."
+  },
+  "Mensagem e conversa": {
+    "en": "Message and chat",
+    "es": "Mensaje y conversación"
+  },
+  "Descreva o que você quer desenvolver…": {
+    "en": "Describe what you want to develop…",
+    "es": "Describe qué quieres desarrollar…"
+  },
+  "Orquestração automática": {
+    "en": "Automatic orchestration",
+    "es": "Orquestación automática"
+  },
+  "Enter para enviar · Shift + Enter para nova linha.": {
+    "en": "Enter to send · Shift + Enter for a new line.",
+    "es": "Enter para enviar · Shift + Enter para una nueva línea."
+  },
+  "Nenhum agente real é executado neste protótipo.": {
+    "en": "No real agent runs in this prototype.",
+    "es": "Ningún agente real se ejecuta en este prototipo."
+  },
+  "Enviar": {
+    "en": "Send",
+    "es": "Enviar"
+  },
+  "Sobre esta demonstração": {
+    "en": "About this demo",
+    "es": "Acerca de esta demostración"
+  },
+  "O envio prepara um pedido de exemplo. Use Iniciar demonstração no card para acompanhar o resultado; revisão e aplicação têm confirmações próprias.": {
+    "en": "Sending prepares an example request. Use Start demo on the card to follow the result; review and application have their own confirmations.",
+    "es": "El envío prepara un pedido de ejemplo. Usa Iniciar demostración en la tarjeta para seguir el resultado; la revisión y la aplicación tienen sus propias confirmaciones."
+  },
+  "Conversas do projeto e sessões privadas dos agentes são diferentes. Projetos, conversas e rascunhos desta demo ficam em memória até recarregar.": {
+    "en": "Project chats and agents' private sessions are different. This demo keeps projects, chats, and drafts in memory until the page is reloaded.",
+    "es": "Las conversaciones del proyecto y las sesiones privadas de los agentes son distintas. Los proyectos, las conversaciones y los borradores de esta demostración permanecen en memoria hasta recargar la página."
+  },
+  "Mensagem nesta conversa": {
+    "en": "Message in this chat",
+    "es": "Mensaje en esta conversación"
+  },
+  "Mensagem para o projeto": {
+    "en": "Message for the project",
+    "es": "Mensaje para el proyecto"
+  },
+  "Associar esta conversa a um repositório será uma etapa posterior; aplicação permanece indisponível.": {
+    "en": "Attaching this chat to a repository will be a later step; application remains unavailable.",
+    "es": "Asociar esta conversación a un repositorio será un paso posterior; la aplicación sigue sin estar disponible."
+  },
+  "Trabalhos da conversa": {
+    "en": "Work in this chat",
+    "es": "Trabajos de la conversación"
+  },
+  "Seu trabalho": {
+    "en": "Your work",
+    "es": "Tu trabajo"
+  },
+  "Um próximo passo de cada vez.": {
+    "en": "One next step at a time.",
+    "es": "Un próximo paso a la vez."
+  }
+}
