@@ -13,4 +13,10 @@ Fontes: [shell.css](../../prototypes/desktop/shell.css), [experience.js](../../p
 - QA visual: desktop1440×900, notebook1024×768 e mobile390px com texto200%. Sem overflow horizontal, erro JavaScript ou imagem quebrada nas condições verificadas. Rótulo acessível “Message” único e presente, visualmente oculto.
 - Desktop: composer **246 →181px**, textarea **70 →54px**, título **37,8 →30,1px**. A200%, textarea cresce para **96px**, acomodando duas linhas. Essas medidas descrevem as condições de QA; traduções/conteúdo e preferências podem alterar alturas.
 
-Capturas e aliases estão no [catálogo textual](visual-asset-catalog.md). Build atual: [63 arquivos](d1-build-manifest.json), SHA-256 `3c00f0faa78b047f79e0945f9afbd1dffaddf501e4d4eb7c61a244d8cbc997d4`. O [build anterior](builds/2026-10-11-before-compact-composer.json) conserva o digest `b381d12d3e48a7d30bb675158b95f3896c27474fed3defbb574cb53977e294ee`.
+## Posição do campo de mensagem
+
+O ajuste seguinte aproxima o campo da parte inferior da entrada desktop: composer a 16px do fim da área central, cartões/sugestões acima e marca/título centralizados no espaço restante. O layout é flexível; mobile e conversas em andamento conservam seu fluxo.
+
+Verificação deste ajuste: **10/10** testes existentes de entrada, `npm run check` com **1.534 chaves** e `npm run check:file` em **13 composições**. Capturas 1440×900 e 1280×720 revisadas; EN/PT/ES em notebook a 100% sem rolagem. Textarea de 54px e distância inferior de 16px nos dois tamanhos. A 200%, textarea de 96px e rolagem natural, sem overflow horizontal em desktop/mobile. Nenhum erro JavaScript ou imagem quebrada nas condições verificadas.
+
+Capturas e aliases estão no [catálogo textual](visual-asset-catalog.md). Build atual: [63 arquivos](d1-build-manifest.json), SHA-256 `7764384d12eaaa89c4e1901c95bd98369db088c0a7fd56a395aa56d32a9833e1`. O [build anterior ao reposicionamento](builds/2026-10-11-before-lower-composer.json) conserva o digest `3c00f0faa78b047f79e0945f9afbd1dffaddf501e4d4eb7c61a244d8cbc997d4`; o [anterior ao ajuste de proporções](builds/2026-10-11-before-compact-composer.json), `b381d12d3e48a7d30bb675158b95f3896c27474fed3defbb574cb53977e294ee`.

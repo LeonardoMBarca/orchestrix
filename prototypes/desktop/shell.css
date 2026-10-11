@@ -150,5 +150,10 @@ html[data-text-size="large"] .app.focus-mode {grid-template-columns:0 minmax(0,1
 body.panel-placement-open #app,body.panel-placement-open .floating-settings {filter:blur(7px);pointer-events:none}
 .dock-position-menu button:disabled {opacity:.4;color:var(--muted)}
 .dock-position-menu button:not(:disabled):hover {border-color:var(--accent);background:var(--surface)}
-@media(min-width:801px) {.main>.content:has(.is-welcome) {padding-top:12px;padding-bottom:12px}}
+@media(min-width:801px) {
+  .main>.content:has(>.is-welcome) {display:flex;flex-direction:column;padding-top:12px;padding-bottom:16px}
+  .conversation-surface.is-welcome {display:flex;flex-direction:column;flex:1;width:100%}
+  .is-welcome .welcome-stage {display:flex;flex-direction:column;align-items:center;justify-content:center;flex:1;min-height:140px;padding-block:20px}
+  .is-welcome .chat-layout {flex-shrink:0;width:100%}
+}
 @media(max-width:800px) {.quick-start-grid {grid-template-columns:1fr}.dock-position-menu {inset:12px;gap:12px}.dock-position-menu button {font-size:1rem}}

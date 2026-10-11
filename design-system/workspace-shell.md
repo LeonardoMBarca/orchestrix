@@ -73,6 +73,8 @@ Verificar teclado, mover/agrupamento dos painéis laterais, blur removido ao can
 
 O refinamento de proporções de 11/10 reduz barras, espaçamento lateral, título/cartões e composer. A abertura mantém a ordem e as funções existentes; a caixa de mensagem começa com duas linhas, cresce proporcionalmente à escala de texto e conserva resize vertical. O label “Message” permanece acessível, sem aparecer na composição. A base de14px e as larguras/posições de painéis escolhidas pela pessoa são preservadas.
 
+Na entrada desktop, o composer termina 16px acima do fim da área central, com cartões e sugestões imediatamente acima. A marca e o título ocupam o espaço restante com layout flexível, sem sobrepor controles. Mobile mantém fluxo natural; texto ampliado pode exigir rolagem. Conversas em andamento conservam seu layout.
+
 ## Descoberta ao cadastrar
 
 Salvar uma API inicia discovery de catálogo pelo host, com feedback em Settings → Accounts e acesso a View resources. O resumo diferencia loading, complete/partial, erro e falta de permissão. Detalhes por modelo mostram recursos com provenance e unknown explícito, sem exigir configuração técnica. Usar controles nativos compartilhados e [o contrato de discovery](../docs/design/resource-discovery-increment.md). Lookup de catálogo não habilita execução ou quota automaticamente.

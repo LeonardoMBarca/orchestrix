@@ -1,6 +1,6 @@
 # Catálogo textual de imagens do Orchestrix
 
-Atualizado em **11 de outubro de 2026**. Este é o índice para encontrar imagens pelo assunto, aparência e uso, sem abrir cada arquivo. A coleção mapeada reúne **58 arquivos de imagem versionáveis** e **120 capturas locais de QA e diagnóstico**, incluindo conceitos, variantes transparentes e cinco diagramas de ajuda. A revisão de sessões acrescentou treze capturas e o refinamento Compact/API acrescentou dezoito; o histórico anterior tinha 53 imagens e 77 capturas. Caminhos são relativos a este documento; nomes e aliases podem ser pesquisados com `rg`.
+Atualizado em **11 de outubro de 2026**. Este é o índice para encontrar imagens pelo assunto, aparência e uso, sem abrir cada arquivo. A coleção mapeada reúne **58 arquivos de imagem versionáveis** e **122 capturas locais de QA e diagnóstico**, incluindo conceitos, variantes transparentes e cinco diagramas de ajuda. A revisão de sessões acrescentou treze capturas e o refinamento Compact/API acrescentou dezoito; o histórico anterior tinha 53 imagens e 77 capturas. Caminhos são relativos a este documento; nomes e aliases podem ser pesquisados com `rg`.
 
 ## Como encontrar e interpretar
 
@@ -243,3 +243,5 @@ Capturas locais em `prototypes/desktop/artifacts/`, ignoradas pelo Git e revisad
 | `compact-composer-desktop.png` | Entrada com título/cartões/barras menores, chat de duas linhas e sem label visual Message. Compact sizing; composer; desktop; proportions. | 1440 × 900 |
 | `compact-composer-notebook.png` | Composição em notebook, mantendo primeira dobra, cartões flexíveis e controles do chat. Laptop; initial fold; compact layout. | 1024 × 768 |
 | `compact-composer-mobile-200.png` | Página inteira mobile com texto200%, textarea de96px, reflow e nome acessível preservado. Large text; mobile; scaled textarea. | 390 × 2218 |
+| `lower-composer-desktop.png` | Entrada desktop com campo de mensagem a 16px do fim da área central, cartões/sugestões acima e título centralizado no espaço restante. Bottom composer; welcome; flexible layout. | 1440 × 900 |
+| `lower-composer-notebook.png` | Campo junto à parte inferior em notebook, mantendo todos os controles na primeira dobra. Laptop; bottom chat; initial fold. | 1280 × 720 |
