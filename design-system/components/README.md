@@ -9,6 +9,8 @@ O percurso é **site → aplicativo acolhedor → conversa → detalhes conforme
 - Sugestões preenchem o composer e devolvem o foco; não enviam o pedido nem iniciam trabalho.
 - O envio revela o trabalho relacionado e sua próxima ação. Abrir o detalhe permite inspecionar o Studio; revelar uma tela não executa uma tarefa.
 - O composer continua sendo uma entrada útil depois que os cartões de trabalho aparecem. Mensagens, objetivo e próximo passo precedem modelo, reasoning, contexto e detalhes da tentativa.
+
+O shell Compact usa uma entrada proporcional: título de até cerca de 30px, cartões de altura flexível a partir de 78px e composer com padding de 12–14px. O textarea começa com duas linhas, fonte de 14px na escala100% e altura `calc(3em + 12px)`, acompanhando a escala de texto. “Message” fica apenas como label acessível, sem ocupar espaço visual. Não reduzir a fonte global ou sobrescrever a escala escolhida pelo usuário para compactar a composição. Comfortable mantém alvos de pelo menos 44px; traduções e texto ampliado refluem.
 - Studio é o **tema padrão** e também o nome da área de controles técnicos. Selecionar um tema não muda o nível de detalhe da experiência.
 
 Fontes: [experience.js](../../prototypes/desktop/experience.js), [experience.css](../../prototypes/desktop/experience.css), [contrato do shell](../workspace-shell.md), [revisão D1](../../docs/design/d1-shell-revision.md) e [testes de sessões](../../prototypes/desktop/tests/session-revision.spec.mjs).

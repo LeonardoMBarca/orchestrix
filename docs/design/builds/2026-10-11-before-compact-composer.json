@@ -1,9 +1,9 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-10-11T03:32:59.838Z",
+  "generatedAt": "2026-10-10T23:00:02.379Z",
   "scope": "D1 static prototype: app, website, video page, help center, local assets and locale sources/catalog; excludes tools, tests, server and documentation",
   "algorithm": "SHA-256 of UTF-8 JSON.stringify(files), sorted by relative path; each entry has path, bytes and sha256 of exact file bytes. generatedAt is excluded.",
-  "buildSha256": "3c00f0faa78b047f79e0945f9afbd1dffaddf501e4d4eb7c61a244d8cbc997d4",
+  "buildSha256": "b381d12d3e48a7d30bb675158b95f3896c27474fed3defbb574cb53977e294ee",
   "files": [
     {
       "path": "app.js",
@@ -152,8 +152,8 @@
     },
     {
       "path": "experience.js",
-      "bytes": 6191,
-      "sha256": "d6b2c26a64d6185e5e8797ae4add674fd2f1a85f931584e0bb10bf332466b6db"
+      "bytes": 6194,
+      "sha256": "3ab462d64f8d6ad2f994c04efa6329259ef342b92888bbaa81a34e1b3994049a"
     },
     {
       "path": "help.css",
@@ -277,8 +277,8 @@
     },
     {
       "path": "shell.css",
-      "bytes": 13140,
-      "sha256": "202ed6f6b615ec2bc858da5778beb6a03eb726b7909495a8690bce2f790f5344"
+      "bytes": 12728,
+      "sha256": "c6cd766c7ea739441d1f47be4e753c24af6ef1747cb4c7fc2883b47e032a048b"
     },
     {
       "path": "styles.css",

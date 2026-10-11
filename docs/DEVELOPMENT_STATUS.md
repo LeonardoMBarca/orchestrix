@@ -1,6 +1,6 @@
 # Execução do plano — pesquisa, protótipo e primeiro spike
 
-Atualizado em **10 de outubro de 2026**. Este registro acompanha entregas e evidências do [plano](DEVELOPMENT_PLAN.md), sem transformar pesquisa ou protótipos em implementação de produção.
+Atualizado em **11 de outubro de 2026**. Este registro acompanha entregas e evidências do [plano](DEVELOPMENT_PLAN.md), sem transformar pesquisa ou protótipos em implementação de produção.
 
 **D0 concluído como pesquisa; D1 com protótipo entregue e piloto humano pendente.** A [conclusão D0](research/d0-conclusion.md) registra decisões, evidências e a revisão explícita do critério metodológico de OX-D01: quinze jornadas completas não foram demonstradas integralmente e não contam como teste aprovado. A sequência segue D0 → D1/piloto → retomada de M0 → M1 → M2. O responsável adiou o piloto até considerar a interface adequada; D1/M0 e os demais gates continuam abertos.
 
@@ -8,13 +8,17 @@ A [revisão Compact/API](design/d1-shell-revision.md) coloca Sessions à esquerd
 
 O wizard escolhe Subscription/API antes do provider. A [descoberta imediata de recursos](design/resource-discovery-increment.md) consulta catálogos API pelo host de desenvolvimento assim que a conexão é salva. OpenAI, Anthropic, Gemini Developer, Azure v1, Bedrock com chave e endpoints compatíveis têm operações de leitura específicas; paginação/limites e falhas posteriores aparecem como resultado parcial. Chaves são transitórias, fora de storage/logs; a UI recebe metadata sanitizada. Recursos distinguem supported/unsupported/unknown, contexto, reasoning, tools, streaming, origem e timestamp. Login de runtime, AWS profile signer, Vertex, cofre, inferência e telemetria de produção permanecem pendentes. Catalog discovered não equivale a conta autenticada ou execução elegível; Subscription Only não habilita fallback API. Dropdowns compartilham estilo, tokens e interação nativa.
 
-## Evidência técnica atual
+## Refinamento de proporções — 11/10
+
+A entrada e o shell ficaram mais compactos: título/cartões menores, barras e espaçamentos reduzidos, textarea de duas linhas e label “Message” apenas acessível. A fonte base e a escala escolhida pelo usuário permanecem; a altura do textarea acompanha o texto ampliado. [Registro e verificação](design/compact-composer-refinement.md). O diagnóstico e seu resultado técnico abaixo continuam identificando a entrega de10/10.
+
+## Evidência técnica do diagnóstico — 10/10
 
 O cadastro também dispara [vinte verificações de diagnóstico](design/connection-diagnostics.md), com relatório em Connections/Settings → Accounts, recheck e cancelamento. O resultado separa suporte, disponibilidade, política e observação; cadastro via chat conserva a conversa e oferece aviso discreto com ação. Fast/Ultrafast, reasoning, multi-agent nativo e permissões têm checks próprios. Sem identidade/adapter de runtime, o diagnóstico permanece bloqueado ou desconhecido. O relatório é mantido em memória; provas ativas, telemetria administrativa, cofre e aplicação efetiva de políticas seguem nos tickets existentes. O plano conserva suas doze seções, os milestones e a visão de uma ou várias contas.
 
 O [diagnóstico automático de conexões](design/connection-diagnostics-increment.md) passou check com **1.534 chaves**, **25/25** testes do módulo, **24/24** host/browser e **20/20** provider discovery. A suíte existente passou **144/144 em 5,4 minutos**, e os novos casos de diagnóstico passaram **10/10 em 34,5s**: **154 cenários por cobertura consolidada**, em duas rodadas distintas. HTML direto passou **13 composições** e a jornada de sessões/Settings/docks/idiomas/ajuda, sem erros, imagens quebradas ou requisições externas. Quatro capturas do diagnóstico desktop/mobile200 foram examinadas e catalogadas. Dados foram sintéticos/interceptados; nenhuma conta real foi consultada. O resultado anterior de recursos/dropdowns (74 casos consolidados e 1.356 chaves) permanece no registro histórico daquele incremento.
 
-[Manifesto atual](design/d1-build-manifest.json): **63 arquivos**, SHA-256 `b381d12d3e48a7d30bb675158b95f3896c27474fed3defbb574cb53977e294ee`. O [build anterior de recursos](design/builds/2026-10-10-before-connection-diagnostics.json) preserva 59 arquivos/digest f05ab28458b1b78afe3bdf9a33fda6c0a32f95c9607bec77c843b4a8eaa02800. O [build Compact/API](design/builds/2026-10-10-before-resource-discovery.json) preserva os 54 arquivos/digest cd630bca81ddd735c677e059cd73bf4c2b17d3a455e377f247ab3e308424caf0. O manifesto estático exclui host, adapters, testes e documentação; estes têm verificação separada no registro da entrega.
+[Manifesto atual](design/d1-build-manifest.json): **63 arquivos**, SHA-256 `3c00f0faa78b047f79e0945f9afbd1dffaddf501e4d4eb7c61a244d8cbc997d4`. O [build anterior ao ajuste de proporções](design/builds/2026-10-11-before-compact-composer.json) preserva o digest b381d12d3e48a7d30bb675158b95f3896c27474fed3defbb574cb53977e294ee. O [build anterior de recursos](design/builds/2026-10-10-before-connection-diagnostics.json) preserva 59 arquivos/digest f05ab28458b1b78afe3bdf9a33fda6c0a32f95c9607bec77c843b4a8eaa02800. O [build Compact/API](design/builds/2026-10-10-before-resource-discovery.json) preserva os 54 arquivos/digest cd630bca81ddd735c677e059cd73bf4c2b17d3a455e377f247ab3e308424caf0. O manifesto estático exclui host, adapters, testes e documentação; estes têm verificação separada no registro da entrega.
 
 ## Evidência histórica Compact/API
 
