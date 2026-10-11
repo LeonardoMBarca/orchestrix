@@ -1,6 +1,6 @@
 # Catálogo textual de imagens do Orchestrix
 
-Atualizado em **11 de outubro de 2026**. Este é o índice para encontrar imagens pelo assunto, aparência e uso, sem abrir cada arquivo. A coleção mapeada reúne **58 arquivos de imagem versionáveis** e **122 capturas locais de QA e diagnóstico**, incluindo conceitos, variantes transparentes e cinco diagramas de ajuda. A revisão de sessões acrescentou treze capturas e o refinamento Compact/API acrescentou dezoito; o histórico anterior tinha 53 imagens e 77 capturas. Caminhos são relativos a este documento; nomes e aliases podem ser pesquisados com `rg`.
+Atualizado em **11 de outubro de 2026**. Este é o índice para encontrar imagens pelo assunto, aparência e uso, sem abrir cada arquivo. A coleção mapeada reúne **58 arquivos de imagem versionáveis** e **124 capturas locais de QA e diagnóstico**, incluindo conceitos, variantes transparentes e cinco diagramas de ajuda. A revisão de sessões acrescentou treze capturas e o refinamento Compact/API acrescentou dezoito; o histórico anterior tinha 53 imagens e 77 capturas. Caminhos são relativos a este documento; nomes e aliases podem ser pesquisados com `rg`.
 
 ## Como encontrar e interpretar
 
@@ -245,3 +245,5 @@ Capturas locais em `prototypes/desktop/artifacts/`, ignoradas pelo Git e revisad
 | `compact-composer-mobile-200.png` | Página inteira mobile com texto200%, textarea de96px, reflow e nome acessível preservado. Large text; mobile; scaled textarea. | 390 × 2218 |
 | `lower-composer-desktop.png` | Entrada desktop com campo de mensagem a 16px do fim da área central, cartões/sugestões acima e título centralizado no espaço restante. Bottom composer; welcome; flexible layout. | 1440 × 900 |
 | `lower-composer-notebook.png` | Campo junto à parte inferior em notebook, mantendo todos os controles na primeira dobra. Laptop; bottom chat; initial fold. | 1280 × 720 |
+| `raised-start-cards-desktop.png` | Três cartões da entrada mais acima, separados das sugestões por 45px, preservando composer junto ao rodapé. Starter cards; breathing room; welcome spacing. | 1440 × 900 |
+| `raised-start-cards-notebook.png` | Separação de 36px entre cartões e sugestões em notebook, sem rolagem inicial. Laptop; raised cards; initial fold. | 1280 × 720 |

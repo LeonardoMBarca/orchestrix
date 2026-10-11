@@ -73,7 +73,7 @@ Verificar teclado, mover/agrupamento dos painéis laterais, blur removido ao can
 
 O refinamento de proporções de 11/10 reduz barras, espaçamento lateral, título/cartões e composer. A abertura mantém a ordem e as funções existentes; a caixa de mensagem começa com duas linhas, cresce proporcionalmente à escala de texto e conserva resize vertical. O label “Message” permanece acessível, sem aparecer na composição. A base de14px e as larguras/posições de painéis escolhidas pela pessoa são preservadas.
 
-Na entrada desktop, o composer termina 16px acima do fim da área central, com cartões e sugestões imediatamente acima. A marca e o título ocupam o espaço restante com layout flexível, sem sobrepor controles. Mobile mantém fluxo natural; texto ampliado pode exigir rolagem. Conversas em andamento conservam seu layout.
+Na entrada desktop, o composer termina 16px acima do fim da área central. Os três cartões ficam mais acima, separados das sugestões por `clamp(28px,5vh,48px)`; em mobile, a separação é de 24px. As sugestões permanecem junto ao campo. A marca e o título ocupam o espaço restante com layout flexível, sem sobrepor controles. Mobile mantém fluxo natural; texto ampliado pode exigir rolagem. Conversas em andamento conservam seu layout.
 
 ## Descoberta ao cadastrar
 
