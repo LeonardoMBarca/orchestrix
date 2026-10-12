@@ -5,7 +5,7 @@ These six SVG files illustrate tutorial concepts using the shared Orchestrix nav
 | File | Concept and searchable terms | Used in | Dimensions |
 | --- | --- | --- | --- |
 | [session-tree.svg](session-tree.svg) | Fixed left activity rail, Sessions on the right, project groups, independent conversation, session history, attach session | Sessions & projects | 920 × 440 |
-| [workspace-docking.svg](workspace-docking.svg) | Fixed activity rail, activity panel left, Sessions right, shared dock tabs, resize edge, collapse and restore, keyboard | Arrange your workspace | 920 × 410 |
+| [workspace-docking.svg](workspace-docking.svg) | Fixed activity rail, direct Chat without its own sidebar, Files panel left, independent Sessions right, shared Files/Sessions tabs, resize edge, collapse and restore, keyboard | Arrange your workspace | 920 × 410 |
 | [settings-window.svg](settings-window.svg) | Centered floating Settings, outside click, conversation preserved, General, Compact density, text percentage slider | Settings & personal style | 920 × 440 |
 | [account-usage.svg](account-usage.svg) | Subscription quota, API spending, unknown usage, reported limits, Subscription Only | Accounts & usage | 920 × 370 |
 | [review-path.svg](review-path.svg) | Request, work, review, correction loop, validation, application confirmation | Progress & review | 920 × 330 |
@@ -22,7 +22,7 @@ Local visual checks are stored under `prototypes/desktop/artifacts/` and are not
 | `help-center-docking.png` | Historical docking chapter before bottom docking was removed | 1440 × 1000 |
 | `help-center-accounts.png` | Unknown subscription/API usage and billing-boundary explanation | 1440 × 1000 |
 | `session-tree-help.png` | Updated session diagram with fixed rail and Sessions on the right | 920 × 440 |
-| `workspace-docking-help.png` | Updated side docks, shared tabs, collapsed edges and keyboard instructions | 920 × 410 |
+| `workspace-docking-help.png` | Side docks, shared tabs, collapsed edges and keyboard instructions before the direct-Chat label refinement | 920 × 410 |
 | `files-editor-help.png` | Files diagram with source-save and copy-save paths | 920 × 480 |
 
 ## Video publishing

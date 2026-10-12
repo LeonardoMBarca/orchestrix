@@ -1,9 +1,11 @@
 ﻿import {test,expect} from '@playwright/test';
 test.beforeEach(async({page})=>{await page.goto('/');await expect(page.locator('#chat-message')).toBeVisible();});
+const openFiles=page=>page.locator('#activity-items>[data-activity="files"]').click();
 
 test('default has one session creator on the right and mouse placement blurs the workspace',async({page})=>{
-  await expect(page.locator('#dock-left>#navigation-panel')).toBeVisible();await expect(page.locator('#dock-right>#sessions-panel')).toBeVisible();
+  await expect(page.locator('#navigation-panel')).toBeHidden();await expect(page.locator('#dock-right>#sessions-panel')).toBeVisible();
   await expect(page.locator('.new-session-trigger')).toHaveCount(1);await expect(page.locator('#navigation-panel [data-action="chat-loose"]')).toHaveCount(0);
+  await openFiles(page);await expect(page.locator('#dock-left>#navigation-panel')).toBeVisible();
   const field=page.locator('#chat-message');await field.fill('Preserve my draft while rearranging.');const original=await field.elementHandle();
   const handle=page.locator('#sessions-panel .dock-panel-handle'),start=await handle.boundingBox();
   await page.mouse.move(start.x+start.width/2,start.y+start.height/2);await page.mouse.down();await page.mouse.move(start.x+start.width/2+30,start.y+start.height/2+20,{steps:5});
@@ -28,6 +30,7 @@ test('side chooser has only left/right; cancel and placement restore clarity and
 });
 
 test('shared dock tabs keep arrow navigation separate from moving',async({page})=>{
+  await openFiles(page);
   await page.evaluate(()=>{OrchestrixDock.move('sessions','left');OrchestrixDock.activate('sessions');});
   const sessions=page.locator('[data-dock-tab="sessions"]');await sessions.focus();await sessions.press('ArrowLeft');await expect(page.locator('[data-dock-tab="navigation"]')).toBeFocused();
   await page.locator('[data-dock-tab="navigation"]').press('ArrowRight');await expect(sessions).toBeFocused();await sessions.press('Shift+ArrowRight');await expect(page.locator('#dock-right>#sessions-panel')).toBeVisible();
@@ -42,6 +45,7 @@ test('moving work independently preserves its task identity and the conversation
 });
 
 test('resize bounds and focus mode preserve the available center at 100% and 200%',async({page})=>{
+  await openFiles(page);
   const resize=page.locator('#dock-left [role="separator"]');await resize.focus();await resize.press('ArrowRight');await expect(resize).toHaveAttribute('aria-valuenow','244');
   for(let i=0;i<12;i++)await resize.press('ArrowRight');await expect(resize).toHaveAttribute('aria-valuenow','440');
   for(const scale of [100,200]){
@@ -79,8 +83,10 @@ test('pointer shrink collapses and the edge separator pulls the panel open again
 
 test('v2 defaults migrate but customized positions and widths are retained',async({page})=>{
   await page.evaluate(()=>{localStorage.removeItem('orchestrix-panel-layout-v3');localStorage.setItem('orchestrix-panel-layout-v2',JSON.stringify({version:2,positions:{navigation:'right',sessions:'left',work:'right'},active:{left:'sessions',right:'navigation'},sizes:{left:280,right:224}}));});
-  await page.reload();await expect(page.locator('#dock-left>#navigation-panel')).toBeVisible();await expect(page.locator('#dock-right>#sessions-panel')).toBeVisible();expect(await page.evaluate(()=>OrchestrixDock.getLayout().version)).toBe(3);
+  await page.reload();await expect(page.locator('#navigation-panel')).toBeHidden();await expect(page.locator('#dock-right>#sessions-panel')).toBeVisible();expect(await page.evaluate(()=>OrchestrixDock.getLayout().version)).toBe(3);
+  await openFiles(page);await expect(page.locator('#dock-left>#navigation-panel')).toBeVisible();
   await page.evaluate(()=>{localStorage.removeItem('orchestrix-panel-layout-v3');localStorage.setItem('orchestrix-panel-layout-v2',JSON.stringify({version:2,positions:{navigation:'right',sessions:'left',work:'left'},active:{left:'sessions',right:'navigation'},sizes:{left:340,right:250}}));});
   await page.reload();expect(await page.evaluate(()=>OrchestrixDock.getLayout())).toMatchObject({positions:{navigation:'right',sessions:'left',work:'left'},sizes:{left:340,right:250},collapsed:{left:false,right:false}});await expect(page.locator('#dock-left>#sessions-panel')).toBeVisible();
+  await openFiles(page);await expect(page.locator('#dock-right>#navigation-panel')).toBeVisible();
   await page.evaluate(()=>OrchestrixDock.collapse('right'));expect(await page.evaluate(()=>JSON.parse(localStorage.getItem('orchestrix-panel-layout-v3')))).toMatchObject({version:3,positions:{navigation:'right',sessions:'left',work:'left'},sizes:{left:340,right:250},collapsed:{left:false,right:true}});
 });

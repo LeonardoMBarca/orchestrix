@@ -1,6 +1,6 @@
 # Catálogo textual de imagens do Orchestrix
 
-Atualizado em **12 de outubro de 2026**. Este é o índice para encontrar imagens pelo assunto, aparência e uso, sem abrir cada arquivo. A coleção mapeada reúne **59 arquivos de imagem versionáveis** e **135 capturas locais de QA e diagnóstico**, incluindo conceitos, variantes transparentes e seis diagramas de ajuda. A revisão de atividades/arquivos acrescentou um SVG de ajuda e onze capturas locais; a revisão de sessões acrescentou treze capturas e o refinamento Compact/API acrescentou dezoito. O histórico anterior tinha 53 imagens e 77 capturas. Caminhos são relativos a este documento; nomes e aliases podem ser pesquisados com `rg`.
+Atualizado em **12 de outubro de 2026**. Este é o índice para encontrar imagens pelo assunto, aparência e uso, sem abrir cada arquivo. A coleção mapeada reúne **59 arquivos de imagem versionáveis** e **138 capturas locais de QA e diagnóstico**, incluindo conceitos, variantes transparentes e seis diagramas de ajuda. A revisão de atividades/arquivos acrescentou um SVG de ajuda e onze capturas locais; o refinamento de Chat direto acrescentou três capturas. A revisão de sessões acrescentou treze capturas e o refinamento Compact/API acrescentou dezoito. O histórico anterior tinha 53 imagens e 77 capturas. Caminhos são relativos a este documento; nomes e aliases podem ser pesquisados com `rg`.
 
 ## Como encontrar e interpretar
 
@@ -119,12 +119,12 @@ Os arquivos ficam em [prototypes/desktop/artifacts/](../../prototypes/desktop/ar
 
 ## Ilustrações da ajuda — revisão de sessões em 10/10
 
-Os cinco SVGs seguintes são diagramas escritos em código, com texto, title/description e paleta navy/índigo. Não são screenshots, dados de contas, nem imagens geradas com IA; não requerem prompt ou procedência externa. A [página de ajuda](../../prototypes/desktop/help.html) os usa em inglês, com alternativas textuais contextualizadas e orientação escrita. O [mapa local](../../prototypes/desktop/assets/help/README.md) reúne manutenção e publicação de vídeos.
+Os seis SVGs seguintes são diagramas escritos em código, com texto, title/description e paleta navy/índigo. Não são screenshots, dados de contas, nem imagens geradas com IA; não requerem prompt ou procedência externa. A [página de ajuda](../../prototypes/desktop/help.html) os usa em inglês, com alternativas textuais contextualizadas e orientação escrita. O [mapa local](../../prototypes/desktop/assets/help/README.md) reúne manutenção e publicação de vídeos.
 
 | ID / arquivo | Assunto e aliases para busca | Uso / estado | Dimensões |
 | --- | --- | --- | --- |
 | H01 · [session-tree.svg](../../prototypes/desktop/assets/help/session-tree.svg) | Barra fixa à esquerda, conversa no centro e Sessions à direita, com projeto expansível, duas sessões com histórico próprio e sessão independente associável. Fixed rail; right sessions; project tree; shared context; independent session; attach to project; histórico; associação. | Capítulo Sessions & projects; ativo no centro de ajuda. Revisado em 12/10. | 920 × 440 |
-| H02 · [workspace-docking.svg](../../prototypes/desktop/assets/help/workspace-docking.svg) | Três composições: barra fixa/painel de atividade à esquerda e Sessions à direita; dock comum com abas; lados recolhidos com divisórias para reabrir. Fixed rail; left/right; docking; tabs; resize edge; collapse; restore; Home; End; abas; painéis móveis. | Capítulo Arrange your workspace; ativo. Esquema de opções revisado em 12/10, sem captura de dados. | 920 × 410 |
+| H02 · [workspace-docking.svg](../../prototypes/desktop/assets/help/workspace-docking.svg) | Três composições: barra fixa/Files à esquerda e Sessions independente à direita; dock comum com abas Files/Sessions; lados recolhidos com divisórias para reabrir. Chat não tem painel lateral próprio. Fixed rail; direct chat; Files; left/right; docking; tabs; resize edge; collapse; restore; Home; End; abas; painéis móveis. | Capítulo Arrange your workspace; ativo. Esquema de opções revisado em 12/10, sem captura de dados. | 920 × 410 |
 | H03 · [settings-window.svg](../../prototypes/desktop/assets/help/settings-window.svg) | Settings centralizada sobre conversa, botão de fechar, abas, densidade Compact e slider percentual. Centered settings; floating window; outside click; text scale; Compact; configurações; tamanho do texto. | Capítulo Settings & personal style; ativo. Esquema com General selecionada. | 920 × 440 |
 | H04 · [account-usage.svg](../../prototypes/desktop/assets/help/account-usage.svg) | Assinatura e API em cartões separados; quota/saldo desconhecidos; Subscription Only. Quota; API credit; billing; unavailable usage; créditos; limite; cobrança. | Capítulo Accounts & usage; ativo. Não exibe percentuais ou saldo inventados. | 920 × 370 |
 | H05 · [review-path.svg](../../prototypes/desktop/assets/help/review-path.svg) | Pedido → trabalho → revisão → confirmação de aplicação, com correção voltando ao fluxo. Review; correction; validate; apply; target; revisão; validação; destino. | Capítulo Progress & review; ativo. Explica decisões distintas sem alegar execução real. | 920 × 330 |
@@ -251,7 +251,7 @@ Capturas locais em `prototypes/desktop/artifacts/`, ignoradas pelo Git e revisad
 
 ## Barra de atividades e arquivos — 12/10/2026
 
-Capturas locais de QA em `prototypes/desktop/artifacts/`, ignoradas pelo Git e regeneráveis. Não são ativos para compor o produto nem avaliação humana do piloto. Os oito registros da interface mostram a organização atual e arquivos de estudo; os três últimos são renders dos SVGs H01/H02/H06. [Registro do incremento](activity-shell-revision.md).
+Capturas locais de QA em `prototypes/desktop/artifacts/`, ignoradas pelo Git e regeneráveis. Não são ativos para compor o produto nem avaliação humana do piloto. Os oito registros da interface mostram a organização inicial da barra de atividades e arquivos de estudo, antes do refinamento de Chat direto; os três últimos são renders dos SVGs H01/H02/H06 daquela revisão. [Registro do incremento](activity-shell-revision.md).
 
 | Arquivo | Assunto, finalidade e aliases | Dimensões |
 | --- | --- | --- |
@@ -266,3 +266,13 @@ Capturas locais de QA em `prototypes/desktop/artifacts/`, ignoradas pelo Git e r
 | `session-tree-help.png` | Render H01 revisado: barra fixa, conversa e Sessions à direita com projeto/conversas independentes. Help diagram; session grouping; right sessions. | 920 × 440 |
 | `workspace-docking-help.png` | Render H02 revisado: lados separados, abas compartilhadas e divisórias recolhidas. Help diagram; docking; collapse; Home; End. | 920 × 410 |
 | `files-editor-help.png` | Render H06: `.env`, editor e distinção visual entre origem autorizada e cópia importada. Help diagram; file editing; permission; save copy. | 920 × 480 |
+
+## Chat direto e busca expandida — 12/10/2026
+
+Capturas locais em `prototypes/desktop/artifacts/`, ignoradas pelo Git e regeneráveis. Documentam a conversa sem painel lateral próprio, a barra fixa preservada, Sessions independente e a busca preenchendo o cabeçalho disponível. Substituem os registros anteriores da entrada para avaliar esse refinamento; não encerram o piloto humano.
+
+| Arquivo | Assunto, finalidade e aliases | Dimensões |
+| --- | --- | --- |
+| `direct-chat-home-1440.png` | Entrada desktop com Chat direto, rail fixo, Sessions à direita e busca expandida. Direct chat; no activity sidebar; full header search; independent Sessions; desktop. | 1440 × 900 |
+| `direct-chat-home-1280.png` | Entrada em notebook com espaço central ampliado após remover o painel próprio de Chat. Laptop; direct conversation; compact shell; stretched search. | 1280 × 720 |
+| `direct-chat-home-390.png` | Entrada mobile com Chat direto, navegação fixa e busca adaptada ao cabeçalho. Mobile; direct chat; responsive search; fixed activity rail. | 390 × 844 |

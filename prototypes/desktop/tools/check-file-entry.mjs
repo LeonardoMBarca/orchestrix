@@ -30,9 +30,10 @@ try{
   await page.getByRole('button',{name:'Create project and session',exact:true}).click();
   await page.evaluate(()=>OrchestrixDock.activate('sessions'));await page.locator(`[data-session-id="${second}"]`).click();await expect(input).toHaveValue('Plan a scientific investigation.');
   await page.locator('[data-action="session-attach"]').click();await page.locator('[data-attach-project]').first().click();assert.equal(await page.evaluate(()=>OrchestrixApp.getState().chat.id),second);
-  await page.evaluate(()=>{OrchestrixDock.move('navigation','left');OrchestrixDock.move('sessions','left');OrchestrixDock.activate('sessions');});await page.screenshot({path:fileURLToPath(new URL('../artifacts/d1-compact-tabs-left.png',import.meta.url)),fullPage:true});
+  await page.locator('#activity-items>[data-activity="files"]').click();await page.evaluate(()=>{OrchestrixDock.move('navigation','left');OrchestrixDock.move('sessions','left');OrchestrixDock.activate('sessions');});await page.screenshot({path:fileURLToPath(new URL('../artifacts/d1-compact-tabs-left.png',import.meta.url)),fullPage:true});
   await page.locator('#sessions-panel .dock-panel-handle').click();await expect(page.locator('#dock-position-menu')).toBeVisible();await page.screenshot({path:fileURLToPath(new URL('../artifacts/d1-compact-side-chooser.png',import.meta.url)),fullPage:true});await page.keyboard.press('Escape');await page.evaluate(()=>OrchestrixDock.move('sessions','right'));
   await page.screenshot({path:fileURLToPath(new URL('../artifacts/d1-compact-sessions-right.png',import.meta.url)),fullPage:true});
+  await page.locator('#activity-items>[data-activity="chat"]').click();await expect(page.locator('#navigation-panel')).toBeHidden();
   await page.evaluate(()=>OrchestrixSettings.open('general'));
   await page.locator('#settings-profile-name').fill('Night pilot');await page.locator('[data-settings-form="profile"]').getByRole('button',{name:'Save profile',exact:true}).click();
   await expect(page.locator('#floating-settings')).toBeVisible();

@@ -21,15 +21,15 @@ Selecionar uma sessão preserva o rascunho da anterior e mostra o destino/contex
 
 A barra de atividades fica na borda esquerda, independente dos painéis. A ordem inicial é **Chat, Files, Studio, Connections**; **Help, Settings e Profile** permanecem na base. Os quatro primeiros itens podem ser reordenados, mantendo nomes acessíveis e uma alternativa ao arraste. A barra não muda de lado, não se recolhe com os docks e permanece um caminho para reabrir uma atividade.
 
-Chat mantém a conversa como entrada principal. Files mostra a árvore autorizada e abre leitura/edição leve no centro. Studio reúne as superfícies técnicas existentes, sem obrigá-las no primeiro uso. Connections conserva cadastro, recursos e diagnósticos. Settings continua modeless; Profile encaminha ao perfil, sem duplicar sua edição. Help abre a página externa.
+Chat abre diretamente a conversa, sem um painel lateral próprio com atalhos de sessão, diretório ou acompanhamento. A barra fixa permanece disponível e Sessions continua sendo um painel independente, que pode ficar aberto ou recolhido conforme a preferência da pessoa. Files mostra a árvore autorizada e abre leitura/edição leve no centro. Studio reúne as superfícies técnicas existentes, sem obrigá-las no primeiro uso. Connections conserva cadastro, recursos e diagnósticos. Settings continua modeless; Profile encaminha ao perfil, sem duplicar sua edição. Help abre a página externa.
 
-A barra superior oferece **File, Edit, View e Help**, com ações pertinentes ao aplicativo e atalhos quando disponíveis. Ela não acrescenta Run, debugger ou terminal de IDE. Ações indisponíveis devem explicar sua condição ou ficar desabilitadas; não apresentar comandos sem efeito. Marca e busca continuam reconhecíveis sem ocupar o espaço de trabalho.
+A barra superior oferece **File, Edit, View e Help**, com ações pertinentes ao aplicativo e atalhos quando disponíveis. Ela não acrescenta Run, debugger ou terminal de IDE. Ações indisponíveis devem explicar sua condição ou ficar desabilitadas; não apresentar comandos sem efeito. No cabeçalho da área central, a busca se expande para preencher o espaço disponível entre os demais controles, sem largura máxima que deixe uma faixa vazia. Em telas compactas, os controles mantêm sua legibilidade e não provocam overflow horizontal.
 
 ## Docking e abas
 
 | Painel | Papel | Disposição inicial |
 | --- | --- | --- |
-| Navigation | Conteúdo da atividade selecionada: Chat, Files, Studio ou Connections | Esquerda, 224px |
+| Navigation | Conteúdo lateral de Files, Studio ou Connections; não aparece para Chat | Esquerda, 224px, quando necessário |
 | Sessions | Projetos e conversas | Direita, 280px |
 | Work | Tarefas e próximos passos da sessão | Direita, quando há trabalho |
 

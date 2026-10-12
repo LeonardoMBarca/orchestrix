@@ -23,7 +23,8 @@ test('help works directly from HTML, with complete guides and local illustration
   await expect(page.locator('#accounts')).toContainText('Subscription Only');
   await expect(page.locator('#files')).toContainText('Save a copy');
   await expect(page.locator('#files')).toContainText('Opening a file does not automatically add it');
-  await expect(page.locator('#layout')).toContainText('Sessions on the right');
+  await expect(page.locator('#layout')).toContainText('Chat opens the conversation directly without a sidebar of its own');
+  await expect(page.locator('#layout')).toContainText('Sessions remains independent and starts on the right');
   expect(errors).toEqual([]);
 });
 

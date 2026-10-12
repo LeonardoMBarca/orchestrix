@@ -25,7 +25,7 @@
   const app=document.getElementById('app');
   const targets=document.getElementById('dock-drop-targets');
   const menu=document.getElementById('dock-position-menu');
-  const available={navigation:true,sessions:true,work:false};
+  const available={navigation:false,sessions:true,work:false};
   let dragging=null;
   let menuOpener=null;
   const panel=id=>document.getElementById(`${id}-panel`);
@@ -109,6 +109,10 @@
   function toggle(zone) {
     if(!zones.includes(zone))return false;
     return layout.collapsed[zone]?expand(zone):collapse(zone);
+  }
+  function setAvailable(id,value) {
+    if(!Object.hasOwn(names,id)||available[id]===Boolean(value))return;
+    available[id]=Boolean(value);apply();
   }
   function sync() {
     const work=document.querySelector('#content .chat-work');
@@ -210,6 +214,6 @@
   });
   document.addEventListener('orchestrix:language-change',()=>{closeMenu();apply();});
   addEventListener('blur',()=>{if(dragging)cancelDrag();});
-  window.OrchestrixDock=Object.freeze({move,activate,sync,collapse,expand,toggle,isCollapsed:zone=>zones.includes(zone)&&layout.collapsed[zone],getLayout:()=>structuredClone(layout),restore:()=>{layout=initial();apply();save();}});
+  window.OrchestrixDock=Object.freeze({move,activate,sync,collapse,expand,toggle,setAvailable,hasPanels:zone=>zones.includes(zone)&&zonePanels(zone).length>0,isCollapsed:zone=>zones.includes(zone)&&layout.collapsed[zone],getLayout:()=>structuredClone(layout),restore:()=>{layout=initial();apply();save();}});
   apply();
 })();

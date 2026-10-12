@@ -2,6 +2,30 @@ import {test,expect} from '@playwright/test';
 
 test.beforeEach(async({page})=>{await page.goto('/');await expect(page.locator('#chat-message')).toBeVisible();});
 
+test('Chat opens directly and search stretches across the free header space',async({page})=>{
+  await page.setViewportSize({width:1440,height:900});
+  await expect(page.locator('#navigation-panel')).toBeHidden();await expect(page.locator('#sessions-panel')).toBeVisible();
+  await expect(page.locator('[data-toggle-dock="left"]')).toBeHidden();
+  const search=page.locator('#command-trigger'),before=await search.boundingBox();expect(before.width).toBeGreaterThan(500);
+  await page.locator('[data-toggle-dock="right"]').click();const after=await search.boundingBox();expect(after.width-before.width).toBeGreaterThan(250);
+  await search.click();await expect(page.locator('#command-search')).toBeFocused();await page.keyboard.press('Escape');
+  for(const width of [1280,390]){await page.setViewportSize({width,height:800});expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);}
+});
+
+test('returning to Chat removes only its workspace pane on either side and preserves the draft',async({page})=>{
+  const input=page.locator('#chat-message');await input.fill('Keep this conversation draft');await input.evaluate(element=>{element.focus();element.setSelectionRange(4,12);});const original=await input.elementHandle();
+  for(const side of ['left','right']){
+    await page.locator('#activity-items>[data-activity="files"]').click();await expect(page.locator('#files-pane')).toBeVisible();
+    await page.evaluate(side=>{OrchestrixDock.move('navigation',side);OrchestrixDock.move('sessions',side);OrchestrixDock.activate('navigation');},side);
+    const layout=await page.evaluate(()=>OrchestrixDock.getLayout());
+    await page.locator('#activity-items>[data-activity="chat"]').click();await expect(page.locator('#navigation-panel')).toBeHidden();await expect(page.locator('#sessions-panel')).toBeVisible();
+    await expect(input).toHaveValue('Keep this conversation draft');await expect(input).toBeFocused();expect(await input.evaluate((element,previous)=>element===previous,original)).toBe(true);expect(await input.evaluate(element=>[element.selectionStart,element.selectionEnd])).toEqual([4,12]);
+    expect(await page.evaluate(()=>{const {positions,sizes,collapsed}=OrchestrixDock.getLayout();return {positions,sizes,collapsed};})).toEqual({positions:layout.positions,sizes:layout.sizes,collapsed:layout.collapsed});
+    await page.locator('#activity-items>[data-activity="chat"]').click();await expect(page.locator('#sessions-panel')).toBeVisible();
+  }
+  await page.reload();await expect(page.locator('#navigation-panel')).toBeHidden();await expect(input).toHaveValue('Keep this conversation draft');
+});
+
 test('fixed rail keeps essential actions available after both docks collapse',async({page})=>{
   await expect(page.locator('#activity-items>[data-activity]')).toHaveCount(4);
   expect(await page.locator('#activity-items>[data-activity]').evaluateAll(buttons=>buttons.map(button=>button.dataset.activity))).toEqual(['chat','files','studio','connections']);
