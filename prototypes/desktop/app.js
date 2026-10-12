@@ -92,20 +92,33 @@
   let persistTimer;
   let persistenceWarning=false;
   const defaultPreferences=()=>({routing:'balanced',model:'runtime',thinking:'auto',context:'focused',account:'auto',review:'fresh'});
+  // A composer is not a saved session until its first nonempty message is sent.
+  function pendingChat() {return W.createProjectChat(t('Nova sessão'),false,null);}
   function freshState({project='',path='',context='',loose=true}={}) {
-    const chat=W.createProjectChat(t('Nova sessão'),false);
-    return {view:'chat',tab:'summary',selected:null,tasks:[],project,projectId:crypto.randomUUID(),projectOrdinal:projects.size+1,projectPath:path,projectContext:context,isLoose:loose,chat,conversations:[chat],file:'service',revision:0,base:'unobserved',approvedRevision:null,events:[],connections:state?.connections||[],preferences:{...defaultPreferences(),...state?.preferences},appSettings:{systemPrompt:'',profileName:'',subscriptionOnly:true,...state?.appSettings},focus:false,contextSelection:[],ui,platform:'native',objective:'',aggregate:false,hasArtifact:false,runStatus:'task-review',runRevision:1,runBase:'unobserved',correctionDraft:'',checksFailed:false,artifactAttempt:1,comment:''};
+    const chat=pendingChat();
+    return {view:'chat',tab:'summary',selected:null,tasks:[],project,projectId:crypto.randomUUID(),projectOrdinal:projects.size+1,projectPath:path,projectContext:context,isLoose:loose,chat,conversations:[],file:'service',revision:0,base:'unobserved',approvedRevision:null,events:[],connections:state?.connections||[],preferences:{...defaultPreferences(),...state?.preferences},appSettings:{systemPrompt:'',profileName:'',subscriptionOnly:true,...state?.appSettings},focus:false,contextSelection:[],ui,platform:'native',objective:'',aggregate:false,hasArtifact:false,runStatus:'task-review',runRevision:1,runBase:'unobserved',correctionDraft:'',checksFailed:false,artifactAttempt:1,comment:''};
+  }
+  function projectEntries() {
+    const entries=[...projects.values()].filter(project=>project.projectId!==state.projectId);
+    if(!state.isLoose||state.conversations.length)entries.push(state);
+    return entries.sort((a,b)=>a.projectOrdinal-b.projectOrdinal);
+  }
+  function cacheProject() {
+    if(state.isLoose&&!state.conversations.length)return;
+    const snapshot=structuredClone(state);
+    snapshot.chat=snapshot.conversations.find(chat=>chat.id===state.chat.id)||snapshot.conversations[0]||null;
+    projects.set(state.projectId,snapshot);
   }
   function persistSessions() {
     if(!state||testScenario)return;
     rememberComposer();
-    projects.set(state.projectId,structuredClone(state));
+    cacheProject();
     const snapshots=[...projects.values()].map(project=>{
       const snapshot=structuredClone(project);delete snapshot.connections;delete snapshot.ui;delete snapshot.appSettings;
-      snapshot.view='chat';snapshot.chat.reviewReturn=null;return snapshot;
+      snapshot.view='chat';if(snapshot.chat)snapshot.chat.reviewReturn=null;return snapshot;
     });
     try {
-      const serialized=JSON.stringify({version:1,activeProjectId:state.projectId,activeSessionId:state.chat.id,projects:snapshots});
+      const serialized=JSON.stringify({version:1,projects:snapshots});
       if(serialized.length>2_000_000)throw new Error('Session storage limit');
       localStorage.setItem(sessionStorageKey,serialized);persistenceWarning=false;
     }catch{if(!persistenceWarning){persistenceWarning=true;notify(t('Não foi possível salvar as sessões neste navegador. Exporte conteúdo importante antes de fechar.'));}}
@@ -115,16 +128,17 @@
     try {
       const raw=localStorage.getItem(sessionStorageKey);if(!raw||raw.length>2_000_000)return false;
       const saved=JSON.parse(raw);if(saved.version!==1||!Array.isArray(saved.projects)||saved.projects.length>100)return false;
-      const sessionIds=new Set();
+      const sessionIds=new Set(),restoredProjects=new Map();
       for(const project of saved.projects){
-        if(typeof project.projectId!=='string'||typeof project.project!=='string'||typeof project.projectPath!=='string'||!Array.isArray(project.conversations)||!project.conversations.length||project.conversations.length>100||!Array.isArray(project.tasks)||project.tasks.length>500||!Array.isArray(project.events))return false;
+        if(typeof project.projectId!=='string'||restoredProjects.has(project.projectId)||typeof project.project!=='string'||typeof project.projectPath!=='string'||!Array.isArray(project.conversations)||project.conversations.length>100||!Array.isArray(project.tasks)||project.tasks.length>500||!Array.isArray(project.events))return false;
         for(const chat of project.conversations){if(typeof chat.id!=='string'||sessionIds.has(chat.id)||typeof chat.name!=='string'||typeof chat.draft!=='string'||chat.draft.length>2000||!Array.isArray(chat.messages)||!chat.messages.every(message=>typeof message?.text==='string'&&['user','orchestrator'].includes(message.role))||!Array.isArray(chat.taskIds)||!chat.taskIds.every(id=>typeof id==='string'))return false;sessionIds.add(chat.id);}
         if(!project.tasks.every(task=>typeof task?.id==='string'&&typeof task.title==='string'&&typeof task.status==='string'&&task.config&&task.contextPack&&Array.isArray(task.contextPack.sources)&&Array.isArray(task.contextPack.criteria)))return false;
         const chat=project.conversations.find(item=>item.id===project.chat?.id)||project.conversations[0];
-        project.chat=chat;project.connections=[];project.ui=ui;project.appSettings={systemPrompt:'',profileName:'',subscriptionOnly:true};projects.set(project.projectId,project);
+        project.chat=chat||null;project.connections=[];project.ui=ui;project.appSettings={systemPrompt:'',profileName:'',subscriptionOnly:true};restoredProjects.set(project.projectId,project);
       }
-      const restored=projects.get(saved.activeProjectId)||projects.values().next().value;if(!restored)return false;
-      state=restored;state.chat=state.conversations.find(item=>item.id===saved.activeSessionId)||state.chat;state.view='chat';state.focus=false;return true;
+      for(const [id,project] of restoredProjects)projects.set(id,project);
+      // Saved history is retained, but neither reload nor app reopen restores a view.
+      state=freshState();return true;
     }catch{projects.clear();return false;}
   }
   function reset() {
@@ -133,7 +147,7 @@
   }
   function renderSessions() {
     const root=document.querySelector('#session-list');if(!root)return;
-    const entries=[...projects.values()].filter(project=>project.projectId!==state.projectId).concat(state).sort((a,b)=>a.projectOrdinal-b.projectOrdinal);
+    const entries=projectEntries();
     const sessionButton=(project,chat)=>html`<button type="button" class="session-item ${chat.id===state.chat.id?'active':''}" data-session-project="${esc(project.projectId)}" data-session-id="${esc(chat.id)}" ${chat.id===state.chat.id?'aria-current="page"':''}>${icon('message')}<span>${esc(sessionLabel(chat))}</span></button>`;
     root.innerHTML=html`<div class="session-toolbar"><button type="button" class="button primary new-session-trigger" data-action="chat-loose">${icon('plus')}Nova sessão</button><button type="button" class="button new-project-trigger" data-action="onboarding">Novo projeto</button></div><section class="session-section"><h3>Projetos</h3>${entries.filter(project=>!project.isLoose).map(project=>html`<div class="session-project-group"><details class="session-project" data-project-id="${esc(project.projectId)}" ${project.projectId===state.projectId||project.expanded!==false?'open':''}><summary title="${esc(project.project)}">${icon('folder')}<span>${esc(project.project)}</span><small>${project.conversations.length}</small></summary>${project.conversations.map(chat=>sessionButton(project,chat)).join('')}</details><button type="button" class="project-new-session" data-new-session-project="${esc(project.projectId)}" aria-label="${esc(text`Nova sessão em ${project.project}`)}" title="${esc(text`Nova sessão em ${project.project}`)}">${icon('messagePlus')}</button></div>`).join('')||html`<p class="session-empty">Crie um projeto para reunir sessões.</p>`}</section><section class="session-section"><h3>Sessões recentes</h3>${entries.filter(project=>project.isLoose).reverse().map(project=>project.conversations.map(chat=>sessionButton(project,chat)).join('')).join('')||html`<p class="session-empty">Suas sessões independentes aparecem aqui.</p>`}</section>`;
     root.querySelectorAll('.session-project').forEach(details=>details.addEventListener('toggle',()=>{const project=details.dataset.projectId===state.projectId?state:projects.get(details.dataset.projectId);if(project){project.expanded=details.open;schedulePersistence();}}));
@@ -147,12 +161,13 @@
   function sessionLabel(chat) {return chat.autoName?t('Nova sessão'):chat.name;}
   function projectForm(attach=false) {
     rememberComposer();
-    const entries=[...projects.values()].filter(project=>project.projectId!==state.projectId).concat(state).filter(project=>!project.isLoose);
-    showModal(attach?t('Vincular ao projeto'):t('Abrir ou criar projeto'),html`${entries.length?html`<section class="existing-projects"><h3>Projetos existentes</h3>${entries.map(project=>html`<button type="button" class="button" ${attach?'data-attach-project':'data-open-project'}="${esc(project.projectId)}">${icon('folder')}${esc(project.project)}</button>`).join('')}</section>`:''}<form id="session-project-form" data-attach="${attach}"><label class="form-label" for="entry-name">Nome do novo projeto</label><input id="entry-name" name="project" required maxlength="50" autocomplete="off"><label class="form-label" for="entry-path">Diretório de trabalho</label><input id="entry-path" name="path" maxlength="180" autocomplete="off" value="${esc(attach?state.projectPath:'')}"><p class="field-hint">Você pode definir o diretório agora ou depois.</p><label class="form-label" for="entry-context">Contexto compartilhado</label><textarea id="entry-context" name="context" rows="3" maxlength="4000"></textarea><div class="form-actions"><button type="button" class="button" data-action="close-modal">Cancelar</button><button type="submit" class="button primary">${attach?t('Criar e vincular sessão'):t('Criar projeto e sessão')}</button></div></form>`);
+    const entries=projectEntries().filter(project=>!project.isLoose);
+    showModal(attach?t('Vincular ao projeto'):t('Abrir ou criar projeto'),html`${entries.length?html`<section class="existing-projects"><h3>Projetos existentes</h3>${entries.map(project=>html`<button type="button" class="button" ${attach?'data-attach-project':'data-open-project'}="${esc(project.projectId)}">${icon('folder')}${esc(project.project)}</button>`).join('')}</section>`:''}<form id="session-project-form" data-attach="${attach}"><label class="form-label" for="entry-name">Nome do novo projeto</label><input id="entry-name" name="project" required maxlength="50" autocomplete="off"><label class="form-label" for="entry-path">Diretório de trabalho</label><input id="entry-path" name="path" maxlength="180" autocomplete="off" value="${esc(attach?state.projectPath:'')}"><p class="field-hint">Você pode definir o diretório agora ou depois.</p><label class="form-label" for="entry-context">Contexto compartilhado</label><textarea id="entry-context" name="context" rows="3" maxlength="4000"></textarea><div class="form-actions"><button type="button" class="button" data-action="close-modal">Cancelar</button><button type="submit" class="button primary">${attach?t(state.chat.id?'Criar e vincular sessão':'Criar e usar projeto'):t('Criar projeto')}</button></div></form>`);
   }
   function createProject(project,path='',context='',attach=false) {
     if(!project.trim())return;
-    if(!attach&&projects.size>=100){notify(t('Você atingiu o limite de 100 espaços de sessão neste navegador.'));return;}
+    const currentUncached=(!state.isLoose||state.conversations.length)&&!projects.has(state.projectId)?1:0;
+    if((!attach&&projects.size+currentUncached>=100)||(attach&&!projects.has(state.projectId)&&projects.size>=100)){notify(t('Você atingiu o limite de 100 espaços de sessão neste navegador.'));return;}
     if(attach){state.project=project.trim();state.projectPath=path.trim();state.projectContext=context.trim();state.isLoose=false;state.expanded=true;}
     else{saveProject();state=freshState({project:project.trim(),path:path.trim(),context:context.trim(),loose:false});}
     state.view='chat';if(modal.open)closeModal();render();window.OrchestrixDock?.activate('sessions');focusComposer();
@@ -162,7 +177,7 @@
     if(target.conversations.length>=100||target.tasks.length+state.tasks.length>500){notify(t('O projeto não tem espaço para outra sessão. Seu conteúdo foi preservado.'));return;}
     rememberComposer();const sourceId=state.projectId,session=state.chat,connections=state.connections,appSettings=state.appSettings;
     if(state.tasks.some(task=>target.tasks.some(other=>other.id===task.id))){notify(t('Não foi possível vincular esta sessão porque os trabalhos têm identificadores duplicados.'));return;}
-    const next=structuredClone(target);next.conversations.push(session);next.chat=session;next.tasks.push(...state.tasks);next.events.unshift(...state.events);next.connections=connections;next.appSettings=appSettings;next.ui=ui;next.selected=state.selected;next.expanded=true;next.view='chat';
+    const next=structuredClone(target);if(session.id)next.conversations.push(session);next.chat=session;next.tasks.push(...state.tasks);next.events.unshift(...state.events);next.connections=connections;next.appSettings=appSettings;next.ui=ui;next.selected=state.selected;next.expanded=true;next.view='chat';
     // Existing attempts retain their original context, directory and artifact base.
     projects.delete(sourceId);state=next;if(modal.open)closeModal();render();window.OrchestrixDock?.activate('sessions');focusComposer();
   }
@@ -183,9 +198,9 @@
   function settleRun(run='R-08'){if(run==='R-08'&&state.aggregate&&!['ready','applied'].includes(state.runStatus)&&runComplete()){state.runStatus='ready';state.runRevision++;record(t('R-08 · todas as tarefas validadas'),text`Candidato i${state.runRevision}; revise o diff completo antes da aplicação.`,'branch');}}
   const helpers=()=>({esc,icon,action,pageHead,showModal,closeModal,render,notify,record,modelLabel,statuses,saveProject,projectOptions,prepareProjectConnection,testScenario,studioOpen:document.querySelector('#studio-navigation').open,nextProjectOrdinal:()=>projects.size+1});
   function rememberComposer() {const input=document.querySelector('#chat-message');if(input&&state.view==='chat')state.chat.selection={start:input.selectionStart,end:input.selectionEnd,direction:input.selectionDirection,scroll:input.scrollTop};}
-  function saveProject() {rememberComposer();projects.set(state.projectId,structuredClone(state));schedulePersistence();}
+  function saveProject() {rememberComposer();cacheProject();schedulePersistence();}
   function projectOptions() {
-    const entries=[...projects.values()].filter(project=>project.projectId!==state.projectId).concat(state).sort((a,b)=>a.projectOrdinal-b.projectOrdinal);
+    const entries=projectEntries();
     return entries.map(project=>({id:project.projectId,label:`${project.project}${entries.filter(other=>other.project===project.project).length>1?text` · espaço ${project.projectOrdinal}`:''}`}));
   }
   function prepareProjectConnection(agent) {
@@ -197,13 +212,12 @@
   }
   function switchProject(id) {
     if(id===state.projectId||!projects.has(id))return;
-    const connections=state.connections;saveProject();state=structuredClone(projects.get(id));state.connections=connections;state.ui=ui;state.view='chat';state.chat.reviewReturn=null;
+    const connections=state.connections,appSettings=state.appSettings;saveProject();state=structuredClone(projects.get(id));state.connections=connections;state.appSettings=appSettings;state.ui=ui;state.view='chat';state.chat||=pendingChat();state.chat.reviewReturn=null;
     document.querySelector('#app').classList.toggle('focus-mode',state.focus);const focus=document.querySelector('.focus-toggle');focus.setAttribute('aria-pressed',String(state.focus));focus.setAttribute('aria-label',state.focus?t('Sair do modo de foco'):t('Ativar modo de foco'));
     render();focusComposer();
   }
-  function newConversation() {if(state.isLoose){looseConversation();return;}if(state.conversations.length>=100){notify(t('Este projeto atingiu o limite de 100 sessões.'));return;}rememberComposer();const conversation=W.createProjectChat(t('Nova sessão'),false);state.conversations.push(conversation);state.chat=conversation;state.view='chat';render();focusComposer();}
+  function newConversation() {if(state.isLoose){looseConversation();return;}if(state.conversations.length>=100){notify(t('Este projeto atingiu o limite de 100 sessões.'));return;}saveProject();state.chat=pendingChat();state.selected=null;state.view='chat';render();focusComposer();}
   function looseConversation() {
-    if(projects.size>=100){notify(t('Você atingiu o limite de 100 espaços de sessão neste navegador.'));return;}
     saveProject();state=freshState();document.querySelector('#app').classList.remove('focus-mode');const focus=document.querySelector('.focus-toggle');focus.setAttribute('aria-pressed','false');focus.setAttribute('aria-label',t('Ativar modo de foco'));render();focusComposer();
   }
   const needingAttention = () => state.tasks.filter(taskItem=>['review','blocked','failed','conflict','unknown','permission'].includes(taskItem.status)||taskItem.needsRead||(taskItem.id==='OX-24'&&taskItem.status==='integrated'&&state.runStatus!=='applied'));
@@ -237,6 +251,11 @@
   function chatRecord(text,taskId,note='') {state.chat.messages.push({role:'orchestrator',text,taskId,note});scrollChatToEnd();}
   function sendChat(messageText) {
     const message=messageText.trim();if(!message)return;
+    if(!state.chat.id){
+      if(state.isLoose&&!projects.has(state.projectId)&&projects.size>=100){notify(t('Você atingiu o limite de 100 espaços de sessão neste navegador.'));return;}
+      if(state.conversations.length>=100){notify(t('Este projeto atingiu o limite de 100 sessões.'));return;}
+      if(state.tasks.length>=500){notify(t('Este projeto atingiu o limite de 500 trabalhos.'));return;}
+    }
     state.chat.messages.push({role:'user',text:message});state.chat.draft='';state.chat.selection=null;
     if(state.chat.messages.filter(item=>item.role==='user').length===1){state.chat.name=message.split('\n')[0].slice(0,60);state.chat.autoName=false;}
     const active=state.tasks.find(task=>task.id===state.chat.activeTaskId);
@@ -248,6 +267,7 @@
       state.chat.feedbackByTask||={};state.chat.feedbackByTask[active.id]=message;
       chatRecord(text`Registrei sua orientação para “${active.title}”. ${active.status==='review'?t('Use Pedir correção no card para revisar e enviar esta instrução em uma nova tentativa.'):active.status==='integrated'?t('O resultado já foi validado. Abra a revisão para conferir sua aplicação; este envio não modifica o resultado aceito.'):active.status==='running'?t('O trabalho continua na mesma tentativa. Confira o resultado antes de solicitar uma correção.'):t('O estado do trabalho foi preservado; use o próximo passo do card para continuar.')}`,active.id,t('Orientação registrada na conversa. Nenhuma tentativa foi iniciada ou alterada por este envio.'));
     }
+    if(!state.chat.id){state.chat.id=crypto.randomUUID();state.conversations.push(state.chat);}
     state.view='chat';render();focusComposer();scrollChatToEnd();
   }
   function chatAction(name,id) {
@@ -280,8 +300,8 @@
     const focusTask=focused?.dataset?.chatTask;
     document.querySelectorAll('[data-view]').forEach(el=>{el.classList.toggle('active',el.dataset.view===state.view);if(el.dataset.view===state.view)el.setAttribute('aria-current','page');else el.removeAttribute('aria-current');});
     document.querySelector('#view-name').textContent=t(viewNames[state.view]);
-    document.querySelector('#project-name').textContent=state.project||state.chat.name;
-    document.querySelector('#breadcrumb-project').textContent=state.project||t('Sessão independente');
+    document.querySelector('#project-name').textContent=state.project||(state.chat.id?state.chat.name:'Orchestrix');
+    document.querySelector('#breadcrumb-project').textContent=state.project||(state.chat.id?t('Sessão independente'):'Orchestrix');
     document.querySelector('#work-count').textContent=state.tasks.length;
     document.querySelector('#attention-count').textContent=needingAttention().length;
     const technical=['work','attention','review','history','settings'].includes(state.view);
@@ -440,7 +460,7 @@
     const locale=window.OrchestrixI18n.language,needle=query.toLocaleLowerCase(locale);
     const matches=label=>label.toLocaleLowerCase(locale).includes(needle);
     const actions=commandItems.filter(([label])=>matches(t(label))).map(([label,act,ico,key])=>html`<button data-command="${act}">${icon(ico)}${t(label)}${key?html`<kbd>${key}</kbd>`:''}</button>`);
-    const entries=[...projects.values()].filter(project=>project.projectId!==state.projectId).concat(state);
+    const entries=projectEntries();
     const sessions=entries.flatMap(project=>project.conversations.filter(chat=>matches([sessionLabel(chat),project.project,project.projectPath].join(' '))).map(chat=>html`<button data-search-project="${esc(project.projectId)}" data-search-session="${esc(chat.id)}">${icon('message')}<span>${esc(sessionLabel(chat))}<small>${esc(project.project||t('Sessão independente'))}</small></span></button>`));
     document.querySelector('#command-list').innerHTML=[...sessions,...actions].join('')||html`<p class="empty-result">Nenhuma sessão, projeto ou ação encontrada.</p>`;
   }

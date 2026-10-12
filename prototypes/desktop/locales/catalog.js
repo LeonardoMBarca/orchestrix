@@ -5648,6 +5648,10 @@ globalThis.OrchestrixLocaleCatalog=Object.freeze({
     "en": "Create project and session",
     "es": "Crear proyecto y sesión"
   },
+  "Criar e usar projeto": {
+    "en": "Create and use project",
+    "es": "Crear y usar proyecto"
+  },
   "SESSÃO": {
     "en": "SESSION",
     "es": "SESIÓN"

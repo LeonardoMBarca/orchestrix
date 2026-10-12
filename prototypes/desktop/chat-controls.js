@@ -77,7 +77,7 @@
   });
   document.addEventListener('change',async event=>{
     if(event.target.id!=='chat-document-input')return;
-    const files=[...event.target.files],state=app().getState(),sessionId=state.chat.id,h=app().helpers();event.target.value='';if(!files.length)return;
+    const files=[...event.target.files],state=app().getState(),composer=state.chat,h=app().helpers();event.target.value='';if(!files.length)return;
     if(files.length+attachments(state.chat).length>10||files.some(file=>file.size>102400)||files.reduce((size,file)=>size+file.size,attachments(state.chat).reduce((size,file)=>size+(file.bytes||0),0))>512000){h.notify(t('Selecione até 10 documentos de texto, com até 100 KB cada e 500 KB no total.'));return;}
     try {
       const loaded=await Promise.all(files.map(async file=>{
@@ -85,7 +85,7 @@
         const bytes=new Uint8Array(await file.arrayBuffer()),content=new TextDecoder('utf-8',{fatal:true}).decode(bytes);if(content.includes('\0'))throw new Error('binary-document');
         return {id:`document-${crypto.randomUUID()}`,path:file.name,text:content,bytes:file.size,version:`file:${file.lastModified}:${file.size}`,origin:'user-attachment'};
       }));
-      if(app().getState().chat.id!==sessionId){h.notify(t('A sessão mudou durante a leitura. Selecione os documentos novamente na sessão desejada.'));return;}
+      if(app().getState().chat!==composer){h.notify(t('A sessão mudou durante a leitura. Selecione os documentos novamente na sessão desejada.'));return;}
       const current=app().getState().chat,combined=[...attachments(current),...loaded];
       if(combined.length>10||combined.reduce((size,file)=>size+(file.bytes||0),0)>512000){h.notify(t('Selecione até 10 documentos de texto, com até 100 KB cada e 500 KB no total.'));return;}
       current.attachments=combined;h.render();document.getElementById('chat-add-context')?.focus({preventScroll:true});

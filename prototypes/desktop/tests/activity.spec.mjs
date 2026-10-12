@@ -13,7 +13,8 @@ test('Chat opens directly and search stretches across the free header space',asy
 });
 
 test('returning to Chat removes only its workspace pane on either side and preserves the draft',async({page})=>{
-  const input=page.locator('#chat-message');await input.fill('Keep this conversation draft');await input.evaluate(element=>{element.focus();element.setSelectionRange(4,12);});const original=await input.elementHandle();
+  const input=page.locator('#chat-message');await input.fill('Start a conversation to preserve');await input.press('Enter');const session=await page.evaluate(()=>OrchestrixApp.getState().chat.id);
+  await input.fill('Keep this conversation draft');await input.evaluate(element=>{element.focus();element.setSelectionRange(4,12);});const original=await input.elementHandle();
   for(const side of ['left','right']){
     await page.locator('#activity-items>[data-activity="files"]').click();await expect(page.locator('#files-pane')).toBeVisible();
     await page.evaluate(side=>{OrchestrixDock.move('navigation',side);OrchestrixDock.move('sessions',side);OrchestrixDock.activate('navigation');},side);
@@ -23,7 +24,8 @@ test('returning to Chat removes only its workspace pane on either side and prese
     expect(await page.evaluate(()=>{const {positions,sizes,collapsed}=OrchestrixDock.getLayout();return {positions,sizes,collapsed};})).toEqual({positions:layout.positions,sizes:layout.sizes,collapsed:layout.collapsed});
     await page.locator('#activity-items>[data-activity="chat"]').click();await expect(page.locator('#sessions-panel')).toBeVisible();
   }
-  await page.reload();await expect(page.locator('#navigation-panel')).toBeHidden();await expect(input).toHaveValue('Keep this conversation draft');
+  await page.evaluate(()=>OrchestrixApp.persistSessions());await page.reload();await expect(page.locator('#navigation-panel')).toBeHidden();await expect(input).toHaveValue('');expect(await page.evaluate(()=>OrchestrixApp.getState().chat.id)).toBeNull();
+  await page.locator(`[data-session-id="${session}"]`).click();await expect(input).toHaveValue('Keep this conversation draft');
 });
 
 test('fixed rail keeps essential actions available after both docks collapse',async({page})=>{

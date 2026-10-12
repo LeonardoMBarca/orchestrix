@@ -75,8 +75,8 @@
     if(artifact.base!==state.base){h.notify(t('A base mudou. A aplicação deste resultado está bloqueada; o artefato anterior foi preservado.'));return;}
     h.showModal(text`Aplicar o resultado de ${task.run}?`,html`<p>Confira o resultado, sua identidade e o destino. Esta confirmação modifica somente dados da demonstração.</p><div class="snapshot">Run: <strong>${h.esc(task.run)}</strong> · ${h.esc(task.id)} validada<br>Artefato: <code>${h.esc(artifact.hash)}</code> · tentativa produtora ${artifact.attempt}<br>Candidato: <code>i${artifact.revision}</code> · ${h.esc(artifact.path)}<br>Destino: <code>main · ${h.esc(state.base)}</code><br>Evidências: exemplos aprovados, sem execução real.</div><div class="form-actions">${h.action(t('Voltar'),'close-modal')}${h.action(t('Aplicar este Run na demonstração'),'confirm-independent',true,`data-target="${h.esc(task.id)}" data-snapshot="${h.esc(artifact.hash)}:${h.esc(state.base)}:${h.esc(task.run)}"`)}</div>`);
   }
-  function createProjectChat(name=t('Conversa 1'),seedExample=true) {
-    return {id:crypto.randomUUID(),name,autoName:name===t('Nova sessão'),draft:'',exampleVisible:seedExample,activeTaskId:null,taskIds:seedExample?['OX-24']:[],messages:[]};
+  function createProjectChat(name=t('Conversa 1'),seedExample=true,id=crypto.randomUUID()) {
+    return {id,name,autoName:name===t('Nova sessão'),draft:'',exampleVisible:seedExample,activeTaskId:null,taskIds:seedExample?['OX-24']:[],messages:[]};
   }
   function chatPlan(text) {
     const checks=/test|verific|valid|erro|bug|falh|fail|fall|prueb/i.test(text);

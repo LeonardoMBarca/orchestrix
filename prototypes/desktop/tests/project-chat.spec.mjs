@@ -72,9 +72,11 @@ async function prepareAnotherProject(page,name='orchestrix',path='C:\\Projetos\\
   await page.getByRole('button',{name:'Novo projeto',exact:true}).click();
   await page.getByRole('textbox',{name:'Nome do novo projeto',exact:true}).fill(name);
   await page.getByRole('textbox',{name:'Diretório de trabalho',exact:true}).fill(path);
-  await page.getByRole('button',{name:'Criar projeto e sessão',exact:true}).click();
+  await page.getByRole('button',{name:'Criar projeto',exact:true}).click();
   await expect(page.getByRole('dialog')).not.toBeVisible();
   await expect(composer(page)).toBeVisible();
+  expect(await conversationIdentity(page)).toBeNull();
+  expect(await page.evaluate(()=>OrchestrixApp.getState().conversations.length)).toBe(0);
 }
 
 test('conversa é a entrada e apresenta começo limpo sem avisos de demonstração',async ({page})=>{
@@ -266,13 +268,16 @@ test('duas conversas do mesmo projeto isolam mensagens e trabalhos e restauram r
   await composer(page).fill('Rascunho da primeira conversa.');
   await composer(page).evaluate(element=>element.setSelectionRange(3,11));
   await page.evaluate(()=>OrchestrixDock.activate('sessions'));await page.locator(`[data-new-session-project="${firstProject}"]`).click();
-  const secondConversation=await conversationIdentity(page);
-  expect(secondConversation).not.toBe(firstConversation);
+  expect(await conversationIdentity(page)).toBeNull();
+  expect(await page.evaluate(()=>OrchestrixApp.getState().conversations.length)).toBe(1);
   expect(await projectIdentity(page)).toBe(firstProject);
   await expect(userMessages(page)).toHaveCount(0);
   await expect(composer(page)).toHaveValue('');
   await expect(card).toHaveCount(0);
   const {card:second}=await request(page,secondObjective);
+  const secondConversation=await conversationIdentity(page);
+  expect(secondConversation).not.toBe(firstConversation);
+  expect(await page.evaluate(()=>OrchestrixApp.getState().conversations.length)).toBe(2);
   await composer(page).fill('Rascunho da segunda conversa.');
   await composer(page).evaluate(element=>element.setSelectionRange(6,10));
 
@@ -353,7 +358,7 @@ test('conversa avulsa permite preparar e revisar mas não aplicar sem destino',a
   const looseProject=await projectIdentity(page);
   expect(looseProject).not.toBe(originalProject);
   await expect(composer(page)).toBeVisible();
-  await expect(page.locator('#chat-form [data-action="session-directory"]')).toHaveText('Definir diretório');
+  await page.locator('#chat-add-context').click();await expect(page.locator('#chat-context-menu [data-action="session-directory"]')).toHaveText('Definir diretório');await page.keyboard.press('Escape');
   await expect(userMessages(page)).toHaveCount(0);
   await openStudio(page);await page.getByRole('button',{name:/^Trabalho\s*\d*$/}).click();
   await expect(page.getByRole('heading',{level:1})).toHaveText('Comece pela conversa');

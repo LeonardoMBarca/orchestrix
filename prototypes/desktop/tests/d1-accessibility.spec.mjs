@@ -5,7 +5,7 @@ test.beforeEach(async ({page})=>{await usePortuguese(page);await page.goto('/');
 
 test('closing the project form restores the conversation composer',async ({page})=>{
   await page.evaluate(()=>OrchestrixApp.openProject());await page.locator('#entry-name').fill('Accessible project');
-  await page.getByRole('button',{name:'Criar projeto e sessão',exact:true}).click();
+  await page.getByRole('button',{name:'Criar projeto',exact:true}).click();
   await expect(page.getByRole('dialog')).toBeHidden();await expect(page.locator('#chat-message')).toBeFocused();
 });
 
@@ -46,7 +46,7 @@ test('maximum Unicode text reflows at 320px without interpreting markup',async (
   await page.getByRole('button',{name:'Conversa',exact:true}).click();await page.evaluate(()=>OrchestrixApp.openProject());
   const path=('C:\\Work\\'+'Á漢字 pasta/'.repeat(30)).slice(0,180);
   await page.locator('#entry-name').fill(('Á漢字 projeto'.repeat(10)).slice(0,50));await page.locator('#entry-path').fill(path);
-  await page.getByRole('button',{name:'Criar projeto e sessão',exact:true}).click();
+  await page.getByRole('button',{name:'Criar projeto',exact:true}).click();
   expect(await page.evaluate(()=>OrchestrixApp.getState().projectPath)).toBe(path);
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);await expect(page.locator('#chat-message')).toBeFocused();
 });

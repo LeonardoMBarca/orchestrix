@@ -263,7 +263,7 @@ test('layout por teclado persiste; texto ampliado e entrada WSL permanecem naveg
   await page.evaluate(()=>OrchestrixApp.openProject());
   await page.locator('#entry-name').fill('Linux project');
   await page.locator('#entry-path').fill('/home/leo/Meu projeto – sessão');
-  await page.getByRole('button',{name:'Criar projeto e sessão',exact:true}).click();
+  await page.getByRole('button',{name:'Criar projeto',exact:true}).click();
   expect(await page.evaluate(()=>OrchestrixApp.getState().projectPath)).toBe('/home/leo/Meu projeto – sessão');
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
 });

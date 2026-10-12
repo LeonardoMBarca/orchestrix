@@ -9,11 +9,17 @@ Contrato de interface da revisão D1 atualizado em **12 de outubro de 2026**, co
 3. Sugestões rápidas “Fix a problem”, “Create a feature” e “Understand my code”.
 4. Composer com menu `+` de contexto, modelo orquestrador da sessão, modo de trabalho e envio.
 
-Não acrescentar vários parágrafos de recepção ou um segundo seletor global de projeto/conversa. A pessoa deve conseguir começar com uma sessão independente e criar organização quando precisar. A aparência Studio usa navy e índigo sem o fundo de montanhas do site. A primeira entrada não preenche contas, projetos ou tarefas fictícios.
+Não acrescentar vários parágrafos de recepção ou um segundo seletor global de projeto/conversa. A pessoa deve conseguir começar pelo composer independente e criar organização quando precisar. A aparência Studio usa navy e índigo sem o fundo de montanhas do site. A primeira entrada não preenche contas, projetos ou tarefas fictícios.
+
+**HOME em toda abertura:** carregar, recarregar ou reabrir a interface apresenta a tela inicial, sem restaurar automaticamente a sessão antes selecionada. Histórico, projetos, preferências e rascunhos de sessões já salvas continuam disponíveis; abrir uma sessão exige seleção explícita em Sessions ou na busca. A futura implementação Desktop deve portar esse comportamento, sem confundir início da UI com reconciliação de trabalhos pelo Core.
 
 ## Sessão e projeto
 
 Sessions é a superfície principal para navegação entre conversas e começa à direita. Há um único comando principal **New session** nessa superfície, com **New project** textual ao lado; não duplicá-lo no cabeçalho, na navegação e em cartões. Cada projeto tem uma ação compacta de chat com `+` na mesma linha do nome, independente da expansão do grupo. Projetos são grupos expansíveis com contexto e diretório compartilhados; sessões independentes ficam acessíveis na mesma lista. Criar projeto e associar uma sessão existente precisam distinguir a intenção sem obrigar a pessoa a aprender dois dropdowns.
+
+HOME e **New session** preparam um composer pendente, avulso ou com projeto escolhido, sem criar uma sessão no histórico. A ação compacta de chat com `+` prepara esse composer no projeto correspondente. Uma sessão de chat do aplicativo só recebe identidade e entra na lista/armazenamento no primeiro envio não vazio; clicar, digitar um rascunho, escolher contexto/anexos ou tentar envio vazio não basta. Criar um projeto salva somente o projeto, que pode ter **zero sessões**; sua primeira conversa segue a mesma regra do primeiro envio.
+
+Texto, anexos e escolhas de um composer ainda sem envio são temporários em memória, sem constituir uma sessão persistida ou ser recuperados após reload/reabertura. Isso difere do rascunho de uma sessão já salva: este permanece associado à identidade existente e disponível quando a pessoa reabre a sessão manualmente. A entrada inicial não apaga histórico, projetos ou esses rascunhos.
 
 Selecionar uma sessão preserva o rascunho da anterior e mostra o destino/contexto ativo. Associar preserva identidade e histórico da sessão. Truncar nomes longos com acesso ao texto completo quando necessário; não permitir que um nome invada o ícone, indicador, borda ou ação da linha. Busca de sessões ocupa espaço legível, com label e foco; não prometer pesquisa em arquivos que não foram indexados.
 

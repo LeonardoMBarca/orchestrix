@@ -4,6 +4,16 @@ Registro em **10 de outubro de 2026**, após os doze pontos iniciais e os sete a
 
 **O piloto está adiado por solicitação explícita do responsável até que a interface corresponda à direção desejada.** Esta revisão não registra aprovação das novas interações nem resultados de uso humano. D1 continua aberto; os milestones e gates de M0 em diante são preservados.
 
+## Entrada e criação de sessões — 12/10
+
+O refinamento posterior ao commit `9fb0e52` separa a tela inicial das conversas salvas. Reload e nova abertura carregam o histórico, mas ignoram os antigos IDs de seleção ativa. HOME/New session oferecem um composer sem identidade de sessão; primeiro envio não vazio cria a identidade e a entrada no histórico uma única vez. Criar projeto salva o projeto com zero conversas. Anexos assíncronos conferem o composer de origem para não contaminar outro composer pendente. Sessões antigas que só continham um rascunho são conservadas e podem ser selecionadas manualmente, sem migração destrutiva.
+
+Check de sintaxe/catálogo aprovado com **1.656 chaves**. Foram validados **119 cenários browser distintos por cobertura consolidada**: 31/31 em chat/sessões/atividades, 27/27 em D1/acessibilidade/projetos e 60/61 em docking/entrada/idiomas/Settings/workspace/startup, com 3/3 startup no reteste (sobreposição). O caso inicialmente falho injetava os dados legados enquanto o timer da página anterior ainda podia sobrescrevê-los; a preparação passou a instalar a fixture antes da carga do app. Os critérios de conservação e reabertura permaneceram iguais. Os casos de startup comprovam projeto vazio após reload, contexto no primeiro envio, recuperação de rascunho legado e fechar/reabrir a página. Os casos de sessões também cobrem IDs ativos antigos, envios vazios e ausência de registros ao digitar/configurar/navegar.
+
+**HTML direto:** 13 composições e 15 etapas de jornada passaram, com idiomas EN/PT-BR/ES persistidos, sem erros, imagens quebradas, overflow horizontal ou requisições externas. Relatório local em `prototypes/desktop/artifacts/direct-file-qa.json`, verificado em `2026-10-12T18:24:16.654Z`; artefatos de teste são ignorados pelo Git. Esse percurso distingue rascunhos de sessões salvas de texto ainda sem primeiro envio.
+
+Essa evidência cobre o protótipo browser. Reabertura nativa, persistência transacional, reconciliação de processos e respostas reais continuam nos marcos existentes. O [piloto reportado em 12/10](d1-pilot.md#piloto-reportado-pelo-responsável--1210) exige reteste humano do docking e decisão de passagem; nenhum destes testes encerra D1.
+
 ## Os doze pontos e a resposta da interface
 
 | Pedido | Implementação desta revisão |
@@ -11,7 +21,7 @@ Registro em **10 de outubro de 2026**, após os doze pontos iniciais e os sete a
 | 1. Remover o destaque de “local” do site e app | Apresentação pública usa linguagem de produto, sem “Local-first” ou “Local project · demo”. Isso muda a apresentação; a arquitetura local e os limites de integração continuam documentados. |
 | 2. Corrigir a marca/seleção de projeto com texto quebrado | A marca fixa é Orchestrix. Projeto e sessão saem do antigo card/seletor sobrecarregado e ficam na lista lateral; nomes longos devem caber na estrutura, sem cobrir bordas ou outros controles. |
 | 3. Arrastar painéis | Navigation, Sessions e Work têm posições persistidas, alças de arraste e controles equivalentes por teclado/menu. A revisão seguinte retira o destino inferior; esquerda e direita ficam destacadas com o workspace desfocado. |
-| 4. Simplificar projetos e sessões | A primeira entrada é uma sessão independente. O usuário pode criar uma sessão em um projeto, definir diretório para uma independente ou associá-la a um projeto posteriormente. Cada sessão conserva mensagens, rascunho e trabalho próprios. |
+| 4. Simplificar projetos e sessões | O refinamento de 12/10 abre HOME com composer pendente, avulso ou em projeto, e salva a sessão no primeiro envio não vazio. Projetos podem ter zero sessões. Cada sessão salva conserva mensagens, rascunho e trabalho próprios para reabertura manual. |
 | 5. Ajuda externa com explicações e imagens | Help abre uma nova página, fora da navegação do app. O centro de ajuda em inglês tem busca, nove capítulos, cinco diagramas locais e espaços de vídeo que aparecem apenas quando há uma fonte real. |
 | 6. Botão de configurações com engrenagem | O controle abre a janela flutuante Settings, sem substituir a conversa. |
 | 7. Melhorar a busca | Busca ganha espaço, identidade de campo/ação e foco legível. Sessions permite encontrar conversas e projetos pelos nomes, sem prometer indexação de todos os arquivos do computador. |
@@ -23,11 +33,11 @@ Registro em **10 de outubro de 2026**, após os doze pontos iniciais e os sete a
 
 ## Contrato do primeiro uso
 
-Uma abertura normal, sem estado salvo, começa sem projeto ou conta fictícia conectada e sem tarefas preenchidas. Há uma sessão independente pronta para receber um rascunho. As entradas rápidas ajudam a conectar uma conta, organizar um projeto ou encontrar orientação; nenhuma delas exige configurar toda a plataforma antes de conversar.
+Toda abertura, reload ou reabertura normal apresenta **HOME**, sem restaurar automaticamente a sessão antes ativa. A primeira instalação começa sem projeto ou conta fictícia conectada e sem tarefas preenchidas. HOME oferece um composer independente pendente, sem sessão salva. **New session**, inclusive a ação de chat com `+` de um projeto, prepara esse composer; apenas o primeiro envio não vazio materializa uma sessão na lista e no armazenamento. As entradas rápidas ajudam a conectar uma conta, organizar um projeto ou encontrar orientação; nenhuma delas exige configurar toda a plataforma antes de conversar.
 
-Projetos agrupam sessões e contexto compartilhado. A sessão é a unidade de conversa. Associar uma sessão a um projeto preserva sua identidade, histórico e rascunho; o diretório e o contexto do destino devem ficar explícitos. Registrar um caminho no HTML não abre, lê ou concede acesso à pasta real.
+Projetos agrupam sessões e contexto compartilhado e podem existir com **zero sessões**; criar projeto não cria uma conversa vazia. A sessão é a unidade de conversa após o primeiro envio. Associar uma sessão a um projeto preserva sua identidade, histórico e rascunho; selecionar projeto no composer pendente define apenas o destino da futura sessão. O diretório e o contexto do destino devem ficar explícitos. Registrar um caminho no HTML não abre, lê ou concede acesso à pasta real.
 
-A persistência do protótipo usa `localStorage` para projetos, sessões/rascunhos e preferências. Ela facilita retomada no mesmo navegador, com validação dos dados e aviso se não puder salvar. **Não é o banco transacional, a recuperação de execução nem a durabilidade de M1.** Estado de navegador pode ser apagado ou indisponível; o contrato de armazenamento real continua no plano.
+A persistência do protótipo usa `localStorage` para projetos, sessões salvas/rascunhos e preferências. Ela facilita reabertura manual no mesmo navegador, com validação dos dados e aviso se não puder salvar, sem restaurar seleção ativa no boot. Rascunhos de composer antes do primeiro envio são temporários em memória e não recuperados após reload; rascunhos de sessões existentes conservam sua persistência e identidade. **Não é o banco transacional, a recuperação de execução nem a durabilidade de M1.** Estado de navegador pode ser apagado ou indisponível; o contrato de armazenamento real continua no plano.
 
 ## Painéis e Settings
 

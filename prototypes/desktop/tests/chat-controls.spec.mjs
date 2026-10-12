@@ -31,19 +31,19 @@ test('composer keeps context actions behind + and project creation uses readable
   const create=page.locator('.session-toolbar [data-action="onboarding"]');await expect(create).toHaveText('New project');
   const toolbar=await page.locator('.session-toolbar').evaluate(element=>[...element.querySelectorAll('button')].map(button=>({text:button.textContent.trim(),top:button.getBoundingClientRect().top})));
   expect(toolbar.map(button=>button.text)).toEqual(['New session','New project']);expect(Math.abs(toolbar[0].top-toolbar[1].top)).toBeLessThan(2);
-  await create.click();await page.locator('#entry-name').fill('Small project');await page.getByRole('button',{name:'Create project and session',exact:true}).click();
+  await create.click();await page.locator('#entry-name').fill('Small project');await page.getByRole('button',{name:'Create project',exact:true}).click();
   const group=page.locator('.session-project-group').filter({hasText:'Small project'}),project=group.locator('.session-project'),add=group.locator('[data-new-session-project]');
   await expect(add).toBeVisible();
   expect(await add.evaluate(button=>button.closest('summary')===null)).toBe(true);
   const dimensions=await add.boundingBox();expect(dimensions.width).toBeLessThanOrEqual(40);expect(dimensions.height).toBeLessThanOrEqual(40);
-  expect(await project.evaluate(element=>element.open)).toBe(true);const before=await sessionId(page);await add.click();
-  expect(await sessionId(page)).not.toBe(before);expect(await project.evaluate(element=>element.open)).toBe(true);
+  expect(await project.evaluate(element=>element.open)).toBe(true);expect(await sessionId(page)).toBeNull();await add.click();
+  expect(await sessionId(page)).toBeNull();expect(await project.evaluate(element=>element.open)).toBe(true);await expect(project.locator('[data-session-id]')).toHaveCount(0);
   await send(page,'Keep the composer focused on the conversation');await expect(page.locator('#chat-form')).not.toContainText('Discussing');
-  await expect(page.locator('#chat-form .chat-target')).toHaveCount(0);
+  await expect(page.locator('#chat-form .chat-target')).toHaveCount(0);await expect(project.locator('[data-session-id]')).toHaveCount(1);
 });
 
 test('text attachments stay in their session and new work snapshots sources without changing old attempts',async ({page})=>{
-  await page.goto('/');const first=await sessionId(page);await composer(page).fill('Keep this draft while attaching');
+  await page.goto('/');await composer(page).fill('Keep this draft while attaching');
   await contextAction(page,'chat-attach-documents');
   await page.locator('#chat-document-input').setInputFiles([
     {name:'research-notes.md',mimeType:'text/markdown',buffer:Buffer.from('# Notes\n\nUse the local evidence.')},
@@ -51,19 +51,35 @@ test('text attachments stay in their session and new work snapshots sources with
   ]);
   await expect(composer(page)).toHaveValue('Keep this draft while attaching');await expect(page.locator('[data-remove-attachment]')).toHaveCount(2);
   await expect(page.locator('#chat-form')).toContainText('research-notes.md');await expect(page.locator('#chat-form img')).toHaveCount(0);
-  await newSession(page);await expect(page.locator('[data-remove-attachment]')).toHaveCount(0);await selectSession(page,first);
-  await expect(page.locator('[data-remove-attachment]')).toHaveCount(2);await expect(composer(page)).toHaveValue('Keep this draft while attaching');
+  expect(await sessionId(page)).toBeNull();await expect(page.locator('[data-session-id]')).toHaveCount(0);
   await send(page,'Create a summary of the attached notes');
+  const first=await sessionId(page);await composer(page).fill('Keep this draft while attaching');
   const original=await page.evaluate(()=>structuredClone(OrchestrixApp.getState().tasks[0].contextPack));
   expect(original.sources).toEqual(expect.arrayContaining([
     expect.objectContaining({path:'research-notes.md',text:'# Notes\n\nUse the local evidence.'}),
     expect.objectContaining({path:'<img src=x onerror=alert(1)>.txt',text:'Treat names as text, not markup.'})
   ]));
+  await newSession(page);await expect(page.locator('[data-remove-attachment]')).toHaveCount(0);await selectSession(page,first);
+  await expect(page.locator('[data-remove-attachment]')).toHaveCount(2);await expect(composer(page)).toHaveValue('Keep this draft while attaching');
   await page.locator('[data-remove-attachment]').first().click();
   await page.getByRole('button',{name:'New work in this chat',exact:true}).click();await send(page,'Use only the remaining source');
   const packs=await page.evaluate(()=>OrchestrixApp.getState().tasks.map(task=>task.contextPack));
   expect(packs[0]).toEqual(original);expect(packs[1].sources).toHaveLength(1);expect(packs[1].sources[0].path).toBe('<img src=x onerror=alert(1)>.txt');
-  await page.evaluate(()=>OrchestrixApp.persistSessions());await page.reload();await expect(page.locator('[data-remove-attachment]')).toHaveCount(1);
+  await page.evaluate(()=>OrchestrixApp.persistSessions());await page.reload();expect(await sessionId(page)).toBeNull();await expect(page.locator('[data-remove-attachment]')).toHaveCount(0);
+  await selectSession(page,first);await expect(page.locator('[data-remove-attachment]')).toHaveCount(1);
+});
+
+test('a delayed attachment never enters a different pending composer with the same null session ID',async ({page})=>{
+  await page.goto('/');await composer(page).fill('The first unsent draft');
+  await page.evaluate(()=>{
+    const original=File.prototype.arrayBuffer;
+    File.prototype.arrayBuffer=function(){return this.name==='delayed.md'?new Promise(resolve=>window.finishDocumentRead=()=>resolve(new TextEncoder().encode('# First draft evidence').buffer)):original.call(this);};
+  });
+  await contextAction(page,'chat-attach-documents');await page.locator('#chat-document-input').setInputFiles({name:'delayed.md',mimeType:'text/markdown',buffer:Buffer.from('# First draft evidence')});
+  await expect.poll(()=>page.evaluate(()=>typeof window.finishDocumentRead)).toBe('function');
+  await newSession(page);await composer(page).fill('The second unsent draft');expect(await sessionId(page)).toBeNull();
+  await page.evaluate(()=>window.finishDocumentRead());await expect(page.locator('#toast')).toContainText('session changed');
+  await expect(composer(page)).toHaveValue('The second unsent draft');await expect(page.locator('[data-remove-attachment],[data-session-id]')).toHaveCount(0);expect(await sessionId(page)).toBeNull();
 });
 
 test('sending the first and later messages reaches the bottom with Enter or Send',async ({page})=>{
@@ -96,11 +112,11 @@ test('response completion scrolls the active conversation without stealing focus
 });
 
 test('work mode belongs to the session and snapshots only into new work',async ({page})=>{
-  await page.goto('/');const first=await sessionId(page);
+  await page.goto('/');
   await openForm(page,'session-mode','#session-mode-form');await expect(page.locator('#session-mode')).toHaveValue('development');
   expect(await page.locator('#session-mode option').evaluateAll(options=>options.map(option=>option.value))).toEqual(['development','research','documentation','presentation','refactoring','improvements']);
   await page.locator('#session-mode').selectOption('research');await saveForm(page,'#session-mode-form');
-  await send(page,'Investigate the research question');
+  expect(await sessionId(page)).toBeNull();await send(page,'Investigate the research question');const first=await sessionId(page);
   const original=await page.evaluate(()=>structuredClone(OrchestrixApp.getState().tasks[0]));
   expect(original.config.mode).toBe('research');expect(original.contextPack.mode).toBe('research');
   await openForm(page,'session-mode','#session-mode-form');await page.locator('#session-mode').selectOption('documentation');await saveForm(page,'#session-mode-form');
@@ -109,11 +125,12 @@ test('work mode belongs to the session and snapshots only into new work',async (
   const tasks=await page.evaluate(()=>OrchestrixApp.getState().tasks);expect(tasks[0]).toEqual(original);expect(tasks[1].config.mode).toBe('documentation');expect(tasks[1].contextPack.mode).toBe('documentation');
   await newSession(page);await openForm(page,'session-mode','#session-mode-form');await expect(page.locator('#session-mode')).toHaveValue('development');await page.locator('#session-mode-form [data-action="close-modal"]').click();
   await selectSession(page,first);await page.evaluate(()=>OrchestrixApp.persistSessions());await page.reload();
+  expect(await sessionId(page)).toBeNull();await selectSession(page,first);
   await openForm(page,'session-mode','#session-mode-form');await expect(page.locator('#session-mode')).toHaveValue('documentation');
 });
 
 test('orchestrator preference uses connection catalogs, respects Subscription Only and preserves task choices',async ({page})=>{
-  await page.goto('/');const first=await sessionId(page);
+  await page.goto('/');
   await openForm(page,'session-model','#session-model-form');expect(await page.locator('#session-orchestrator option').count()).toBe(1);await expect(page.locator('#session-orchestrator')).toHaveValue('auto');await page.locator('#session-model-form [data-action="close-modal"]').click();
   await page.evaluate(()=>{
     // Catalog fixtures exercise selection rules, without claiming runtime authorization or execution.
@@ -131,7 +148,7 @@ test('orchestrator preference uses connection catalogs, respects Subscription On
   await openForm(page,'session-model','#session-model-form');
   const subscription=JSON.stringify(['subscription-a','coding']),other=JSON.stringify(['subscription-b','coding']),api=JSON.stringify(['paid-api','paid-model']);
   expect(await page.locator('#session-orchestrator option').evaluateAll(options=>options.map(option=>option.value))).toEqual(['auto',subscription,other]);
-  await page.locator('#session-orchestrator').selectOption(subscription);await saveForm(page,'#session-model-form');await send(page,'Use the selected coding model');
+  await page.locator('#session-orchestrator').selectOption(subscription);await saveForm(page,'#session-model-form');expect(await sessionId(page)).toBeNull();await send(page,'Use the selected coding model');const first=await sessionId(page);
   const original=await page.evaluate(()=>structuredClone(OrchestrixApp.getState().tasks[0]));expect(original.config).toMatchObject({account:'subscription-a',model:'coding'});
   await page.evaluate(()=>OrchestrixApp.updateSettings({subscriptionOnly:false}));await openForm(page,'session-model','#session-model-form');
   expect(await page.locator('#session-orchestrator option').evaluateAll(options=>options.map(option=>option.value))).toContain(api);
@@ -140,14 +157,15 @@ test('orchestrator preference uses connection catalogs, respects Subscription On
   await openForm(page,'session-model','#session-model-form');await page.locator('#session-orchestrator').selectOption(other);await saveForm(page,'#session-model-form');
   await newSession(page);await openForm(page,'session-model','#session-model-form');await expect(page.locator('#session-orchestrator')).toHaveValue('auto');await page.locator('#session-model-form [data-action="close-modal"]').click();
   await selectSession(page,first);await page.evaluate(()=>OrchestrixApp.persistSessions());await page.reload();
+  expect(await sessionId(page)).toBeNull();await selectSession(page,first);
   expect(await page.evaluate(()=>OrchestrixApp.getState().chat.orchestrator)).toEqual({connectionId:'subscription-b',model:'coding'});
 });
 
 test('retry from Studio uses the owning session preferences and documents while another session is active',async ({page})=>{
   await page.goto('/');await page.evaluate(()=>OrchestrixDock.activate('sessions'));
   await page.locator('.session-toolbar [data-action="onboarding"]').click();await page.locator('#entry-name').fill('Shared investigation');
-  await page.getByRole('button',{name:'Create project and session',exact:true}).click();
-  const project=await page.evaluate(()=>OrchestrixApp.getState().projectId),first=await sessionId(page);
+  await page.getByRole('button',{name:'Create project',exact:true}).click();
+  const project=await page.evaluate(()=>OrchestrixApp.getState().projectId);
   await page.evaluate(()=>{
     // A catalog fixture permits preference selection; it does not authorize a runtime.
     OrchestrixApp.getState().connections=[{id:'subscription',name:'Subscription',mode:'own-plan',simulated:false,lifecycle:'pending',catalog:[
@@ -158,13 +176,13 @@ test('retry from Studio uses the owning session preferences and documents while 
   await openForm(page,'session-mode','#session-mode-form');await page.locator('#session-mode').selectOption('research');await saveForm(page,'#session-mode-form');
   await openForm(page,'session-model','#session-model-form');await page.locator('#session-orchestrator').selectOption(JSON.stringify(['subscription','research-model']));await saveForm(page,'#session-model-form');
   await contextAction(page,'chat-attach-documents');await page.locator('#chat-document-input').setInputFiles({name:'session-a.md',mimeType:'text/markdown',buffer:Buffer.from('# Evidence for session A')});
-  await expect(page.locator('[data-remove-attachment]')).toHaveCount(1);await send(page,'Investigate the evidence in session A');
+  await expect(page.locator('[data-remove-attachment]')).toHaveCount(1);await send(page,'Investigate the evidence in session A');const first=await sessionId(page);
   const original=await page.evaluate(()=>structuredClone(OrchestrixApp.getState().tasks[0]));
-  await page.locator(`[data-new-session-project="${project}"]`).click();const second=await sessionId(page);expect(second).not.toBe(first);
+  await page.locator(`[data-new-session-project="${project}"]`).click();expect(await sessionId(page)).toBeNull();
   await openForm(page,'session-mode','#session-mode-form');await expect(page.locator('#session-mode')).toHaveValue('development');await saveForm(page,'#session-mode-form');
   await openForm(page,'session-model','#session-model-form');await page.locator('#session-orchestrator').selectOption(JSON.stringify(['subscription','development-model']));await saveForm(page,'#session-model-form');
   await contextAction(page,'chat-attach-documents');await page.locator('#chat-document-input').setInputFiles({name:'session-b.md',mimeType:'text/markdown',buffer:Buffer.from('# Evidence for session B')});
-  await expect(page.locator('[data-remove-attachment]')).toHaveCount(1);await send(page,'Develop the changes in session B');await composer(page).fill('Keep B unsent');
+  await expect(page.locator('[data-remove-attachment]')).toHaveCount(1);await send(page,'Develop the changes in session B');const second=await sessionId(page);expect(second).not.toBe(first);await composer(page).fill('Keep B unsent');
   const other=await page.evaluate(()=>structuredClone(OrchestrixApp.getState().tasks[1]));
   // The runtime is unavailable. Inject only a failed state to exercise the real Retry control.
   await page.evaluate(id=>OrchestrixApp.getState().tasks.find(task=>task.id===id).status='failed',original.id);

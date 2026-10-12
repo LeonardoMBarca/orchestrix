@@ -87,7 +87,7 @@
       else if(['work','attention','review','history'].includes(state.view))setActive('studio');
       else if(['connections','studio'].includes(active))setActive('chat');
     }
-    const label=state.chat?.autoName?t('Nova sessão'):state.chat?.name||t('Nova sessão');
+    const label=state.chat?.id?(state.chat.autoName?t('Nova sessão'):state.chat.name):'Orchestrix';
     document.getElementById('titlebar-workspace').textContent=state.project||label;
     document.querySelector('.profile-initial').textContent=(state.appSettings?.profileName||'O').trim().slice(0,1).toUpperCase()||'O';
     const root=document.getElementById('pane-connections');root.replaceChildren();

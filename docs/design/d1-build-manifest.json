@@ -1,9 +1,9 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-10-12T17:28:47.478Z",
+  "generatedAt": "2026-10-12T18:34:48.136Z",
   "scope": "D1 static prototype: app, website, video page, help center, local assets and locale sources/catalog; excludes tools, tests, server and documentation",
   "algorithm": "SHA-256 of UTF-8 JSON.stringify(files), sorted by relative path; each entry has path, bytes and sha256 of exact file bytes. generatedAt is excluded.",
-  "buildSha256": "5a2b4e36069e8f90ded5e7c0d8c07a9bc9a13e30723503e67776337927d42288",
+  "buildSha256": "d2d4b2fc9f94ad0ab2966aee53dbb1c959576be6ccf28b9d8c5fef6b6cbbd696",
   "files": [
     {
       "path": "activity.css",
@@ -12,13 +12,13 @@
     },
     {
       "path": "activity.js",
-      "bytes": 18385,
-      "sha256": "52f8d3c81caf765c3d6f39cb62133957586e12d45a4a220bc669c8e1f2bd15a7"
+      "bytes": 18394,
+      "sha256": "6a49e7b3e80c0ef7002443f24c4c11036f5bd796d287f27931ba40ef57c09b9a"
     },
     {
       "path": "app.js",
-      "bytes": 112959,
-      "sha256": "cc467f919cea6ec60a0fbb59e5f1f09dea037a24a90dc18fd3ff966b5acce799"
+      "bytes": 113793,
+      "sha256": "c96216a5ed3dd670e8aca2d902ce7cbd3eb26af5fd5f126e2ccf1742ef60e08c"
     },
     {
       "path": "assets/brand/app-icon-dark.png",
@@ -127,8 +127,8 @@
     },
     {
       "path": "chat-controls.js",
-      "bytes": 11323,
-      "sha256": "84a32ba8c57f686d9a0683791f30171400f7f90ab44c9c095afef81d932c93cb"
+      "bytes": 11315,
+      "sha256": "b3f5dc158cbf46284fad86d316e136a79c81fca3be21f7701d921967f1fc7514"
     },
     {
       "path": "connection-diagnostics.js",
@@ -172,8 +172,8 @@
     },
     {
       "path": "experience.js",
-      "bytes": 5408,
-      "sha256": "3e53662b7de067ca60a8479a93e736edae92f0207204688d0425e3ef2f9f3112"
+      "bytes": 5398,
+      "sha256": "5bae0dfb255da3971e472a5d3eef26d4d2648d9e0566a0cff7abdb45dfd1451a"
     },
     {
       "path": "files.css",
@@ -232,8 +232,8 @@
     },
     {
       "path": "locales/catalog.js",
-      "bytes": 251220,
-      "sha256": "44596d8d84aed0eee150a4a3f0cae8f75d5a000f410bdc0bf2ae726e94558c87"
+      "bytes": 251323,
+      "sha256": "2036a04eb7ac1e8d24473ab7dddf58cd9b87428c7670be4d8e0a292db93cf51e"
     },
     {
       "path": "locales/chat-controls.json",
@@ -277,8 +277,8 @@
     },
     {
       "path": "locales/session-revision.json",
-      "bytes": 10974,
-      "sha256": "9aeeeed0304492e6fb5198db9ad983a40f3faa24cd9f1fc2316b9f973cadc1e2"
+      "bytes": 11077,
+      "sha256": "96bcae9ae938651a9da3233c47e903eb764b926cae3b2d81181aca9788e3270c"
     },
     {
       "path": "locales/settings-refinement.json",
@@ -362,8 +362,8 @@
     },
     {
       "path": "workspace.js",
-      "bytes": 29284,
-      "sha256": "d8cc2c569332e6c1c0a37eaed5d6ca8fc06c03769522a9b0d06b78aa4abcc3a2"
+      "bytes": 29287,
+      "sha256": "4ac0b0a4d9fd64978145cf94be0e31e68df90d95b4d18bff1c41b8b9f61f2385"
     }
   ]
 }
