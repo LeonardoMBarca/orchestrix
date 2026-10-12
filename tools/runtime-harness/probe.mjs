@@ -17,8 +17,9 @@ export const VALIDATED_CODEX_VERSIONS=Object.freeze([SUPPORTED_CODEX_VERSION,'0.
 export const supportsCodexVersion=version=>VALIDATED_CODEX_VERSIONS.includes(version);
 const EXPECTED='ORCHESTRIX_PROBE_OK';
 
-export function codexLaunchArguments() {
-  return ['--no-daemon','-c','model_provider="openai"','-c','openai_base_url=""','-c','chatgpt_base_url="https://chatgpt.com/backend-api/"','-c','analytics.enabled=false','-c','features.hooks=false','-c','features.plugins=false','-c','features.apps=false','-c','features.multi_agent=false','-c','notify=[]','app-server','--listen','stdio://'];
+export function codexLaunchArguments({windowsSandbox}={}) {
+  if(windowsSandbox!==undefined&&windowsSandbox!=='mxc')throw new HarnessError('arguments','Only an explicit MXC override is supported by this experiment');
+  return ['--no-daemon','-c','model_provider="openai"','-c','openai_base_url=""','-c','chatgpt_base_url="https://chatgpt.com/backend-api/"','-c','analytics.enabled=false','-c','features.hooks=false','-c','features.plugins=false','-c','features.apps=false','-c','features.multi_agent=false','-c','notify=[]',...(windowsSandbox?['-c','windows.sandbox="mxc"']:[]),'app-server','--listen','stdio://'];
 }
 
 /** Keep only OS/auth-location variables. Never transfer API keys or endpoint overrides. */
@@ -40,6 +41,14 @@ export function reportConfiguration(configuration) {
   const fields=['model','effort','provider','sandbox','networkAccess','approval','reviewer','ephemeral','cwdMatched','excludeTmpdirEnvVar','excludeSlashTmp'];
   const sanitize=value=>({...Object.fromEntries(fields.filter(key=>Object.hasOwn(value,key)).map(key=>[key,value[key]])),...(Array.isArray(value.writableRoots)?{writableRootsCount:value.writableRoots.length}:{})});
   return {requested:sanitize(configuration.requested),resolvedConfiguration:sanitize(configuration.resolvedConfiguration)};
+}
+/** A turn/start ACK admits a turn; only an owned notification proves it began. */
+export async function observeCancellation(session,id) {
+  const start=await session.waitForTurnStart(id);
+  const terminal=start.started?await session.interrupt(id):start.terminal;
+  const requestAcknowledged=session.events.some(event=>event.type==='attempt.interrupt.requested'&&event.turnId===id);
+  return {startObserved:start.started,requestAcknowledged,terminalStatus:terminal.status,
+    interruptedConfirmed:start.started&&requestAcknowledged&&terminal.status==='interrupted'};
 }
 async function workspaceSnapshot(cwd) {
   const files=(await readdir(cwd,{recursive:true,withFileTypes:true})).filter(entry=>entry.isFile());
@@ -124,9 +133,8 @@ export async function runProbe({mode='fake',scenario='success',binary=process.pl
     // A second, bounded turn tests interruption. No tool/command is requested.
     if(mode==='codex') {
       const cancelledId=await session.startTurn('Without tools, files, network, or delegation, output integers from 1 to 5000 separated by spaces. This is a cancellation probe.',{effort});
-      const cancellation=await session.interrupt(cancelledId);
-      report.cancellation={requestAcknowledged:true,terminalStatus:cancellation.status,interruptedConfirmed:cancellation.status==='interrupted'};
-      if(cancellation.status!=='interrupted'){report.status='cancellation-not-proven';return report;}
+      report.cancellation=await observeCancellation(session,cancelledId);
+      if(!report.cancellation.interruptedConfirmed){report.status='cancellation-not-proven';return report;}
       report.checks.push('interrupt-terminal-observed');
     }
     report.status='passed';

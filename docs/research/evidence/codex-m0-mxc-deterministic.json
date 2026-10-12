@@ -1,0 +1,50 @@
+{
+  "schemaVersion": 1,
+  "date": "2026-10-12T20:13:42.574Z",
+  "experiment": "OX-001/deterministic-MXC-command",
+  "implementation": "mxc",
+  "newInference": false,
+  "setupStarted": false,
+  "source": "Codex sandbox CLI, fixed local Node command; not a model-produced edit",
+  "requested": {
+    "managedRequirementsIncluded": true,
+    "workspaceProfile": true,
+    "networkAccess": false,
+    "writableRootsCount": 0,
+    "excludeTmpdirEnvVar": true,
+    "excludeSlashTmp": true
+  },
+  "status": "passed",
+  "attempt": {
+    "passed": true,
+    "mainUnchanged": true,
+    "baseMatched": true,
+    "expectedOnly": true,
+    "checksSameSnapshot": true,
+    "base": "4a456c6262bf444d61670698f9ad64cf88e2fb60",
+    "paths": [
+      "src/add.mjs"
+    ],
+    "diffSha256": "f1781046ad772d7ebe30fd29c15412664df36ee9fa0855581053b25894687023",
+    "checks": {
+      "passed": true,
+      "exitCode": 0,
+      "cases": 5
+    },
+    "sources": [
+      {
+        "path": "AGENTS.md",
+        "sha256": "e28da9d11e5063d57319c55b54491de5332039216434b5148d9d242cc66a2e8a"
+      },
+      {
+        "path": "checks/add-check.mjs",
+        "sha256": "4811a38205f4e8fe3636bc10346b8d0ab7977e18462e6cd9760c5bbb97bc38fd"
+      },
+      {
+        "path": "src/add.mjs",
+        "sha256": "76f26bd292166033d02e77bdb8fe6aec01e915ccb8cb3f93b8971f9dcd78250e"
+      }
+    ]
+  },
+  "commandExitCode": 0
+}

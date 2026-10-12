@@ -6,11 +6,12 @@ Foi uma antecipação técnica. Em **12/10/2026**, o reteste humano de D1 libero
 
 ## Incremento atual — worktree e retomada
 
-O [registro de 12/10](../../docs/research/m0-resume-worktree-increment.md) acrescenta `worktree-probe.mjs` e `CodexSession.resumeThread`: **75/75 testes offline**, **9/9 Windows sintéticos** e check passaram. O preflight real **sem inferência** passou na versão `0.162.0-alpha.17.2`, após inspeção de schema e admissão explícita; a versão histórica `0.162.0-alpha.2` continua na allowlist, sem aceitar versões futuras silenciosamente. A prova live deste incremento está preparada e aguarda opt-in; não foi executada.
+O [registro de 12/10](../../docs/research/m0-resume-worktree-increment.md) acrescenta `worktree-probe.mjs` e `CodexSession.resumeThread`: **75/75 testes offline**, **9/9 Windows sintéticos** e check passaram. O preflight real **sem inferência** passou na versão `0.162.0-alpha.17.2`, após inspeção de schema e admissão explícita; a versão histórica `0.162.0-alpha.2` continua na allowlist, sem aceitar versões futuras silenciosamente. O [live autorizado posterior](../../docs/research/m0-live-validation-2026-10-12.md) teve três pedidos de turno: edição bloqueada em unelevated, retomada real read-only e cancelamento supervisionado não comprovado. O harness corrigido passou **95/95 offline** e check. MXC passou comando fixo de escrita com cinco checks e preflight estrito, sem inferência; não é edição pelo modelo.
 
 ```powershell
 node worktree-probe.mjs                   # metadados apenas
-node worktree-probe.mjs --live            # somente com opt-in explícito
+node worktree-probe.mjs --windows-sandbox mxc         # preflight explícito Windows
+node worktree-probe.mjs --windows-sandbox mxc --live  # exige novo opt-in
 ```
 
 Live usa uma assinatura existente e três turnos limitados: corrigir uma função aritmética em worktree descartável, reiniciar o app-server e retomar a mesma thread com um marcador do contexto anterior, depois interromper um turno. Não copia login, muda a conta, usa fallback API ou executa código dos clones de referência. Cria uma thread persistida no runtime, necessária à prova de retomada. O relatório sanitizado não inclui thread/turn IDs reais, marker, binding, paths pessoais, transcript ou stdout/stderr bruto.
@@ -19,9 +20,9 @@ O fixture tem commit base próprio, baseline falho e cinco casos determinístico
 
 Assinatura/ordinary/endpoint, hooks/plugins/apps/notify/MCP e delegação nativa precisam estar confirmados antes de live e novamente após reinício. Modelo/effort só usam capacidades anunciadas; o binding de metadados da conta fica em memória e não prova isolamento/cotas de múltiplas contas. Política read-only/ephemeral continua padrão do probe original; workspace-write/persistência são explícitos e confirmação contraditória mantém admissão incerta.
 
-**OX-001 aberto:** faltam a prova live deste percurso, a comparação CLI `exec --json` e a supervisão/cancelamento integrado da árvore Codex Windows. A prova de Job Objects continua sintética e separada do transporte; saída do pai não certifica término da árvore. Não é o Core Rust/SQLite ou o ciclo completo de revisão/aplicação no Desktop.
+**OX-001 aberto:** falta concluir o percurso live de edição/retomada/cancelamento com a política de escrita, além de comparação CLI `exec --json` e supervisão/cancelamento integrado da árvore Codex Windows. Os três turnos autorizados foram usados; nova inferência exige novo opt-in. `--windows-sandbox mxc` é subprocess-only, confirmado em cada conexão, sem setup/configuração pessoal ou fallback automático. O cancelamento espera início próprio antes do RPC; ACK e terminal são registrados separadamente. Timeout do baseline não conta como falha aritmética validada. A prova de Job Objects continua sintética e separada do transporte; saída do pai não certifica término da árvore. Não é o Core Rust/SQLite ou o ciclo completo de revisão/aplicação no Desktop.
 
-Em 09/10/2026, a [preparação offline](../../docs/research/offline-lifecycle-validation.md) corrigiu admissão de turnos e acompanhamento/interrupção concorrentes, e verificou descendente sintético sobrevivendo ao pai no Windows. **48 testes offline passaram**; nenhum runtime real foi chamado nessa continuação. O piloto D1 permanece pendente.
+Em 09/10/2026, a [preparação offline](../../docs/research/offline-lifecycle-validation.md) corrigiu admissão de turnos e acompanhamento/interrupção concorrentes, e verificou descendente sintético sobrevivendo ao pai no Windows. **48 testes offline passaram**; nenhum runtime real foi chamado nessa continuação. Naquela data, o piloto D1 permanecia pendente; o reteste de 12/10 liberou seu gate.
 
 Em 10/10/2026, o mesmo registro acrescenta limites de saída JSONL e da fila de escrita: **58/58 testes offline passaram**, incluindo dez novos casos de fronteiras UTF-8, rejeição local, backpressure e admissão. Essa rodada não executou os oito testes nativos Windows novamente, nem chamou agentes reais ou mudou os gates de D1/M0.
 
@@ -96,6 +97,6 @@ Aprovações de comando/arquivo recebem `decline`; pedidos de permissões recebe
 
 ## Limites para produção
 
-Este supervisor confirma apenas o término do **processo pai**; `treeTermination` permanece `unknown`, inclusive quando um descendente sintético foi observado ativo. A [prova de Job Objects](../../docs/research/windows-process-containment.md) confirma processos associados somente no helper sintético separado; ainda faltam integração no supervisor e término comprovado com runtime real, retomada, crash/reconciliação durável, execução de código em worktree, checks/revisão/aplicação, matriz CLI versus app-server e isolamento de duas contas. Dois processos fake testam correlação; não comprovam cotas independentes.
+Este supervisor confirma apenas o término do **processo pai**; `treeTermination` permanece `unknown`, inclusive quando um descendente sintético foi observado ativo. A [prova de Job Objects](../../docs/research/windows-process-containment.md) confirma processos associados somente no helper sintético separado; ainda faltam integração no supervisor e término comprovado com runtime real, retomada sob política de escrita (read-only já observada), crash/reconciliação durável, edição pelo modelo em worktree, checks/revisão/aplicação, matriz CLI versus app-server e isolamento de duas contas. Dois processos fake testam correlação; não comprovam cotas independentes.
 
 Os testes deste diretório são offline. Não tornam live parte do CI e não instalam providers ou toolchains. O contrato Rust final de OX-003 deve incorporar os resultados, preservando as separações de estado estabelecidas no [backlog](../../docs/DEVELOPMENT_BACKLOG.md).

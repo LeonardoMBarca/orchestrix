@@ -1,6 +1,6 @@
 # M0 — retomada e tentativa em worktree
 
-Registro em **12/10/2026**, após o [reteste humano de D1](../design/d1-pilot.md#piloto-reportado-pelo-responsável--1210). O recorte é OX-001: preparar e verificar o próximo percurso do primeiro runtime, aproveitando o harness existente. Não implementa o Core Rust, o Desktop ou todos os provedores.
+Registro em **12/10/2026**, após o [reteste humano de D1](../design/d1-pilot.md#piloto-reportado-pelo-responsável--1210). O recorte é OX-001: preparar e verificar o próximo percurso do primeiro runtime, aproveitando o harness existente. A preparação abaixo foi seguida do [live autorizado, resultado parcial e correções](m0-live-validation-2026-10-12.md); esse registro posterior é a referência atual. Não implementa o Core Rust, o Desktop ou todos os provedores.
 
 ## Referências consultadas
 
@@ -20,7 +20,7 @@ O percurso live preparado tem três turnos limitados:
 
 1. Uma função aritmética defeituosa no worktree deve ser corrigida, sem alterar os checks, instruções ou Git. O baseline falha. A evidência vincula base, arquivos, SHA-256 do diff, patch e cinco casos determinísticos à mesma tentativa. O checker só avalia uma expressão aritmética limitada; código JavaScript arbitrário é recusado. Alterar o checker, produzir arquivo extra ou mudar o checkout principal bloqueia a verificação.
 2. O app-server próprio é encerrado e reiniciado. O harness reconfirma os gates e compara em memória a identidade observável da conta. `thread/resume` deve devolver a mesma thread, persistida e idle, com cwd/modelo/effort/política confirmados. Um marcador do primeiro turno, não repetido no segundo prompt, permite conferir a continuidade do contexto interno do runtime. IDs, marcador, paths e binding não entram no relatório sanitizado.
-3. Um turno é iniciado para interrupção imediata; ACK sozinho não basta. O terminal deve ser `interrupted` e o artefato/checks devem permanecer iguais. O término do processo pai é observado separadamente da árvore Windows.
+3. Um turno é iniciado para interrupção; o harness corrigido espera sua notificação própria de início antes do pedido. ACK sozinho não basta. O terminal deve ser `interrupted` e o artefato/checks devem permanecer iguais. O término do processo pai é observado separadamente da árvore Windows.
 
 `CodexSession` mantém read-only/ephemeral como defaults do primeiro probe. Persistência/workspace-write são escolhas explícitas. Retomada só admite uma sessão local nova e ociosa; timeout, ACK perdido ou configuração contraditória conservam estado incerto. Os turnos usam a política confirmada e congelada, sem mudar esforço silenciosamente. Binding de metadados da conta fica apenas em memória, não é isolamento de múltiplas contas.
 
@@ -40,6 +40,6 @@ O [preflight sanitizado](evidence/codex-m0-worktree-metadata.json) passou, **sem
 - **75/75 testes offline** passaram em rodada serial de **26,02 s**; incluem os 58 contratos anteriores, onze casos de sessão/retomada e seis de worktree/sanitização/ambiente/delegação. Os últimos casos testam fixtures próprias, sem inferência. A rodada anterior de 73 teve três timeouts em cenários antigos sob carga concorrente; a rodada final manteve os deadlines e todos os critérios.
 - **9/9 testes nativos Windows** passaram em **33,97 s**, incluindo watchdog com stdout bloqueado. Essa prova usa o helper/descendentes sintéticos existentes; não integra Job Object ao transporte Codex.
 - Check de sintaxe do harness passou. Biblioteca: HEAD/origin/shallow/árvore limpa/licenças e caminhos dos nove clones conferidos; utilitário de fetch passou nove verificações em Git fixture exclusivamente local, preservando checkout/anotações e rastreando mudança/ausência de licenças por módulo.
-- **Teste live deste incremento ainda não executado:** opt-in solicitado ao responsável, sem presumir aprovação. O script está preparado; a evidência atual é de metadados, contratos e fixtures. Não contar a retomada ou alteração produzida por Codex como capacidades comprovadas.
+- **Continuação live executada após autorização:** três pedidos de turno, edição bloqueada/sem diff, retomada real read-only observada e cancelamento supervisionado não comprovado. O [registro posterior](m0-live-validation-2026-10-12.md) documenta as correções, 95/95 offline e preparação MXC sem inferência; não aprova o percurso completo.
 
-**OX-001 continua aberto.** Próximo: executar a prova live quando autorizada, depois completar supervisão/cancelamento com árvore real no Windows e a comparação com CLI `exec --json`. Só promover o contrato para OX-003 após os critérios do primeiro runtime; M1/M2 conservam domínio, persistência, recuperação, revisão e aplicação reais. Avaliação externa de D1 permanece em OX-017.
+**OX-001 continua aberto.** Próximo: repetir o percurso live com MXC explícito e novo opt-in, depois completar supervisão/cancelamento com árvore real no Windows e comparação com CLI `exec --json`. Só promover o contrato para OX-003 após os critérios do primeiro runtime; M1/M2 conservam domínio, persistência, recuperação, revisão e aplicação reais. Avaliação externa de D1 permanece em OX-017.

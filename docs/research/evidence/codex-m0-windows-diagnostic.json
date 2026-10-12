@@ -1,0 +1,46 @@
+{
+  "schemaVersion": 1,
+  "date": "2026-10-12T19:57:55.996Z",
+  "runtimeVersion": "0.162.0-alpha.17.2",
+  "source": "read-only-config-readiness-and-owned-thread-read",
+  "windows": {
+    "configuredMode": "unelevated",
+    "readiness": "ready",
+    "preferredMxc": false,
+    "allowedImplementations": null,
+    "compatibilityProbe": {
+      "implementation": "mxc",
+      "operation": "fixed-echo-with-workspace-profile",
+      "managedRequirementsIncluded": true,
+      "networkRequested": false,
+      "tempExclusionsRequested": true,
+      "passed": true,
+      "exitCode": 0,
+      "newInference": false
+    }
+  },
+  "ownedThread": {
+    "persisted": true,
+    "status": "notLoaded",
+    "turns": [
+      {
+        "status": "completed"
+      },
+      {
+        "status": "completed"
+      },
+      {
+        "status": "interrupted"
+      }
+    ]
+  },
+  "fixtureUnchanged": true,
+  "writeFailure": {
+    "category": "sandbox-unsupported",
+    "reportedBackend": "unelevated",
+    "splitWritableRootSets": "unsupported",
+    "runtimeRefusedUnsandboxed": true
+  },
+  "newInference": false,
+  "setupStarted": false
+}

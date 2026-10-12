@@ -10,7 +10,7 @@ Verified public repositories, exact commits, licenses, architecture and componen
 
 ### [M0 Worktree and Resume Increment](./research/m0-resume-worktree-increment.md)
 
-Resumes OX-001 after the favorable human D1 retest: pinned persistent threads, same-thread resume, disposable Git worktree, attempt-bound diff/checks and interruption. Distinguishes 75 offline tests, nine synthetic Windows tests and real metadata preflight from the still opt-in live proof and pending integrated process-tree supervision.
+Resumes OX-001 after the human D1 retest. The [authorized live validation](./research/m0-live-validation-2026-10-12.md) observed same-thread read-only resume, a sandbox-blocked edit and unproven supervised cancellation. The corrected harness passed 95/95 offline tests; explicit MXC passed a deterministic write/five checks and a strict metadata preflight without inference. Model-produced edits, the complete live path, Windows tree supervision and CLI comparison remain pending. Further live turns need renewed opt-in; the D1 pilot gate remains released.
 
 ### [D1 Activity Rail and Files](./design/activity-shell-revision.md)
 
@@ -96,7 +96,7 @@ The consolidated D0 research includes [product positioning](./research/product-p
 
 ### [Initial Development Backlog](./DEVELOPMENT_BACKLOG.md)
 
-Defines discovery/design tickets OX-D01–OX-D05 and implementation tickets OX-001–OX-017, with dependencies and acceptance criteria. D0 is closed as research under the explicitly consolidated method. D1 and its initial pilot are next, then M0 resumes using the early experiments. Independent tasks may progress in parallel within a milestone.
+Defines discovery/design tickets OX-D01–OX-D05 and implementation tickets OX-001–OX-017, with dependencies and acceptance criteria. D0 is closed as research under the explicitly consolidated method. The owner reported a successful D1 docking retest on 12/10, releasing the pilot gate; M0 has resumed using the early experiments. External evaluation and unavailable integration cases remain tracked. Independent tasks may progress in parallel within a milestone.
 
 ### [Project Vision](./PROJECT_VISION.md)
 

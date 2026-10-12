@@ -11,7 +11,7 @@ export class CodexSession {
   constructor(client,{attemptId='probe-attempt-1',turnTimeoutMs=45000,interruptTimeoutMs=10000}={}) {
     this.client=client;this.attemptId=attemptId;this.turnTimeoutMs=turnTimeoutMs;this.interruptTimeoutMs=interruptTimeoutMs;
     this.events=[];this.turns=new Map();this.waiters=new Map();this.deltaText=new Map();this.threadId=null;
-    this.knownTurns=new Set();this.startPending=false;this.earlyNotifications=[];
+    this.knownTurns=new Set();this.startedTurns=new Set();this.startWaiters=new Map();this.startPending=false;this.earlyNotifications=[];
     this.turnAdmission='idle';this.activeTurnId=null;this.interrupts=new Map();
     this.threadAdmission='idle';this.threadPending=false;this.threadAdmissionObserved=false;this.accountBinding=null;this.confirmedEffort=undefined;
     // The default can never grant writes, including in isolated lifecycle tests.
@@ -63,7 +63,8 @@ export class CodexSession {
     const servers=validMcpShape?Object.values(config?.mcp_servers??{}):[];
     const resources={hooksDisabled:config?.features?.hooks===false,pluginsDisabled:config?.features?.plugins===false,appsDisabled:config?.features?.apps===false,nativeDelegationDisabled:config?.features?.multi_agent===false,notifyDisabled:Array.isArray(config?.notify)&&config.notify.length===0,mcpConfiguredCount:validMcpShape?servers.length:null,mcpDisabled:validMcpShape&&servers.every(server=>server?.enabled===false)};
     const noApiEndpointOverride=config?.openai_base_url===undefined||config.openai_base_url===null||config.openai_base_url==='';
-    return {providerOpenai:config?.model_provider==='openai',officialEndpointConfirmed:config?.chatgpt_base_url==='https://chatgpt.com/backend-api/'&&noApiEndpointOverride,resources};
+    const windowsSandbox=['mxc','elevated','unelevated'].includes(config?.windows?.sandbox)?config.windows.sandbox:null;
+    return {providerOpenai:config?.model_provider==='openai',officialEndpointConfirmed:config?.chatgpt_base_url==='https://chatgpt.com/backend-api/'&&noApiEndpointOverride,windowsSandbox,resources};
   }
   startThread({cwd,model,effort,sandbox='read-only',ephemeral=true}) {
     return this.establishThread('thread/start',{cwd,model,effort,sandbox,ephemeral});
@@ -141,7 +142,11 @@ export class CodexSession {
       }
       return;
     }
-    if(method==='turn/started')this.event('attempt.turn.started',{turnId:params.turn?.id});
+    if(method==='turn/started') {
+      if(this.turns.has(turnId)||this.startedTurns.has(turnId))return;
+      this.startedTurns.add(turnId);this.event('attempt.turn.started',{turnId});
+      const waiters=this.startWaiters.get(turnId);if(waiters)for(const waiter of [...waiters])waiter.resolve({started:true});
+    }
     else if(method==='item/agentMessage/delta') {
       const id=params.turnId;
       const value=(this.deltaText.get(id)||'')+String(params.delta||'');
@@ -160,6 +165,7 @@ export class CodexSession {
       this.turns.set(turn.id,outcome);this.event('attempt.turn.ended',outcome);
       if(this.activeTurnId===turn.id){this.activeTurnId=null;this.turnAdmission='idle';}
       const waiters=this.waiters.get(turn.id);if(waiters)for(const waiter of [...waiters])waiter.resolve(outcome);
+      const startWaiters=this.startWaiters.get(turn.id);if(startWaiters)for(const waiter of [...startWaiters])waiter.resolve({started:false,terminal:outcome});
     } else this.event('runtime.notification',{method});
   }
   handleRequest({id,method,params={}}) {
@@ -175,6 +181,40 @@ export class CodexSession {
   waitForTurn(id,timeoutMs=this.turnTimeoutMs) {
     return this.subscribeTurn(id,timeoutMs).promise;
   }
+  waitForTurnStart(id,timeoutMs=this.interruptTimeoutMs) {
+    return this.subscribeTurnStart(id,timeoutMs).promise;
+  }
+  subscribeTurnStart(id,timeoutMs=this.interruptTimeoutMs) {
+    const immediate=promise=>({promise,cancel:()=>{}});
+    const rejected=error=>({...immediate(Promise.reject(error)),error});
+    if(!validIdentity(id)||!this.knownTurns.has(id))return rejected(new HarnessError('contract','Cannot observe the start of an unowned turn'));
+    if(!Number.isInteger(timeoutMs)||timeoutMs<1||timeoutMs>2147483647)return rejected(new HarnessError('contract','A bounded positive turn-start timeout is required'));
+    if(this.turns.has(id))return immediate(Promise.resolve(this.startedTurns.has(id)?{started:true}:{started:false,terminal:this.turns.get(id)}));
+    if(this.client.failure||this.client.closed) {
+      if(this.activeTurnId===id)this.turnAdmission='uncertain';
+      this.event('attempt.observation.unknown',{turnId:id,phase:'turn-start-observation',reason:'transport-unavailable'});
+      return rejected(this.client.failure||new HarnessError('process-exit','Runtime is closed'));
+    }
+    if(this.startedTurns.has(id))return immediate(Promise.resolve({started:true}));
+    const group=this.startWaiters.get(id)||new Set();
+    if(group.size+(this.waiters.get(id)?.size||0)>=16)return rejected(new HarnessError('contract','Turn observer limit exceeded'));
+    let resolve,reject;
+    const promise=new Promise((resolvePromise,rejectPromise)=>{resolve=resolvePromise;reject=rejectPromise;});
+    let settled=false;
+    const finish=(error,outcome)=>{
+      if(settled)return;settled=true;clearTimeout(waiter.timer);group.delete(waiter);
+      if(!group.size&&this.startWaiters.get(id)===group)this.startWaiters.delete(id);
+      if(error)reject(error);else resolve(outcome);
+    };
+    const waiter={resolve:outcome=>finish(null,outcome),reject:error=>finish(error)};
+    group.add(waiter);this.startWaiters.set(id,group);
+    waiter.timer=setTimeout(()=>{
+      if(this.activeTurnId===id)this.turnAdmission='uncertain';
+      this.event('attempt.observation.unknown',{turnId:id,phase:'turn-start-observation',reason:'timeout'});
+      waiter.reject(new HarnessError('timeout','Turn start was not confirmed'));
+    },timeoutMs);
+    return {promise,cancel:error=>waiter.reject(error??new HarnessError('cancelled','Turn-start observer cancelled'))};
+  }
   subscribeTurn(id,timeoutMs) {
     const immediate=promise=>({promise,cancel:()=>{}});
     const rejected=error=>({...immediate(Promise.reject(error)),error});
@@ -186,7 +226,7 @@ export class CodexSession {
       return rejected(this.client.failure||new HarnessError('process-exit','Runtime is closed'));
     }
     const group=this.waiters.get(id)||new Set();
-    if(group.size>=16)return rejected(new HarnessError('contract','Turn observer limit exceeded'));
+    if(group.size+(this.startWaiters.get(id)?.size||0)>=16)return rejected(new HarnessError('contract','Turn observer limit exceeded'));
     let resolve,reject;
     const promise=new Promise((resolvePromise,rejectPromise)=>{resolve=resolvePromise;reject=rejectPromise;});
     let settled=false;
@@ -231,10 +271,14 @@ export class CodexSession {
   rejectWaiters(error) {
     if(this.activeTurnId&&!this.turns.has(this.activeTurnId)) {
       this.turnAdmission='uncertain';
-      if(!this.waiters.has(this.activeTurnId))this.event('attempt.observation.unknown',{turnId:this.activeTurnId,reason:'transport-unavailable'});
+      if(!this.waiters.has(this.activeTurnId)&&!this.startWaiters.has(this.activeTurnId))this.event('attempt.observation.unknown',{turnId:this.activeTurnId,reason:'transport-unavailable'});
     }
     for(const [id,waiters] of [...this.waiters]) {
       this.event('attempt.observation.unknown',{turnId:id,reason:'transport-unavailable'});
+      for(const waiter of [...waiters])waiter.reject(error);
+    }
+    for(const [id,waiters] of [...this.startWaiters]) {
+      this.event('attempt.observation.unknown',{turnId:id,phase:'turn-start-observation',reason:'transport-unavailable'});
       for(const waiter of [...waiters])waiter.reject(error);
     }
   }

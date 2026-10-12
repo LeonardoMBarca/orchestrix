@@ -1,0 +1,442 @@
+{
+  "schemaVersion": 1,
+  "date": "2026-10-12T19:53:16.197Z",
+  "experiment": "OX-001/read-only-resume-after-blocked-write",
+  "authorizedTurns": 3,
+  "originalTurns": 1,
+  "newTurns": 2,
+  "originalAttemptStatus": "artifact-check-failed",
+  "originalCodeChanged": false,
+  "status": "failed",
+  "events": [
+    {
+      "schemaVersion": 1,
+      "sequence": 1,
+      "attemptId": "probe-attempt-1",
+      "type": "runtime.initialized"
+    },
+    {
+      "schemaVersion": 1,
+      "sequence": 2,
+      "attemptId": "probe-attempt-1",
+      "type": "connection.observed",
+      "authType": "chatgpt",
+      "authenticated": true
+    },
+    {
+      "schemaVersion": 1,
+      "sequence": 3,
+      "attemptId": "probe-attempt-1",
+      "type": "runtime.initialized"
+    },
+    {
+      "schemaVersion": 1,
+      "sequence": 4,
+      "attemptId": "probe-attempt-1",
+      "type": "connection.observed",
+      "authType": "chatgpt",
+      "authenticated": true
+    },
+    {
+      "schemaVersion": 1,
+      "sequence": 5,
+      "attemptId": "probe-attempt-1",
+      "type": "session.resumed",
+      "threadId": "threadId-1",
+      "model": "gpt-6.1-sol",
+      "sandbox": "readOnly"
+    },
+    {
+      "schemaVersion": 1,
+      "sequence": 6,
+      "attemptId": "probe-attempt-1",
+      "type": "runtime.notification",
+      "method": "thread/tokenUsage/updated"
+    },
+    {
+      "schemaVersion": 1,
+      "sequence": 7,
+      "attemptId": "probe-attempt-1",
+      "type": "runtime.notification",
+      "method": "thread/goal/cleared"
+    },
+    {
+      "schemaVersion": 1,
+      "sequence": 8,
+      "attemptId": "probe-attempt-1",
+      "type": "runtime.notification",
+      "method": "thread/status/changed"
+    },
+    {
+      "schemaVersion": 1,
+      "sequence": 9,
+      "attemptId": "probe-attempt-1",
+      "type": "attempt.turn.started",
+      "turnId": "turnId-2"
+    },
+    {
+      "schemaVersion": 1,
+      "sequence": 10,
+      "attemptId": "probe-attempt-1",
+      "type": "runtime.notification",
+      "method": "item/started"
+    },
+    {
+      "schemaVersion": 1,
+      "sequence": 11,
+      "attemptId": "probe-attempt-1",
+      "type": "runtime.notification",
+      "method": "item/completed"
+    },
+    {
+      "schemaVersion": 1,
+      "sequence": 12,
+      "attemptId": "probe-attempt-1",
+      "type": "runtime.notification",
+      "method": "item/started"
+    },
+    {
+      "schemaVersion": 1,
+      "sequence": 13,
+      "attemptId": "probe-attempt-1",
+      "type": "response.delta",
+      "turnId": "turnId-2",
+      "bytes": 2
+    },
+    {
+      "schemaVersion": 1,
+      "sequence": 14,
+      "attemptId": "probe-attempt-1",
+      "type": "response.delta",
+      "turnId": "turnId-2",
+      "bytes": 3
+    },
+    {
+      "schemaVersion": 1,
+      "sequence": 15,
+      "attemptId": "probe-attempt-1",
+      "type": "response.delta",
+      "turnId": "turnId-2",
+      "bytes": 3
+    },
+    {
+      "schemaVersion": 1,
+      "sequence": 16,
+      "attemptId": "probe-attempt-1",
+      "type": "response.delta",
+      "turnId": "turnId-2",
+      "bytes": 2
+    },
+    {
+      "schemaVersion": 1,
+      "sequence": 17,
+      "attemptId": "probe-attempt-1",
+      "type": "response.delta",
+      "turnId": "turnId-2",
+      "bytes": 1
+    },
+    {
+      "schemaVersion": 1,
+      "sequence": 18,
+      "attemptId": "probe-attempt-1",
+      "type": "response.delta",
+      "turnId": "turnId-2",
+      "bytes": 1
+    },
+    {
+      "schemaVersion": 1,
+      "sequence": 19,
+      "attemptId": "probe-attempt-1",
+      "type": "response.delta",
+      "turnId": "turnId-2",
+      "bytes": 1
+    },
+    {
+      "schemaVersion": 1,
+      "sequence": 20,
+      "attemptId": "probe-attempt-1",
+      "type": "response.delta",
+      "turnId": "turnId-2",
+      "bytes": 1
+    },
+    {
+      "schemaVersion": 1,
+      "sequence": 21,
+      "attemptId": "probe-attempt-1",
+      "type": "response.delta",
+      "turnId": "turnId-2",
+      "bytes": 1
+    },
+    {
+      "schemaVersion": 1,
+      "sequence": 22,
+      "attemptId": "probe-attempt-1",
+      "type": "response.delta",
+      "turnId": "turnId-2",
+      "bytes": 1
+    },
+    {
+      "schemaVersion": 1,
+      "sequence": 23,
+      "attemptId": "probe-attempt-1",
+      "type": "response.delta",
+      "turnId": "turnId-2",
+      "bytes": 1
+    },
+    {
+      "schemaVersion": 1,
+      "sequence": 24,
+      "attemptId": "probe-attempt-1",
+      "type": "response.delta",
+      "turnId": "turnId-2",
+      "bytes": 2
+    },
+    {
+      "schemaVersion": 1,
+      "sequence": 25,
+      "attemptId": "probe-attempt-1",
+      "type": "response.delta",
+      "turnId": "turnId-2",
+      "bytes": 1
+    },
+    {
+      "schemaVersion": 1,
+      "sequence": 26,
+      "attemptId": "probe-attempt-1",
+      "type": "response.delta",
+      "turnId": "turnId-2",
+      "bytes": 1
+    },
+    {
+      "schemaVersion": 1,
+      "sequence": 27,
+      "attemptId": "probe-attempt-1",
+      "type": "response.delta",
+      "turnId": "turnId-2",
+      "bytes": 1
+    },
+    {
+      "schemaVersion": 1,
+      "sequence": 28,
+      "attemptId": "probe-attempt-1",
+      "type": "response.delta",
+      "turnId": "turnId-2",
+      "bytes": 2
+    },
+    {
+      "schemaVersion": 1,
+      "sequence": 29,
+      "attemptId": "probe-attempt-1",
+      "type": "response.delta",
+      "turnId": "turnId-2",
+      "bytes": 1
+    },
+    {
+      "schemaVersion": 1,
+      "sequence": 30,
+      "attemptId": "probe-attempt-1",
+      "type": "response.delta",
+      "turnId": "turnId-2",
+      "bytes": 1
+    },
+    {
+      "schemaVersion": 1,
+      "sequence": 31,
+      "attemptId": "probe-attempt-1",
+      "type": "response.delta",
+      "turnId": "turnId-2",
+      "bytes": 2
+    },
+    {
+      "schemaVersion": 1,
+      "sequence": 32,
+      "attemptId": "probe-attempt-1",
+      "type": "response.delta",
+      "turnId": "turnId-2",
+      "bytes": 1
+    },
+    {
+      "schemaVersion": 1,
+      "sequence": 33,
+      "attemptId": "probe-attempt-1",
+      "type": "response.delta",
+      "turnId": "turnId-2",
+      "bytes": 2
+    },
+    {
+      "schemaVersion": 1,
+      "sequence": 34,
+      "attemptId": "probe-attempt-1",
+      "type": "response.delta",
+      "turnId": "turnId-2",
+      "bytes": 3
+    },
+    {
+      "schemaVersion": 1,
+      "sequence": 35,
+      "attemptId": "probe-attempt-1",
+      "type": "response.delta",
+      "turnId": "turnId-2",
+      "bytes": 2
+    },
+    {
+      "schemaVersion": 1,
+      "sequence": 36,
+      "attemptId": "probe-attempt-1",
+      "type": "response.delta",
+      "turnId": "turnId-2",
+      "bytes": 1
+    },
+    {
+      "schemaVersion": 1,
+      "sequence": 37,
+      "attemptId": "probe-attempt-1",
+      "type": "response.delta",
+      "turnId": "turnId-2",
+      "bytes": 1
+    },
+    {
+      "schemaVersion": 1,
+      "sequence": 38,
+      "attemptId": "probe-attempt-1",
+      "type": "response.delta",
+      "turnId": "turnId-2",
+      "bytes": 2
+    },
+    {
+      "schemaVersion": 1,
+      "sequence": 39,
+      "attemptId": "probe-attempt-1",
+      "type": "response.delta",
+      "turnId": "turnId-2",
+      "bytes": 1
+    },
+    {
+      "schemaVersion": 1,
+      "sequence": 40,
+      "attemptId": "probe-attempt-1",
+      "type": "response.delta",
+      "turnId": "turnId-2",
+      "bytes": 2
+    },
+    {
+      "schemaVersion": 1,
+      "sequence": 41,
+      "attemptId": "probe-attempt-1",
+      "type": "response.delta",
+      "turnId": "turnId-2",
+      "bytes": 1
+    },
+    {
+      "schemaVersion": 1,
+      "sequence": 42,
+      "attemptId": "probe-attempt-1",
+      "type": "response.delta",
+      "turnId": "turnId-2",
+      "bytes": 3
+    },
+    {
+      "schemaVersion": 1,
+      "sequence": 43,
+      "attemptId": "probe-attempt-1",
+      "type": "runtime.notification",
+      "method": "item/completed"
+    },
+    {
+      "schemaVersion": 1,
+      "sequence": 44,
+      "attemptId": "probe-attempt-1",
+      "type": "runtime.notification",
+      "method": "thread/tokenUsage/updated"
+    },
+    {
+      "schemaVersion": 1,
+      "sequence": 45,
+      "attemptId": "probe-attempt-1",
+      "type": "runtime.notification",
+      "method": "thread/status/changed"
+    },
+    {
+      "schemaVersion": 1,
+      "sequence": 46,
+      "attemptId": "probe-attempt-1",
+      "type": "attempt.turn.ended",
+      "turnId": "turnId-2",
+      "status": "completed",
+      "errorKind": null
+    },
+    {
+      "schemaVersion": 1,
+      "sequence": 47,
+      "attemptId": "probe-attempt-1",
+      "type": "attempt.observation.unknown",
+      "turnId": "turnId-3",
+      "phase": "turn-interrupt",
+      "reason": "rpc"
+    }
+  ],
+  "processes": [
+    {
+      "code": 0,
+      "signal": null,
+      "parentExited": true,
+      "treeTermination": "unknown",
+      "stdioClosed": true,
+      "observationDetached": false
+    },
+    {
+      "code": 0,
+      "signal": null,
+      "parentExited": true,
+      "treeTermination": "unknown",
+      "stdioClosed": true,
+      "observationDetached": false
+    }
+  ],
+  "limits": [
+    "Original workspace-write attempt remains failed; no code correction or passing checks",
+    "Read-only continuation intentionally changes the permission profile",
+    "Account binding comparison covers diagnostic read and resumed connection; original in-memory binding was not retained",
+    "Parent exits only; Windows tree termination unknown"
+  ],
+  "configuration": {
+    "requested": {
+      "model": "gpt-6.1-sol",
+      "effort": "low",
+      "provider": "openai",
+      "sandbox": "read-only",
+      "networkAccess": false,
+      "approval": "never",
+      "reviewer": "user",
+      "ephemeral": false,
+      "excludeTmpdirEnvVar": null,
+      "excludeSlashTmp": null
+    },
+    "resolvedConfiguration": {
+      "model": "gpt-6.1-sol",
+      "effort": "low",
+      "provider": "openai",
+      "sandbox": "readOnly",
+      "networkAccess": false,
+      "approval": "never",
+      "reviewer": "user",
+      "ephemeral": false,
+      "cwdMatched": true,
+      "excludeTmpdirEnvVar": null,
+      "excludeSlashTmp": null
+    }
+  },
+  "resume": {
+    "serverRestarted": true,
+    "sameThread": true,
+    "sameObservedAccount": true,
+    "bindingScope": "diagnostic-read-to-resumed-connection",
+    "status": "completed",
+    "priorMarkerMatched": true,
+    "permissionProfile": "read-only"
+  },
+  "error": {
+    "kind": "rpc",
+    "method": "turn/interrupt"
+  }
+}

@@ -12,7 +12,7 @@
     "probe:codex:live": "node probe.mjs --codex --live",
     "probe:codex:worktree": "node worktree-probe.mjs",
     "probe:codex:worktree:live": "node worktree-probe.mjs --live",
-    "check": "node --check probe.mjs && node --check worktree-probe.mjs && node --check src/json-rpc.mjs && node --check src/codex-session.mjs && node --check fixtures/fake-app-server.mjs && node --check fixtures/process-tree.mjs && node --check fixtures/write-backpressure.mjs && node --check fixtures/windows-job-tree.mjs && node --check tests/write-backpressure.test.mjs && node --check tests/session-resume.test.mjs && node --check tests/worktree-probe.test.mjs && node --check tests/windows-job.spec.mjs"
+    "check": "node --check probe.mjs && node --check worktree-probe.mjs && node --check src/json-rpc.mjs && node --check src/codex-session.mjs && node --check fixtures/fake-app-server.mjs && node --check fixtures/process-tree.mjs && node --check fixtures/write-backpressure.mjs && node --check fixtures/windows-job-tree.mjs && node --check tests/write-backpressure.test.mjs && node --check tests/session-resume.test.mjs && node --check tests/turn-start.test.mjs && node --check tests/worktree-probe.test.mjs && node --check tests/windows-job.spec.mjs"
   },
   "engines": {"node": ">=24"}
 }
