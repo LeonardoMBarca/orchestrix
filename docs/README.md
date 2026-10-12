@@ -4,6 +4,14 @@ This directory contains the evolving design and engineering documentation for Or
 
 ## Core documents
 
+### [Local Technical Reference Library](./research/REFERENCE_REPOSITORIES.md)
+
+Verified public repositories, exact commits, licenses, architecture and component paths for targeted engineering consultation. Nine shallow clones live outside Orchestrix in `../orchestrix-references/`; Conductor.build and Cobalt are documentary entries with no fabricated source repository. Notes and explicit fetch records preserve existing snapshots. This tool does not reopen D0 or import competitor code/features.
+
+### [M0 Worktree and Resume Increment](./research/m0-resume-worktree-increment.md)
+
+Resumes OX-001 after the favorable human D1 retest: pinned persistent threads, same-thread resume, disposable Git worktree, attempt-bound diff/checks and interruption. Distinguishes 75 offline tests, nine synthetic Windows tests and real metadata preflight from the still opt-in live proof and pending integrated process-tree supervision.
+
 ### [D1 Activity Rail and Files](./design/activity-shell-revision.md)
 
 Records the 2026-10-12 desktop direction: a fixed left activity rail, reorderable Chat/Files/Studio/Connections, utility actions at the bottom, activity navigation on the left and Sessions on the right. Covers resizable and collapsible side docks, File/Edit/View/Help menus, authorized file access, small text edits and Markdown preview. Direct folder saves and imported-file copies remain distinct. The [eight-step pilot](./design/d1-pilot.md#primeiro-percurso-atual--oito-passos-pelo-chat) includes this organization; human validation and runtime gates remain open.

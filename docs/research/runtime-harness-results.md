@@ -2,6 +2,8 @@
 
 Registro de **8 de outubro de 2026**, Windows nativo. Entrega: [harness executável](../../tools/runtime-harness/README.md), [fixtures offline](../../tools/runtime-harness/fixtures/README.md) e [inspeção do schema local](codex-protocol-spike.md). Experimento em Node 24.19.0/Git, separado do protótipo e do futuro Core Rust. Não declara M0 ou adapter de produção concluídos.
 
+**Retomada em 12/10:** o [reteste humano de D1](../design/d1-pilot.md#piloto-reportado-pelo-responsável--1210) liberou M0. O [novo incremento de OX-001](m0-resume-worktree-increment.md) prepara persistência/retomada entre app-servers e alteração em worktree com diff/checks, passou 75/75 offline, 9/9 Windows sintéticos e preflight real sem inferência em `0.162.0-alpha.17.2`. O live novo aguarda opt-in; nenhuma dessas provas substitui a retomada real ou supervisão integrada da árvore. As tabelas seguintes são o resultado histórico de 08/10, com suas versões e limites.
+
 O percurso foi uma antecipação técnica. [D0 foi consolidado como pesquisa](d0-conclusion.md); D1 e seu piloto inicial são a próxima etapa. O incremento técnico abaixo é para a retomada posterior de M0, conforme o plano atualizado; não é aceite da modalidade OAuth própria acrescentada pela pesquisa.
 
 **Continuação em 09/10:** [48 testes offline e correções de lifecycle](offline-lifecycle-validation.md), incluindo descendente sintético ativo depois da saída do pai. Não houve nova autenticação/inferência e o gate humano D1 continua pendente. Os dados live abaixo permanecem os de 08/10; a preparação não amplia suas capacidades reais demonstradas.

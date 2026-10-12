@@ -2,7 +2,24 @@
 
 Experimento isolado de protocolo, executável com **Node 24+ e Git**, sem dependências de pacote. Não é o Core de produção nem muda a stack proposta Rust/Tauri. O protótipo visual em `prototypes/desktop` continua simulado.
 
-Foi uma antecipação técnica. O foco atual do plano é D0 → D1 com piloto inicial → retomada de M0. Preservar este experimento não encerra os gates de pesquisa/design ou promove o adapter a produção.
+Foi uma antecipação técnica. Em **12/10/2026**, o reteste humano de D1 liberou o gate piloto e **M0 foi retomado em OX-001**. A avaliação externa e os critérios de integração continuam nos tickets existentes; nenhum experimento promove automaticamente o adapter a produção.
+
+## Incremento atual — worktree e retomada
+
+O [registro de 12/10](../../docs/research/m0-resume-worktree-increment.md) acrescenta `worktree-probe.mjs` e `CodexSession.resumeThread`: **75/75 testes offline**, **9/9 Windows sintéticos** e check passaram. O preflight real **sem inferência** passou na versão `0.162.0-alpha.17.2`, após inspeção de schema e admissão explícita; a versão histórica `0.162.0-alpha.2` continua na allowlist, sem aceitar versões futuras silenciosamente. A prova live deste incremento está preparada e aguarda opt-in; não foi executada.
+
+```powershell
+node worktree-probe.mjs                   # metadados apenas
+node worktree-probe.mjs --live            # somente com opt-in explícito
+```
+
+Live usa uma assinatura existente e três turnos limitados: corrigir uma função aritmética em worktree descartável, reiniciar o app-server e retomar a mesma thread com um marcador do contexto anterior, depois interromper um turno. Não copia login, muda a conta, usa fallback API ou executa código dos clones de referência. Cria uma thread persistida no runtime, necessária à prova de retomada. O relatório sanitizado não inclui thread/turn IDs reais, marker, binding, paths pessoais, transcript ou stdout/stderr bruto.
+
+O fixture tem commit base próprio, baseline falho e cinco casos determinísticos. Modificação do checker, arquivo extra, código fora da gramática aritmética ou alteração no checkout principal temporário bloqueiam a prova. Diff/hash/checks permanecem vinculados ao snapshot. O ambiente Git exclui overrides e configuração global/sistema; hooks são desativados. Repositório/worktree e patch são mantidos para inspeção, sem cleanup recursivo automático.
+
+Assinatura/ordinary/endpoint, hooks/plugins/apps/notify/MCP e delegação nativa precisam estar confirmados antes de live e novamente após reinício. Modelo/effort só usam capacidades anunciadas; o binding de metadados da conta fica em memória e não prova isolamento/cotas de múltiplas contas. Política read-only/ephemeral continua padrão do probe original; workspace-write/persistência são explícitos e confirmação contraditória mantém admissão incerta.
+
+**OX-001 aberto:** faltam a prova live deste percurso, a comparação CLI `exec --json` e a supervisão/cancelamento integrado da árvore Codex Windows. A prova de Job Objects continua sintética e separada do transporte; saída do pai não certifica término da árvore. Não é o Core Rust/SQLite ou o ciclo completo de revisão/aplicação no Desktop.
 
 Em 09/10/2026, a [preparação offline](../../docs/research/offline-lifecycle-validation.md) corrigiu admissão de turnos e acompanhamento/interrupção concorrentes, e verificou descendente sintético sobrevivendo ao pai no Windows. **48 testes offline passaram**; nenhum runtime real foi chamado nessa continuação. O piloto D1 permanece pendente.
 
@@ -21,7 +38,7 @@ node probe.mjs --fake --scenario hang
 npm run probe:codex
 ```
 
-`probe:codex` consulta metadados e **não inicia inferência**. O Codex precisa estar no PATH como executável nativo; também é possível informar `--binary 'C:\caminho\codex.exe'`. A versão validada nesta rodada é **0.162.0-alpha.2**. Outra versão produz diagnóstico, sem tentar adaptar silenciosamente o contrato.
+`probe:codex` consulta metadados e **não inicia inferência**. O Codex precisa estar no PATH como executável nativo; também é possível informar `--binary 'C:\caminho\codex.exe'`. A versão histórica validada foi **0.162.0-alpha.2**; a continuação de 12/10 admite **0.162.0-alpha.17.2** após schema/metadados. Outra versão produz diagnóstico, sem tentar adaptar silenciosamente o contrato.
 
 O teste live é opt-in e usa a autenticação existente pelo fluxo oficial do runtime:
 

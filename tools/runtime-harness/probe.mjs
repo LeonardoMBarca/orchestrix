@@ -12,19 +12,34 @@ import {CodexSession} from './src/codex-session.mjs';
 const execute=promisify(execFile);
 const root=dirname(fileURLToPath(import.meta.url));
 export const SUPPORTED_CODEX_VERSION='0.162.0-alpha.2';
+// Each additional version needs local schema inspection and a fresh metadata probe.
+export const VALIDATED_CODEX_VERSIONS=Object.freeze([SUPPORTED_CODEX_VERSION,'0.162.0-alpha.17.2']);
+export const supportsCodexVersion=version=>VALIDATED_CODEX_VERSIONS.includes(version);
 const EXPECTED='ORCHESTRIX_PROBE_OK';
+
+export function codexLaunchArguments() {
+  return ['--no-daemon','-c','model_provider="openai"','-c','openai_base_url=""','-c','chatgpt_base_url="https://chatgpt.com/backend-api/"','-c','analytics.enabled=false','-c','features.hooks=false','-c','features.plugins=false','-c','features.apps=false','-c','features.multi_agent=false','-c','notify=[]','app-server','--listen','stdio://'];
+}
 
 /** Keep only OS/auth-location variables. Never transfer API keys or endpoint overrides. */
 export function runtimeEnvironment(source=process.env) {
   const allowed=new Set(['PATH','PATHEXT','SYSTEMROOT','WINDIR','COMSPEC','TEMP','TMP','TMPDIR','USERPROFILE','HOME','HOMEDRIVE','HOMEPATH','APPDATA','LOCALAPPDATA','PROGRAMDATA','PROGRAMFILES','PROGRAMFILES(X86)','COMMONPROGRAMFILES','PROCESSOR_ARCHITECTURE','NUMBER_OF_PROCESSORS','CODEX_HOME','LANG','LC_ALL']);
   return Object.fromEntries(Object.entries(source).filter(([key])=>allowed.has(key.toUpperCase())));
 }
+export function fixtureGitEnvironment(source=process.env) {
+  return {...runtimeEnvironment(source),GIT_CONFIG_GLOBAL:process.platform==='win32'?'NUL':'/dev/null',GIT_CONFIG_NOSYSTEM:'1',GIT_TERMINAL_PROMPT:'0'};
+}
 
 function safeLabel(value) {return typeof value==='string'&&/^[\w.:-]{1,100}$/.test(value)?value:'unknown';}
-function reportEvents(events) {
+export function reportEvents(events) {
   const ids=new Map();
   const localId=(kind,id)=>{const key=`${kind}:${id}`;if(!ids.has(key))ids.set(key,`${kind}-${ids.size+1}`);return ids.get(key);};
   return events.map(event=>Object.fromEntries(Object.entries(event).map(([key,value])=>[key,['threadId','turnId','requestId'].includes(key)&&value!=null?localId(key,value):value])));
+}
+export function reportConfiguration(configuration) {
+  const fields=['model','effort','provider','sandbox','networkAccess','approval','reviewer','ephemeral','cwdMatched','excludeTmpdirEnvVar','excludeSlashTmp'];
+  const sanitize=value=>({...Object.fromEntries(fields.filter(key=>Object.hasOwn(value,key)).map(key=>[key,value[key]])),...(Array.isArray(value.writableRoots)?{writableRootsCount:value.writableRoots.length}:{})});
+  return {requested:sanitize(configuration.requested),resolvedConfiguration:sanitize(configuration.resolvedConfiguration)};
 }
 async function workspaceSnapshot(cwd) {
   const files=(await readdir(cwd,{recursive:true,withFileTypes:true})).filter(entry=>entry.isFile());
@@ -43,7 +58,7 @@ export async function runProbe({mode='fake',scenario='success',binary=process.pl
   let client,session,cwd,before;
   try {
     cwd=await mkdtemp(join(tmpdir(),'orchestrix-runtime-'));
-    await execute('git',['init','--quiet'],{cwd,windowsHide:true,timeout:10000});
+    await execute('git',['init','--quiet'],{cwd,env:fixtureGitEnvironment(),windowsHide:true,timeout:10000});
     await writeFile(join(cwd,'AGENTS.md'),'This is an isolated Orchestrix protocol probe. Do not use tools, read files, write files, run commands, use plugins, or delegate. Answer the prompt only.\n');
     await writeFile(join(cwd,'probe.txt'),'Orchestrix disposable fixture. Never import a personal project.\n');
     before=await workspaceSnapshot(cwd);
@@ -56,8 +71,8 @@ export async function runProbe({mode='fake',scenario='success',binary=process.pl
       command=binary;
       const version=await execute(command,['--version'],{cwd,env,windowsHide:true,timeout:10000});
       report.runtimeVersion=version.stdout.match(/codex-cli ([\w.-]+)/)?.[1]??'unknown';
-      if(report.runtimeVersion!==SUPPORTED_CODEX_VERSION)throw new HarnessError('version','Executable version has not been validated by this experiment');
-      args=['--no-daemon','-c','model_provider="openai"','-c','openai_base_url=""','-c','chatgpt_base_url="https://chatgpt.com/backend-api/"','-c','analytics.enabled=false','-c','features.hooks=false','-c','features.plugins=false','-c','features.apps=false','-c','notify=[]','app-server','--listen','stdio://'];
+      if(!supportsCodexVersion(report.runtimeVersion))throw new HarnessError('version','Executable version has not been validated by this experiment');
+      args=codexLaunchArguments();
     }
     client=new JsonRpcProcess({command,args,cwd,env,requestTimeoutMs});
     session=new CodexSession(client,{turnTimeoutMs});
@@ -76,6 +91,7 @@ export async function runProbe({mode='fake',scenario='success',binary=process.pl
       // Start owns no session yet. Restart with per-server launch overrides before MCP prewarm.
       const overrides=session.mcpDisableOverrides.flatMap(value=>['-c',value]);
       report.bootstrapProcess=await client.stop();report.mcpOverridesCount=session.mcpDisableOverrides.length;
+      if(!report.bootstrapProcess.parentExited||report.bootstrapProcess.code!==0||client.failure){report.status='bootstrap-exit-unconfirmed';return report;}
       args.splice(args.indexOf('app-server'),0,...overrides);
       client=new JsonRpcProcess({command,args,cwd,env,requestTimeoutMs});
       session=new CodexSession(client,{turnTimeoutMs});await session.initialize();
@@ -92,7 +108,7 @@ export async function runProbe({mode='fake',scenario='success',binary=process.pl
     if(!model.efforts.includes(effort))throw new HarnessError('capability','Runtime did not announce a supported reasoning effort');
     const configuration=await session.startThread({cwd,model:model.model,effort});
     if(configuration.resolvedConfiguration.model!==model.model)throw new HarnessError('policy','Requested model was not resolved');
-    report.configuration=configuration;report.checks.push('thread-boundaries-resolved');
+    report.configuration=reportConfiguration(configuration);report.checks.push('thread-boundaries-resolved');
     report.liveStarted=mode==='codex';
     const id=await session.startTurn(`Reply exactly ${EXPECTED}. Do not use tools, read or modify files, execute commands, access network, use plugins, or delegate.`,{effort});
     if(mode==='fake'&&['hang','slow'].includes(scenario)) {
@@ -128,7 +144,7 @@ export async function runProbe({mode='fake',scenario='success',binary=process.pl
       report.transportMetrics={messages:client.messages,stderrBytesDrained:client.stderrBytes};
     }
     if(cwd&&before) {
-      try{report.workspace.filesUnchanged=before===await workspaceSnapshot(cwd);}catch{report.workspace.filesUnchanged=null;}
+      try{report.workspace.filesUnchanged=before===await workspaceSnapshot(cwd);}catch{report.workspace.filesUnchanged=null;report.status='workspace-observation-failed';}
       if(report.workspace.filesUnchanged===false)report.status='workspace-changed';
     }
     report.durationMs=Date.now()-started;

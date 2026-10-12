@@ -1,4 +1,10 @@
 import {HarnessError} from './json-rpc.mjs';
+import {createHash} from 'node:crypto';
+import {isAbsolute,normalize} from 'node:path';
+
+const validIdentity=value=>typeof value==='string'&&value.length>0&&value.length<=512&&!/[\u0000-\u001f]/.test(value);
+const samePath=(left,right)=>typeof left==='string'&&typeof right==='string'&&isAbsolute(left)&&isAbsolute(right)&&(process.platform==='win32'?normalize(left).toLowerCase()===normalize(right).toLowerCase():normalize(left)===normalize(right));
+const freezePolicy=policy=>Object.freeze(Object.fromEntries(Object.entries(policy).map(([key,value])=>[key,Array.isArray(value)?Object.freeze([...value]):value&&typeof value==='object'?freezePolicy(value):value])));
 
 /** Deliberately small experiment. Provider messages never become the Core domain. */
 export class CodexSession {
@@ -7,6 +13,9 @@ export class CodexSession {
     this.events=[];this.turns=new Map();this.waiters=new Map();this.deltaText=new Map();this.threadId=null;
     this.knownTurns=new Set();this.startPending=false;this.earlyNotifications=[];
     this.turnAdmission='idle';this.activeTurnId=null;this.interrupts=new Map();
+    this.threadAdmission='idle';this.threadPending=false;this.threadAdmissionObserved=false;this.accountBinding=null;this.confirmedEffort=undefined;
+    // The default can never grant writes, including in isolated lifecycle tests.
+    this.sandboxPolicy=freezePolicy({type:'readOnly',networkAccess:false});
     client.on('notification',message=>this.observe(message));
     client.on('request',message=>this.handleRequest(message));
     client.on('failure',error=>this.rejectWaiters(error));
@@ -22,8 +31,15 @@ export class CodexSession {
     return {initialized:Boolean(result),serverInfoObserved:Boolean(result?.userAgent||result?.serverInfo)};
   }
   async discover() {
+    this.accountBinding=null;
     const account=await this.client.request('account/read',{refreshToken:false});
     const type=account?.account?.type??null;
+    // Retain only an in-memory comparison hash. No token, email, account ID or
+    // binding is returned by discovery or added to reportable events.
+    const identity=account?.account;
+    const email=typeof identity?.email==='string'&&identity.email.trim()?identity.email.trim():null;
+    const accountId=typeof identity?.accountId==='string'&&identity.accountId?identity.accountId:null;
+    if(type==='chatgpt'&&(email||accountId))this.accountBinding=createHash('sha256').update(JSON.stringify({type,email,accountId,planType:identity.planType??null})).digest('hex');
     const auth={type:['chatgpt','apiKey','chatgptAuthTokens'].includes(type)?type:type?'other':null,authenticated:Boolean(account?.account),requiresOpenaiAuth:account?.requiresOpenaiAuth===true,subscriptionGate:type==='chatgpt'&&account?.requiresOpenaiAuth===true};
     this.event('connection.observed',{authType:auth.type,authenticated:auth.authenticated});
     if(!auth.subscriptionGate)return {auth,models:[],availability:null};
@@ -45,32 +61,56 @@ export class CodexSession {
     const names=validMcpShape?Object.keys(config?.mcp_servers??{}):[];
     this.mcpDisableOverrides=validMcpShape&&names.length<=32&&names.every(name=>/^[A-Za-z0-9_-]{1,80}$/.test(name))?names.map(name=>`mcp_servers.${name}.enabled=false`):null;
     const servers=validMcpShape?Object.values(config?.mcp_servers??{}):[];
-    const resources={hooksDisabled:config?.features?.hooks===false,pluginsDisabled:config?.features?.plugins===false,appsDisabled:config?.features?.apps===false,notifyDisabled:Array.isArray(config?.notify)&&config.notify.length===0,mcpConfiguredCount:validMcpShape?servers.length:null,mcpDisabled:validMcpShape&&servers.every(server=>server?.enabled===false)};
+    const resources={hooksDisabled:config?.features?.hooks===false,pluginsDisabled:config?.features?.plugins===false,appsDisabled:config?.features?.apps===false,nativeDelegationDisabled:config?.features?.multi_agent===false,notifyDisabled:Array.isArray(config?.notify)&&config.notify.length===0,mcpConfiguredCount:validMcpShape?servers.length:null,mcpDisabled:validMcpShape&&servers.every(server=>server?.enabled===false)};
     const noApiEndpointOverride=config?.openai_base_url===undefined||config.openai_base_url===null||config.openai_base_url==='';
     return {providerOpenai:config?.model_provider==='openai',officialEndpointConfirmed:config?.chatgpt_base_url==='https://chatgpt.com/backend-api/'&&noApiEndpointOverride,resources};
   }
-  async startThread({cwd,model,effort}) {
-    const result=await this.client.request('thread/start',{
-      cwd,model,modelProvider:'openai',approvalPolicy:'never',approvalsReviewer:'user',sandbox:'read-only',ephemeral:true,
-      baseInstructions:'This is a bounded protocol probe. Follow only the probe prompt. Do not use tools or access files, network, plugins, or other sessions.',
-      developerInstructions:'Respond only to the probe prompt. No tools or delegation. No filesystem access.',
-      config:{web_search:'disabled',mcp_servers:{},model_reasoning_effort:effort},
-    });
-    const sandbox=result?.sandbox?.type;
-    if(!result?.thread?.id||result.cwd!==cwd||result.modelProvider!=='openai'||result.approvalPolicy!=='never'||result.approvalsReviewer!=='user'||sandbox!=='readOnly'||result.sandbox.networkAccess!==false||result.thread.ephemeral!==true) {
-      throw new HarnessError('policy','Runtime did not confirm requested execution boundaries');
-    }
-    this.threadId=result.thread.id;
-    this.configuration={requested:{model,effort,provider:'openai',sandbox:'read-only',approval:'never'},resolvedConfiguration:{model:result.model,effort:result.reasoningEffort??null,provider:result.modelProvider,sandbox,networkAccess:result.sandbox.networkAccess,approval:result.approvalPolicy,reviewer:result.approvalsReviewer,ephemeral:result.thread.ephemeral,cwdMatched:true}};
-    this.event('session.started',{threadId:this.threadId,model:result.model,sandbox});
-    return this.configuration;
+  startThread({cwd,model,effort,sandbox='read-only',ephemeral=true}) {
+    return this.establishThread('thread/start',{cwd,model,effort,sandbox,ephemeral});
+  }
+  resumeThread({threadId,cwd,model,effort,sandbox='workspace-write'}) {
+    return this.establishThread('thread/resume',{threadId,cwd,model,effort,sandbox,ephemeral:false});
+  }
+  async establishThread(method,{threadId,cwd,model,effort,sandbox,ephemeral}) {
+    if(!['thread/start','thread/resume'].includes(method))throw new HarnessError('arguments','Unsupported thread admission operation');
+    if(this.threadId||this.threadPending||this.threadAdmission!=='idle'||this.startPending||this.turnAdmission!=='idle'||this.activeTurnId)throw new HarnessError('contract','Thread admission requires a new idle session');
+    if(this.client.failure||this.client.closed)throw this.client.failure||new HarnessError('transport','Runtime is closed');
+    if(!validIdentity(cwd)||!isAbsolute(cwd)||!validIdentity(model)||!validIdentity(effort)||!['read-only','workspace-write'].includes(sandbox)||typeof ephemeral!=='boolean'||(method==='thread/resume'&&!validIdentity(threadId)))throw new HarnessError('arguments','Invalid bounded thread configuration');
+    const writable=sandbox==='workspace-write';
+    const params={cwd,model,modelProvider:'openai',approvalPolicy:'never',approvalsReviewer:'user',sandbox,
+      baseInstructions:writable?'This is a bounded disposable-worktree probe. Follow only its prompt. Restrict file changes to the configured workspace. No network, plugins, other sessions or delegation.':'This is a bounded protocol probe. Follow only the probe prompt. Do not use tools or access files, network, plugins, or other sessions.',
+      developerInstructions:writable?'Only perform the bounded worktree task. No network, plugins, delegation or access to other projects.':'Respond only to the probe prompt. No tools or delegation. No filesystem access.',
+      config:{web_search:'disabled',mcp_servers:{},model_reasoning_effort:effort,...(writable?{sandbox_workspace_write:{network_access:false,writable_roots:[],exclude_tmpdir_env_var:true,exclude_slash_tmp:true}}:{})},
+      ...(method==='thread/start'?{ephemeral}:{threadId}),
+    };
+    this.threadPending=true;this.threadAdmission='starting';this.threadAdmissionObserved=false;
+    try {
+      const result=await this.client.request(method,params);
+      if(this.client.failure||this.client.closed)throw this.client.failure||new HarnessError('transport','Runtime ended during thread admission');
+      const resolved=result?.sandbox;
+      const roots=resolved?.writableRoots;
+      const validRoots=!writable||(Array.isArray(roots)&&roots.length<=32&&roots.every(root=>samePath(root,cwd)));
+      const validTmp=!writable||(resolved.excludeTmpdirEnvVar===true&&resolved.excludeSlashTmp===true);
+      const validThread=validIdentity(result?.thread?.id)&&(method==='thread/start'||result.thread.id===threadId)&&result.thread.ephemeral===ephemeral&&result.thread.status?.type==='idle'&&(!result.thread.sessionId||result.thread.sessionId===result.thread.id)&&(!result.thread.forkedFromId)&&(!result.thread.turns||Array.isArray(result.thread.turns)&&result.thread.turns.every(turn=>turn?.status!=='inProgress'));
+      if(!validThread||!samePath(result.cwd,cwd)||!samePath(result.thread.cwd,cwd)||result.model!==model||result.reasoningEffort!==effort||result.modelProvider!=='openai'||(result.thread.modelProvider!==undefined&&result.thread.modelProvider!=='openai')||result.approvalPolicy!=='never'||result.approvalsReviewer!=='user'||resolved?.type!==(writable?'workspaceWrite':'readOnly')||resolved.networkAccess!==false||!validRoots||!validTmp)throw new HarnessError('policy','Runtime did not confirm requested execution boundaries');
+      this.threadId=result.thread.id;this.threadAdmission='owned';this.sandboxPolicy=freezePolicy(structuredClone(resolved));this.confirmedEffort=result.reasoningEffort;
+      this.configuration={threadId:this.threadId,ephemeral,requested:{threadId:method==='thread/resume'?threadId:null,cwd,model,effort,provider:'openai',sandbox,networkAccess:false,writableRoots:writable?[]:null,approval:'never',reviewer:'user',ephemeral,excludeTmpdirEnvVar:writable?true:null,excludeSlashTmp:writable?true:null},resolvedConfiguration:{threadId:this.threadId,cwd:result.cwd,model:result.model,effort:result.reasoningEffort,provider:result.modelProvider,sandbox:resolved.type,sandboxPolicy:structuredClone(resolved),networkAccess:resolved.networkAccess,writableRoots:writable?[...roots]:null,approval:result.approvalPolicy,reviewer:result.approvalsReviewer,ephemeral,cwdMatched:true,excludeTmpdirEnvVar:writable?resolved.excludeTmpdirEnvVar:null,excludeSlashTmp:writable?resolved.excludeSlashTmp:null}};
+      this.event(method==='thread/resume'?'session.resumed':'session.started',{threadId:this.threadId,model:result.model,sandbox:resolved.type});
+      return this.configuration;
+    } catch(error) {
+      const notSubmitted=error instanceof HarnessError&&['arguments','outbound-limit'].includes(error.kind)&&error.metadata.dispatch==='not-written';
+      if((error.kind==='rpc'||notSubmitted)&&!this.threadAdmissionObserved&&!this.client.failure&&!this.client.closed)this.threadAdmission='idle';
+      else {this.threadAdmission='uncertain';this.event('attempt.observation.unknown',{phase:method,reason:error.kind||'local-error'});}
+      throw error;
+    } finally {this.threadPending=false;}
   }
   async startTurn(text,{effort}={}) {
     if(!this.threadId||this.startPending||this.turnAdmission!=='idle')throw new HarnessError('contract','A thread with no active or uncertain turn is required');
     if(this.client.failure||this.client.closed)throw this.client.failure||new HarnessError('transport','Runtime is closed');
+    if(this.threadAdmission==='owned'&&effort!==undefined&&effort!==this.confirmedEffort)throw new HarnessError('policy','Turn effort must match the confirmed bounded thread configuration');
     this.startPending=true;this.turnAdmission='starting';
     try {
-      const result=await this.client.request('turn/start',{threadId:this.threadId,input:[{type:'text',text,text_elements:[]}],effort,sandboxPolicy:{type:'readOnly',networkAccess:false},approvalPolicy:'never',approvalsReviewer:'user'});
+      const result=await this.client.request('turn/start',{threadId:this.threadId,input:[{type:'text',text,text_elements:[]}],effort:effort??this.confirmedEffort,sandboxPolicy:structuredClone(this.sandboxPolicy),approvalPolicy:'never',approvalsReviewer:'user'});
       if(this.client.failure||this.client.closed)throw this.client.failure||new HarnessError('transport','Runtime ended during turn start');
       if(typeof result?.turn?.id!=='string'||!result.turn.id||result.turn.id.length>512||this.knownTurns.has(result.turn.id))throw new HarnessError('protocol','Runtime did not return a new valid turn ID');
       this.knownTurns.add(result.turn.id);this.activeTurnId=result.turn.id;this.turnAdmission='active';this.startPending=false;
@@ -86,6 +126,7 @@ export class CodexSession {
     } finally {this.startPending=false;this.earlyNotifications=[];}
   }
   observe({method,params={}}) {
+    if(this.threadPending&&method==='thread/started')this.threadAdmissionObserved=true;
     if(params?.threadId!==this.threadId||!this.threadId)return;
     const turnNotification=['turn/started','turn/completed'].includes(method);
     const deltaNotification=method==='item/agentMessage/delta';

@@ -2,6 +2,8 @@
 
 Inspeção em **8 de outubro de 2026**. Este registro orienta o harness experimental; não certifica adapter, sandbox, isolamento de contas ou autorização comercial. A inspeção local executou somente `--version`, `--help` e geração de schema. Não executou servidor, login, leitura de conta, acesso a credenciais ou inferência.
 
+**Nova instalação em 12/10:** `0.162.0-alpha.17.2` foi inspecionada por geração local de schema; bundle SHA-256 `c7338bc0830b61fb07ba35325d4fbeb8207a919e53468c664dda5803aacb6c8e`. Os campos de start/resume/turn usados pelo próximo percurso foram conferidos antes da admissão explícita dessa versão no harness. O [incremento de OX-001](m0-resume-worktree-increment.md) distingue schema, preflight de metadados e prova live ainda pendente; as tabelas abaixo continuam identificando a inspeção histórica `.2`.
+
 ## Evidência local e versão
 
 - Binário observado: `codex-cli 0.162.0-alpha.2`.

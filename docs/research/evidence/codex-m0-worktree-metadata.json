@@ -1,0 +1,80 @@
+{
+  "schemaVersion": 1,
+  "date": "2026-10-12T19:10:32.016Z",
+  "experiment": "OX-001/worktree-resume",
+  "liveRequested": false,
+  "liveStarted": false,
+  "status": "metadata-passed",
+  "checks": [
+    "subscription-gates-confirmed",
+    "extensions-disabled",
+    "disposable-worktree",
+    "baseline-check-failed"
+  ],
+  "events": [
+    {
+      "schemaVersion": 1,
+      "sequence": 1,
+      "attemptId": "probe-attempt-1",
+      "type": "runtime.initialized"
+    },
+    {
+      "schemaVersion": 1,
+      "sequence": 2,
+      "attemptId": "probe-attempt-1",
+      "type": "connection.observed",
+      "authType": "chatgpt",
+      "authenticated": true
+    }
+  ],
+  "processes": [
+    {
+      "code": 0,
+      "signal": null,
+      "parentExited": true,
+      "treeTermination": "unknown",
+      "stdioClosed": true,
+      "observationDetached": false
+    }
+  ],
+  "limits": [
+    "Disposable fixture only; not the production worker or SQLite recovery",
+    "Runtime conversational persistence remains owned by Codex",
+    "Parent exits observed; Windows process-tree containment integration is still pending",
+    "No CLI exec comparison or independent account/quota proof",
+    "Sandbox resolution is not a Windows filesystem/network enforcement certification"
+  ],
+  "workspace": {
+    "disposable": true,
+    "retainedForInspection": true,
+    "base": "d7693a78557412a1de5d50587769265e2f69b1d5",
+    "baselineCheck": {
+      "passed": false,
+      "exitCode": 1,
+      "cases": 0
+    },
+    "mainUnchanged": true
+  },
+  "runtimeVersion": "0.162.0-alpha.17.2",
+  "auth": {
+    "type": "chatgpt",
+    "authenticated": true,
+    "requiresOpenaiAuth": true,
+    "subscriptionGate": true
+  },
+  "availability": true,
+  "endpoints": {
+    "providerOpenai": true,
+    "officialEndpointConfirmed": true,
+    "resources": {
+      "hooksDisabled": true,
+      "pluginsDisabled": true,
+      "appsDisabled": true,
+      "nativeDelegationDisabled": true,
+      "notifyDisabled": true,
+      "mcpConfiguredCount": 1,
+      "mcpDisabled": true
+    }
+  },
+  "durationMs": 3808
+}
