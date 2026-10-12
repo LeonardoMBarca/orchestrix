@@ -6,3 +6,5 @@ prototypes/desktop/video-config.json text eol=lf
 prototypes/desktop/locales/*.json text eol=lf
 prototypes/desktop/locales/*.js text eol=lf
 prototypes/desktop/assets/**/*.svg text eol=lf
+# Research patches record exact byte counts and SHA-256 values.
+docs/research/evidence/*.patch text eol=lf

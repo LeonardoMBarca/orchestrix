@@ -10,7 +10,7 @@ Verified public repositories, exact commits, licenses, architecture and componen
 
 ### [M0 Worktree and Resume Increment](./research/m0-resume-worktree-increment.md)
 
-Resumes OX-001 after the human D1 retest. The [authorized live validation](./research/m0-live-validation-2026-10-12.md) observed same-thread read-only resume, a sandbox-blocked edit and unproven supervised cancellation. The corrected harness passed 95/95 offline tests; explicit MXC passed a deterministic write/five checks and a strict metadata preflight without inference. Model-produced edits, the complete live path, Windows tree supervision and CLI comparison remain pending. Further live turns need renewed opt-in; the D1 pilot gate remains released.
+Resumes OX-001 after the human D1 retest. The [live validation record](./research/m0-live-validation-2026-10-12.md) preserves the initially blocked attempt and a second three-turn authorization that passed with MXC: model-produced edit/five checks, same-thread resume under the same write policy and confirmed turn interruption. The unchanged harness previously passed 95/95 offline tests. Windows tree supervision and CLI comparison remain pending; further inference needs specific opt-in. The D1 pilot gate remains released.
 
 ### [D1 Activity Rail and Files](./design/activity-shell-revision.md)
 
