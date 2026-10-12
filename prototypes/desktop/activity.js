@@ -11,6 +11,11 @@
   const popup=document.getElementById('app-menu-popup');
   const mobile=()=>matchMedia('(max-width:800px)').matches;
   const dock=()=>window.OrchestrixDock;
+  function workspaceExpanded(layout=dock().getLayout()){
+    const zone=layout.positions.navigation;
+    // A selected rail activity may be behind Sessions or Work in a shared dock.
+    return layout.active[zone]==='navigation'&&!layout.collapsed[zone]&&(!mobile()||app.dataset.mobileDock===zone);
+  }
   function rememberEditable(event) {
     const element=event?.target||document.activeElement;
     if(element?.matches('textarea,input:not([type]),input:is([type="text"],[type="search"],[type="tel"],[type="url"],[type="password"]),[contenteditable="true"]'))lastEditable={element,start:element.selectionStart,end:element.selectionEnd};
@@ -42,8 +47,7 @@
       const selected=button.dataset.activity===id;button.classList.toggle('active',selected);
       button.setAttribute('aria-description',t('Arraste para ordenar. Use Alt com as setas para mover a atividade.'));
       if(selected)button.setAttribute('aria-current','page');else button.removeAttribute('aria-current');
-      const zone=dock().getLayout().positions.navigation;
-      button.setAttribute('aria-expanded',String(selected&&id!=='chat'&&(mobile()?app.dataset.mobileDock===zone:!dock().isCollapsed(zone))));
+      button.setAttribute('aria-expanded',String(selected&&id!=='chat'&&workspaceExpanded()));
     }
     document.querySelectorAll('[data-activity-pane]').forEach(pane=>{pane.hidden=pane.dataset.activityPane!==id;});
     const label=document.querySelector('#navigation-panel .dock-panel-handle>span:nth-child(2)');
@@ -61,7 +65,7 @@
   function select(id,{toggle=false}={}){
     if(!defaults.includes(id))return;
     api.rememberComposer?.();
-    const wasActive=active===id,zone=dock().getLayout().positions.navigation;
+    const wasActive=active===id,wasExpanded=workspaceExpanded(),zone=dock().getLayout().positions.navigation;
     setActive(id);
     if(id==='chat'){
       window.OrchestrixFiles?.showChat();
@@ -70,8 +74,8 @@
       closeMobile();return;
     }else if(id==='studio'){document.getElementById('studio-navigation').open=true;window.OrchestrixFiles?.showChat();api.navigate('work');}
     else if(id==='connections'){window.OrchestrixFiles?.showChat();api.navigate('connections');}
-    if(toggle&&wasActive&&!dock().isCollapsed(zone)){
-      if(mobile()){if(app.dataset.mobileDock===zone)closeMobile();else app.dataset.mobileDock=zone;}
+    if(toggle&&wasActive&&wasExpanded){
+      if(mobile())closeMobile();
       else dock().collapse(zone);
     }else openPrimary();
     setActive(id);
@@ -221,6 +225,9 @@
     });
     document.addEventListener('orchestrix:files-chat',()=>{if(api.getState().view!=='chat')api.navigate('chat');setActive('chat');closeMobile();api.focusComposer?.();});
     document.addEventListener('orchestrix:layout-change',()=>setActive(active));
+    document.addEventListener('orchestrix:panel-move',({detail})=>{
+      if(mobile()&&detail.wasActive&&app.dataset.mobileDock===detail.from){app.dataset.mobileDock=detail.zone;setActive(active);}
+    });
     document.addEventListener('orchestrix:language-change',()=>{closeMenu();sync();});
     addEventListener('resize',()=>{closeMenu();if(!mobile())closeMobile();});
     sync();

@@ -1,6 +1,6 @@
 # Catálogo textual de imagens do Orchestrix
 
-Atualizado em **12 de outubro de 2026**. Este é o índice para encontrar imagens pelo assunto, aparência e uso, sem abrir cada arquivo. A coleção mapeada reúne **59 arquivos de imagem versionáveis** e **141 capturas locais de QA e diagnóstico**, incluindo conceitos, variantes transparentes e seis diagramas de ajuda. A revisão de atividades/arquivos acrescentou um SVG de ajuda e onze capturas locais; os refinamentos de Chat direto e de ações de arquivos acrescentaram três capturas cada. A revisão de sessões acrescentou treze capturas e o refinamento Compact/API acrescentou dezoito. O histórico anterior tinha 53 imagens e 77 capturas. Caminhos são relativos a este documento; nomes e aliases podem ser pesquisados com `rg`.
+Atualizado em **12 de outubro de 2026**. Este é o índice para encontrar imagens pelo assunto, aparência e uso, sem abrir cada arquivo. A coleção mapeada reúne **59 arquivos de imagem versionáveis** e **145 capturas locais de QA e diagnóstico**, incluindo conceitos, variantes transparentes e seis diagramas de ajuda. A revisão de atividades/arquivos acrescentou um SVG de ajuda e onze capturas locais; os refinamentos de Chat direto e de ações de arquivos acrescentaram três capturas cada. A revisão de sessões acrescentou treze capturas e o refinamento Compact/API acrescentou dezoito. O histórico anterior tinha 53 imagens e 77 capturas. As correções do piloto acrescentam quatro capturas locais de composer/projetos e atualizam o diagrama de sessões para o menu + e New project textual. Caminhos são relativos a este documento; nomes e aliases podem ser pesquisados com `rg`.
 
 ## Como encontrar e interpretar
 
@@ -286,3 +286,14 @@ Capturas locais em `prototypes/desktop/artifacts/`, ignoradas pelo Git e regener
 | `file-actions-menu-1440.png` | Menu File com New file, Open file e Open folder, sem sessões ou ações globais de salvar/fechar. File menu; file actions; single file; keyboard shortcuts. | 1440 × 900 |
 | `new-file-dialog-1440-en.png` | Diálogo centralizado New file em inglês, nome night-flight.md e destino obrigatório ainda não selecionado. Filename; extension; destination folder; explicit create; English. | 1440 × 900 |
 | `new-file-dialog-390-es.png` | Diálogo Nuevo archivo em espanhol no mobile; nome preservado e seleção de pasta refluída verticalmente. Spanish; mobile; destination; responsive dialog; preserved input. | 390 × 844 |
+
+## Correções do piloto — 12/10/2026
+
+Capturas locais em `prototypes/desktop/artifacts/`, ignoradas pelo Git. Mostram as correções solicitadas no retorno humano; dados de conversa/arquivo são preparação controlada de QA, sem execução de agentes. O diagrama versionado `assets/help/session-tree.svg` também foi atualizado para representar + de contexto, New project textual e chat-plus pequeno na linha do projeto.
+
+| Arquivo | Assunto, finalidade e aliases | Dimensões |
+| --- | --- | --- |
+| `pilot-feedback-home-1440.png` | Entrada com New project ao lado de New session, ação compacta de projeto e controles Automatic model/Development no composer. Project toolbar; chat plus; session model; work mode. | 1440 × 900 |
+| `pilot-feedback-context-1440.png` | Menu + aberto com Attach documents, Attach to project e Project context. Context menu; attachments; project association; compact composer. | 1440 × 900 |
+| `pilot-feedback-conversation-end-1440.png` | Conversa longa após envio posicionada no fim, com documento flight-notes.md, modelo/modo e Send. Scroll bottom; follow conversation; text attachment; no Discussing. | 1440 × 900 |
+| `pilot-feedback-composer-390-es-200.png` | Composer mobile em espanhol a 200%, com documento, modelo, modo e Send visível após evento identificado de conclusão de resposta. Spanish; text scale; mobile; response complete; reflow. | 390 × 844 |

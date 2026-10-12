@@ -30,8 +30,8 @@
   function saveUI(ui) {applyUI(ui);try{localStorage.setItem('orchestrix-prototype-layout',JSON.stringify({width:ui.width,density:ui.density,textSize:ui.textSize,textScale:ui.textScale}));}catch{}}
   function createContext(task,state) {
     const selected=state.contextSelection||['service','test','policy'];
-    const files=state.mockScenario?referenceFiles.filter(file=>selected.includes(file.id)||(task.config.context==='module'&&file.id==='module')).map(file=>({...file})):[];
-    return {id:`CP-${task.id}-${task.attempt}`,version:`c${task.attempt}`,base:state.base,objective:task.summary,correction:task.correction||'',decision:task.decision||'',criteria:task.criteria||[t('Resultado alinhado ao objetivo.'),t('Evidências e revisão vinculadas ao artefato.')],sources:files,session:`S-${task.id}-${task.attempt}`,connectionId:task.connectionId,model:task.config.model,thinking:task.config.thinking,systemPrompt:task.config.systemPrompt||'',project:{id:state.isLoose?null:state.projectId,name:state.project,path:state.projectPath,sharedContext:state.projectContext||''}};
+    const files=[...(state.mockScenario?referenceFiles.filter(file=>selected.includes(file.id)||(task.config.context==='module'&&file.id==='module')).map(file=>({...file})):[]),...window.OrchestrixComposer.sources(window.OrchestrixComposer.contextChat(state,task))];
+    return {id:`CP-${task.id}-${task.attempt}`,version:`c${task.attempt}`,base:state.base,objective:task.summary,correction:task.correction||'',decision:task.decision||'',criteria:task.criteria||[t('Resultado alinhado ao objetivo.'),t('Evidências e revisão vinculadas ao artefato.')],sources:files,mode:task.config.mode||'development',session:`S-${task.id}-${task.attempt}`,connectionId:task.connectionId,model:task.config.model,thinking:task.config.thinking,systemPrompt:task.config.systemPrompt||'',project:{id:state.isLoose?null:state.projectId,name:state.project,path:state.projectPath,sharedContext:state.projectContext||''}};
   }
   function contextModal(task,state,h,sourceId) {
     const pack=task.contextPack;

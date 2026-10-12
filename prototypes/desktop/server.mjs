@@ -16,6 +16,7 @@ const files = new Map([
   ['/workspace.js', ['workspace.js', 'text/javascript; charset=utf-8']],
   ['/connections.js', ['connections.js', 'text/javascript; charset=utf-8']],
   ['/experience.js', ['experience.js', 'text/javascript; charset=utf-8']],
+  ['/chat-controls.js', ['chat-controls.js', 'text/javascript; charset=utf-8']],
   ['/experience.css', ['experience.css', 'text/css; charset=utf-8']],
   ['/shell.css', ['shell.css', 'text/css; charset=utf-8']],
   ['/activity.css', ['activity.css', 'text/css; charset=utf-8']],

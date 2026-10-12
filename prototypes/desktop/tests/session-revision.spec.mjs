@@ -4,6 +4,7 @@ const input=page=>page.locator('#chat-message');
 const state=page=>page.evaluate(()=>({projectId:OrchestrixApp.getState().projectId,chatId:OrchestrixApp.getState().chat.id,isLoose:OrchestrixApp.getState().isLoose}));
 async function sessions(page){await page.evaluate(()=>OrchestrixDock.activate('sessions'));}
 async function newSession(page){await sessions(page);await page.locator('.new-session-trigger').click();}
+async function contextAction(page,action){await page.locator('#chat-add-context').click();await page.locator(`#chat-context-menu [data-action="${action}"]`).click();}
 async function createProject(page,name,path=''){
   await sessions(page);await page.locator('.session-toolbar [data-action="onboarding"]').click();
   await page.locator('#entry-name').fill(name);await page.locator('#entry-path').fill(path);
@@ -35,17 +36,17 @@ test('project creation needs no account and adds a nested session without losing
   await createProject(page,'Scientific notes','C:\\Work\\Papers');const project=await state(page);expect(project.isLoose).toBe(false);
   expect(await page.evaluate(()=>OrchestrixApp.getState().connections.length)).toBe(0);
   await expect(page.locator(`.session-project[data-project-id="${project.projectId}"]`)).toContainText('Scientific notes');
-  await input(page).fill('Project session draft');await page.locator(`.session-project[data-project-id="${project.projectId}"] [data-new-session-project]`).click();
+  await input(page).fill('Project session draft');await page.locator(`[data-new-session-project="${project.projectId}"]`).click();
   const second=await state(page);expect(second.projectId).toBe(project.projectId);expect(second.chatId).not.toBe(project.chatId);await expect(input(page)).toHaveValue('');
   await select(page,project.chatId);await expect(input(page)).toHaveValue('Project session draft');await select(page,independent.chatId);await expect(input(page)).toHaveValue('Keep my independent idea');
 });
 
 test('attach to an existing project preserves identity, history, draft and old context provenance',async ({page})=>{
   await page.goto('/');await createProject(page,'Shared project','/work/shared');const project=await state(page);
-  await newSession(page);await page.locator('#chat-form [data-action="session-directory"]').click();await page.locator('#session-directory').fill('/work/independent');await page.getByRole('button',{name:'Save directory',exact:true}).click();
+  await newSession(page);await contextAction(page,'session-directory');await page.locator('#session-directory').fill('/work/independent');await page.getByRole('button',{name:'Save directory',exact:true}).click();
   const original=await state(page);await input(page).fill('Investigate the parser');await input(page).press('Enter');await input(page).fill('Unsent clarification');
   const before=await page.evaluate(()=>structuredClone(OrchestrixApp.getState().tasks[0].contextPack));
-  await page.locator('[data-action="session-attach"]').click();await page.locator(`[data-attach-project="${project.projectId}"]`).click();
+  await contextAction(page,'session-attach');await page.locator(`[data-attach-project="${project.projectId}"]`).click();
   const after=await state(page);expect(after.chatId).toBe(original.chatId);expect(after.projectId).toBe(project.projectId);expect(after.isLoose).toBe(false);
   await expect(input(page)).toHaveValue('Unsent clarification');await expect(page.getByRole('log',{name:'Chat',exact:true})).toContainText('Investigate the parser');
   expect(await page.evaluate(()=>OrchestrixApp.getState().tasks[0].contextPack)).toEqual(before);
@@ -55,7 +56,7 @@ test('attach to an existing project preserves identity, history, draft and old c
 
 test('create project around current session keeps its identity and draft',async ({page})=>{
   await page.goto('/');const before=await state(page);await input(page).fill('Build this with me');
-  await page.locator('[data-action="session-attach"]').click();await page.locator('#entry-name').fill('New direction');await page.getByRole('button',{name:'Create and attach session',exact:true}).click();
+  await contextAction(page,'session-attach');await page.locator('#entry-name').fill('New direction');await page.getByRole('button',{name:'Create and attach session',exact:true}).click();
   const after=await state(page);expect(after.chatId).toBe(before.chatId);expect(after.projectId).toBe(before.projectId);expect(after.isLoose).toBe(false);await expect(input(page)).toHaveValue('Build this with me');
 });
 

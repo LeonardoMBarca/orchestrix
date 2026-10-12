@@ -18,6 +18,18 @@ Chat abre diretamente a conversa, sem um painel lateral próprio com atalhos red
 
 Arrastar painéis conserva os dois destinos laterais e o blur temporário já definido. Reordenar atividades muda a preferência de navegação, sem modificar contas, papéis de agentes ou políticas de execução. Reset layout restaura os lados, larguras e disposição inicial previstos pelo controle. A barra fixa continua disponível quando um dock está recolhido.
 
+## Retorno humano e correções de OX-D05 — 12/10
+
+O responsável [reportou execução favorável do piloto, exceto pelo deslocamento dos painéis](d1-pilot.md#piloto-reportado-pelo-responsável--1210). **D1-FB-01** registra que mover o painel de atividades e alternar a barra fixa pode deixar conteúdos diferentes em ambos os lados. O comportamento requerido é uma única instância móvel de Navigation: Files, Studio e Connections trocam seu conteúdo no lado escolhido, sem recriar o painel no lado padrão. Chat oculta Navigation e conserva a posição de Sessions, que permanece independente. Mover para o outro lado e voltar, inclusive quando os painéis compartilham abas, deve preservar esse contrato.
+
+O mesmo retorno define ajustes nas ações frequentes, sem alterar a identidade ou os milestones:
+
+- Enviar uma mensagem leva a conversa ao limite inferior. Concluir uma resposta deve fazer o mesmo, quando houver esse evento; não se trata de prova de integração ou inferência de um runtime.
+- A barra do composer dispensa “Discussing”, **Set directory** e **Attach to project** como ações separadas. O **+** concentra anexos/documentos e associação da sessão a um projeto. Seleção do orquestrador e modo de desenvolvimento permanecem ações da sessão, respeitando capacidades reais e configuração manual.
+- Sessions apresenta **New session** e **New project** com texto. Cada nome de projeto recebe uma ação compacta de chat com **+** para criar sessão naquele projeto; não há um botão grande separado por projeto.
+
+A implementação e os checks abaixo identificam a versão corrigida. O [reteste humano do docking](d1-pilot.md#piloto-reportado-pelo-responsável--1210) e a decisão explícita do gate permanecem pendentes; os resultados agregados do piloto não aprovam individualmente os casos P0 ou condições ainda indisponíveis.
+
 ## Arquivos sem ampliar para IDE
 
 A edição leve atende casos explícitos do responsável: ajustar um `.env`, ler documentos gerados e revisar Markdown dentro do Orchestrix. Não introduz execução de código, debugger, language server, terminal ou gestão de extensões.
@@ -72,6 +84,23 @@ Os seis casos novos de Files verificam arquivo avulso com mesmo nome sem perder 
 
 Três capturas de menu e diálogo em desktop/mobile foram examinadas e [catalogadas](visual-asset-catalog.md#ações-de-arquivos--12102026), sem overflow horizontal ou chaves ausentes. O percurso adicional por HTML direto abriu um arquivo avulso, criou um rascunho explícito quando o picker nativo foi desabilitado e baixou sua cópia por Ctrl+S, sem requisições externas ou erros JavaScript. A troca programática de idioma manteve o nome digitado. As 13 composições gerais do refinamento anterior não foram repetidas nesta mudança focada.
 
-O [manifesto atual](d1-build-manifest.json) identifica **70 arquivos**, SHA-256 `580bc13d13801c69aac436ab5fce923691d29abb47982bd875fc9020d85c2613`.
+O [build anterior às correções do piloto](builds/2026-10-12-before-pilot-feedback.json) preserva a entrega de arquivos com **70 arquivos**, SHA-256 `580bc13d13801c69aac436ab5fce923691d29abb47982bd875fc9020d85c2613`.
 
-O [piloto](d1-pilot.md) foi atualizado para a organização atual, mas segue adiado até o responsável considerar a interface pronta. Testes automatizados e preferência estética não substituem as observações reais do piloto. O fluxo D0 → D1 → M0 → M1 → M2 e os tickets existentes são preservados.
+Naquele fechamento, o [piloto](d1-pilot.md) ainda estava adiado. O retorno humano posterior e a correção técnica estão registrados nesta revisão; reteste do docking e decisão do gate seguem pendentes. Testes automatizados e preferência estética não substituem as observações reais do piloto. O fluxo D0 → D1 → M0 → M1 → M2 e os tickets existentes são preservados.
+
+## Validação das correções do piloto
+
+A correção distingue atividade selecionada no rail de Workspace realmente visível: se Sessions/Work ocupa a aba ativa, clicar Files/Studio/Connections ativa Navigation no lado salvo, sem recolher o dock ou duplicar o painel. `aria-expanded` acompanha a visibilidade. O movimento mobile transfere o overlay para o destino. Chat continua sem painel próprio; Sessions e Work permanecem independentes.
+
+O composer passa ao limite inferior após envio e registro de resposta. O contrato futuro `orchestrix:response-complete` exige `detail.sessionId` e ignora outra sessão/Files, sem mover foco. O + reúne documentos, associação e diretório/contexto. Modelo e os seis modos são preferências por sessão, registradas nas novas tentativas; o seletor distingue contas mesmo com IDs de modelo iguais e exclui API em Subscription Only. Documentos de texto UTF-8 explicitamente selecionados ficam na sessão e no snapshot, com remoção sem alterar tentativas anteriores. Retry de uma tarefa usa a sessão dona, mesmo com outra sessão do projeto ativa. Motores especializados, extração de PDF/binários e integração de runtime não foram implementados.
+
+`npm run check` passou com **1.655 chaves EN/PT-BR/ES**. A cobertura consolidada compreende **106 cenários browser distintos**, sem afirmar uma única rodada de 106 aprovações:
+
+- Docking/atividade: **22/22 em 1,1 minuto**, incluindo duas regressões que reproduziram as falhas antes da correção. Rodadas intermediárias foram interrompidas durante integração do novo módulo/rota HTTP; não certificam o build final.
+- Chat/sessões: **16/16 em 46,1 segundos**, com seis regressões novas para +, projetos, anexos, rolagem e preferências por sessão.
+- Arquivos, entrada, Settings, idiomas, ajuda e chat: **65/67 em 2,2 minutos**. Duas falhas esperavam controles/conteúdo antigos: botão grande de sessão por projeto removido e busca “Subscription Only” que agora encontra dois guias. Os testes passaram a usar a ação compacta e verificar os dois resultados reais; os critérios de comportamento foram preservados.
+- Conjunto final: **23/23 em 46,3 segundos**, cobrindo novamente chat/projeto/ajuda e os seis novos casos, mais um sétimo para Retry entre sessões com modo/modelo/documentos diferentes e histórico preservado. Esta rodada inclui os dois casos corrigidos acima e se sobrepõe às anteriores.
+
+`npm run check:file` passou **13 composições** EN/PT-BR/ES e jornada/persistência pelo HTML direto: sem erros JavaScript, imagens quebradas, chaves ausentes, overflow horizontal ou requisições externas; desktop a 100% sem rolagem inicial. Quatro capturas adicionais por HTML direto foram examinadas e [catalogadas](visual-asset-catalog.md#correções-do-piloto--12102026), incluindo composer em espanhol a 200% e conclusão identificada da resposta levando ao Send visível. O diagrama de sessões acompanha o menu + e New project textual.
+
+O [manifesto atual](d1-build-manifest.json) identifica **72 arquivos**, SHA-256 `5a2b4e36069e8f90ded5e7c0d8c07a9bc9a13e30723503e67776337927d42288`. O [build anterior](builds/2026-10-12-before-pilot-feedback.json) preserva a referência de 7be9c42. Catálogos, arquivos/handles e estados de execução usados em testes foram controlados; nenhuma conta real ou runtime live foi consultado. O reteste humano de D1-FB-01 e a decisão explícita sobre o gate/condições P0 indisponíveis continuam pendentes.

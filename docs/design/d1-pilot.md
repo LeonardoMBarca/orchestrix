@@ -1,24 +1,42 @@
 # D1 — Piloto inicial de experiência
 
-Roteiro preparado em **8 de outubro de 2026**, atualizado em **12 de outubro de 2026**, com a [barra fixa de atividades e arquivos](activity-shell-revision.md), após a [conclusão de D0](../research/d0-conclusion.md). **O responsável adiou explicitamente o piloto até que a interface esteja de acordo com a direção desejada. Execução ainda não confirmada; gate de D1 aberto.** A identidade visual foi aprovada anteriormente; a organização atual e o [contrato vigente do shell](../../design-system/workspace-shell.md) ainda precisam de avaliação de uso. As observações, conclusão das tarefas e resultados da sessão permanecem pendentes, com os campos em branco.
+Roteiro preparado em **8 de outubro de 2026**, atualizado em **12 de outubro de 2026**, com a [barra fixa de atividades e arquivos](activity-shell-revision.md), após a [conclusão de D0](../research/d0-conclusion.md). **O responsável reportou a execução do piloto em 12/10, com resultado geral favorável e falha no deslocamento dos painéis. A correção técnica foi entregue e verificada; o gate D1 permanece aberto até reteste humano do docking e decisão explícita de passagem.** A identidade visual foi aprovada anteriormente. O relato abaixo registra somente o que foi informado; não atribui aprovação individual aos casos P0 nem demonstra contratos de runtime.
 
 O piloto avalia se o responsável pelo produto consegue conduzir desenvolvimento assistido no aplicativo: formular trabalho, fornecer contexto, acompanhar, ler código/diff, pedir correção e controlar a entrega. A organização pode ser avaliada sem autenticação, inferência ou operações Git. O percurso de Files usa somente arquivos selecionados para o estudo e distingue importação de acesso autorizado à pasta; ele não demonstra a coordenação de escrita com workers de produção. Os casos de execução históricos usam fixtures internas de teste. O resultado deste piloto informa a experiência; os contratos reais continuam em M0/M1/M2/M3.
 
 Referências: [OX-D03/04/05 e dependências](../DEVELOPMENT_BACKLOG.md), [POS-01 a POS-16](../research/product-positioning.md), [ACC-01 a ACC-07](../research/subscription-account-ux.md), [protocolo de avaliação](../research/experience-decisions.md#8-piloto-e-avaliação-de-uso--roteiro-ainda-não-executado), [protótipo](../../prototypes/desktop/README.md) e [matriz dos casos](d1-scenario-matrix.md).
 
+## Piloto reportado pelo responsável — 12/10
+
+**Fonte:** retorno explícito do responsável no contexto de desenvolvimento: “O piloto deu tudo certo, só a parte dos painéis como comentei que não”. Esse retorno confirma a execução reportada e uma avaliação geral favorável, com a exceção abaixo; não é apenas aprovação estética.
+
+**Base disponível na retomada:** branch `docs/development-plan`, commit `7be9c42`, manifesto estático de 70 arquivos, digest `580bc13d13801c69aac436ab5fce923691d29abb47982bd875fc9020d85c2613`. Não foram informados a versão carregada durante a avaliação, viewport, duração, ajuda recebida ou resultados por caso/subcaso. Não se presume que a confirmação agregada cubra todos os P0. Os campos detalhados continuam sem resultado atribuído quando não há observação correspondente.
+
+**Problema observado (D1-FB-01):** mover o painel que começa à esquerda e depois alternar as atividades fixas pode fazer conteúdo aparecer em ambos os lados, com conteúdos diferentes. A expectativa do responsável é que Files, Studio e Connections compartilhem o painel móvel de atividades: após movê-lo, os botões fixos devem alternar o conteúdo somente no lado escolhido. Sessions continua um painel independente. O relato alcança o percurso Distribuir e o controle/adaptação de P0-09; os subcasos de teclado, recolhimento, escala e persistência não receberam resultado individual. A falha foi corrigida tecnicamente neste incremento, com regressões verificadas; permanece impedimento de passagem até reteste humano, sem atribuir severidade ou resultado humano não informado.
+
+**Ajustes solicitados no mesmo retorno:**
+
+- Levar a conversa ao final após enviar uma mensagem e após a conclusão de uma resposta; o segundo gatilho ainda não demonstra uma resposta de runtime real.
+- Remover o estado “Discussing” da barra de mensagem. Reunir anexos/documentos e associação a projeto no botão **+**, deixando seleção do orquestrador e modo de desenvolvimento nas ações da sessão.
+- Exibir **New project** com texto ao lado de **New session** em Sessions. Dentro de cada projeto, criar sessão pelo pequeno ícone de chat com **+** junto ao nome, sem o botão grande separado.
+
+São correções e ajustes desta avaliação D1, sem novos milestones. Sua implementação e evidência técnica devem ser registradas no incremento; este relato não as antecipa nem autoriza execução paga.
+
+**Reteste humano necessário:** após a correção, mover o painel de atividades para a direita, alternar Files/Studio/Connections na barra fixa, retornar à esquerda e repetir. Conferir que existe uma única instância do painel de atividades, no lado escolhido, que Chat a oculta sem mover Sessions e que a conversa permanece. Esse reteste, as condições P0 indisponíveis e a decisão explícita de passagem continuam pendentes. A avaliação externa de três a cinco desenvolvedores permanece em OX-017.
+
 <a id="primeiro-percurso-atual--sete-passos-pelo-chat"></a>
 
 ## Primeiro percurso atual — oito passos pelo chat
 
-**Preparação para retomar após a avaliação da interface, sem novo convite de piloto nesta revisão.** Abra [index.html](../../prototypes/desktop/index.html) diretamente ou a [prévia HTTP](http://127.0.0.1:4173/index.html). Uma entrada normal sem estado salvo tem uma sessão independente, sem contas/projetos/tarefas de estudo preenchidos. Se houver trabalho salvo, use um perfil ou janela de avaliação separados; não apague os rascunhos da pessoa para preparar o caso.
+**Roteiro de referência da avaliação e dos retestes.** Abra [index.html](../../prototypes/desktop/index.html) diretamente ou a [prévia HTTP](http://127.0.0.1:4173/index.html). Uma entrada normal sem estado salvo tem uma sessão independente, sem contas/projetos/tarefas de estudo preenchidos. Se houver trabalho salvo, use um perfil ou janela de avaliação separados; não apague os rascunhos da pessoa para preparar o caso. O retorno agregado acima não obriga a repetir todas as etapas: priorizar a falha reportada e as áreas modificadas, sem preencher os resultados desconhecidos dos demais casos.
 
 Os nomes abaixo usam English. Idioma fica em **Settings → General → Interface language**; os temas em **Settings → Themes**. A barra fixa à esquerda começa com **Chat, Files, Studio, Connections**, com Help, Settings e Profile na base. Chat abre diretamente a conversa, sem painel lateral próprio; Files, Studio e Connections abrem seu painel à esquerda por padrão. Sessions começa à direita e permanece independente. Densidade inicial **Compact**, escala **100%**. O objetivo inicial é avaliar a organização sem depender de uma integração de runtime ainda indisponível.
 
-1. **Começar:** localize logo, “What shall we create today?”, cartões de início, sugestões e campo de mensagem, cujo label é acessível sem ocupar a composição. Escreva um rascunho e explique qual seria o próximo passo para trabalhar sem projeto.
+1. **Começar:** localize logo, “What shall we create today?”, cartões de início, sugestões e campo de mensagem, cujo label é acessível sem ocupar a composição. Escreva um rascunho e explique qual seria o próximo passo para trabalhar sem projeto. Na versão corrigida, ao enviar confira a conversa no limite inferior; a conclusão de resposta real continua condicionada à disponibilidade do runtime.
 2. **Trocar de sessão:** use o único comando principal **New session**, no painel Sessions à direita, escreva outro rascunho e volte à primeira pela lista. Confira as mensagens/rascunhos próprios e o destaque da sessão ativa; recarregue para avaliar a retomada no mesmo navegador.
-3. **Organizar:** use **New project** ou **Open or create project**, informe nome, diretório e contexto compartilhado e crie a sessão do projeto. Volte à sessão independente, escolha **Attach to project** e selecione o projeto. Confira se a conversa preservou identidade e rascunho e se o novo contexto/destino ficou claro. O caminho registrado não concede acesso real à pasta.
+3. **Organizar:** use **New project**, ao lado de **New session**, ou **Open or create project**, informe nome, diretório e contexto compartilhado e crie a sessão do projeto. Use o pequeno ícone de chat com **+** junto ao nome para criar outra sessão naquele projeto. Volte à sessão independente, abra **+** no composer e escolha a associação a projeto. Confira se a conversa preservou identidade e rascunho e se o novo contexto/destino ficou claro. O caminho registrado não concede acesso real à pasta. Essas entradas correspondem à correção solicitada no retorno de 12/10, cuja versão final deve acompanhar o reteste.
 4. **Encontrar:** crie outra sessão do projeto e use a busca/lista de Sessions para voltar ao trabalho desejado. Observe se projetos expansíveis e sessões independentes dispensam os dois seletores anteriores.
-5. **Distribuir:** abra Files e mova Sessions para a esquerda para compartilhar o lado com o painel de arquivos; alterne as abas. Observe os dois destinos laterais destacados e o blur temporário enquanto escolhe um lado; cancele uma escolha e confira que o efeito desaparece. Volte Sessions para a direita pelo menu/teclado. Reduza cada divisória até recolher o lado e expanda pela borda. Reordene os itens da barra fixa e confira que ela permanece no lugar. Use **Settings → Panel layout → Reset layout** e confirme o arranjo inicial. Volte a Chat e confira que seu painel lateral desaparece sem recolher Sessions ou perder o rascunho. Não há destino inferior.
+5. **Distribuir:** abra Files e mova o painel de atividades para a direita. Alterne Files, Studio e Connections pela barra fixa: somente o conteúdo daquele painel deve mudar, sem surgir uma instância no lado padrão. Volte o painel para a esquerda e repita; confira também o compartilhamento de abas com Sessions. Observe os dois destinos laterais destacados e o blur temporário enquanto escolhe um lado; cancele uma escolha e confira que o efeito desaparece. Mova Sessions separadamente e confirme que seu lado é independente do painel de atividades. Reduza cada divisória até recolher o lado e expanda pela borda. Reordene os itens da barra fixa e confira que ela permanece no lugar. Use **Settings → Panel layout → Reset layout** e confirme o arranjo inicial. Volte a Chat e confira que Navigation desaparece sem recolher Sessions ou perder o rascunho. Não há destino inferior. O retorno de 12/10 requer reteste humano desse deslocamento após a correção de D1-FB-01.
 6. **Configurar:** abra a engrenagem e observe a janela centralizada, até 940 × 720px, limitada ao viewport. Escreva um nome/instrução sem salvar, clique fora no chat e reabra Settings: confira o rascunho preservado. Depois salve explicitamente. Em General, altere idioma/densidade e experimente o slider de texto entre 80% e 200%, em passos de 5%; restaure 100%. Em Themes, escolha outra aparência. Verifique que fechar Settings não substitui a conversa ou desfaz preferências visuais já aplicadas.
 7. **Conexões e ajuda:** em Accounts, diferencie ausência de conexão/uso desconhecido de um limite zero. Inicie o cadastro e escolha **Subscription ou API antes do provedor**; confira os campos pertinentes e experimente um valor temporário no campo de chave sem confirmar o cadastro. A chave permanece em memória; confirmar uma API com o host habilitado inicia a descoberta no provedor escolhido. Explique a diferença entre configuração salva e autenticação verificada, e por que Subscription Only não habilita fallback API. Abra **Help** e confira que ela abre outra página com busca e guias ilustrados. O [contrato de conexão](api-connection-contract.md) e a [pesquisa oficial](../research/api-provider-discovery-2026-10-10.md) orientam esse caso.
 8. **Arquivos e menus:** abra Files e selecione uma pasta ou importe arquivos preparados para o estudo. Abra texto e Markdown, alterne a prévia, faça uma pequena alteração e volte ao chat para conferir seu rascunho. Explique se salvar altera a origem autorizada ou produz uma cópia. Cancele uma seleção sem perder a edição e confirme o tratamento de mudanças não salvas. Confira as ações File/Edit/View/Help pertinentes ao contexto e o acesso ao perfil na base da barra. Não usar segredos ou arquivos importantes para testar descarte/permissões.
@@ -318,7 +336,7 @@ Os nove grupos abaixo conservam o escopo de avaliação. Seus rótulos e caminho
 
 **Rastreabilidade:** POS-15/16; OX-D04/05. Desktop real/escala/acessibilidade: OX-012/015/017. Esta sessão não certifica todas as tecnologias assistivas, temas ou escalas Windows.
 
-## Registro em branco
+## Registro detalhado por caso
 
 Usar uma linha por caso **e por subcaso**. Acrescentar linhas quando houver variações/retestes. Resultado possível: não executado, concluído sem ajuda, concluído com ajuda, interrompido, bloqueado/indisponível. Um caso parcialmente realizado não passa por agregação.
 
@@ -340,7 +358,7 @@ Registrar falas como citações somente quando efetivamente ditas; separar obser
 
 | ID | Caso / versão | Evidência observada | Severidade / consequência | Correção / responsável | Versão e resultado do reteste |
 | --- | --- | --- | --- | --- | --- |
-| ______ | ______ | ______ | ______ | ______ | ______ |
+| D1-FB-01 | Distribuir / P0-09; versão carregada não informada | Responsável relata painel de atividades em ambos os lados com conteúdos diferentes após mover e alternar atividades. | Impacto no controle do layout; mantém o gate aberto até correção e reteste. Demais subcasos não classificados por agregação. | Correção técnica entregue; Workspace único e overlay mobile acompanham o lado salvo. Regressões em [validação das correções](activity-shell-revision.md#validação-das-correções-do-piloto). | Reteste humano pendente; evidência técnica não o substitui. |
 
 - **Crítico:** aceitar/aplicar resultado ou destino errado, perder controle/trabalho, duplicar execução por incompreensão, não perceber mudança de cobrança, ou não conseguir concluir uma tarefa essencial. Corrigir e retestar; mantém o gate aberto.
 - **Alto:** etapa essencial exige orientação direta ou linguagem induz interpretação recorrente errada. Registrar correção/prioridade; decidir impacto no gate à luz do controle e da conclusão do fluxo.
@@ -364,7 +382,7 @@ A classificação segue [o protocolo de D0](../research/experience-decisions.md)
 
 ## Checklist de passagem D1 → M0
 
-Este documento prepara a avaliação e não marca itens como concluídos.
+O piloto foi reportado pelo responsável, com a limitação de detalhamento registrada acima. O checklist continua aberto: o relato agregado não comprova todos os itens, a correção precisa de reteste humano e as condições indisponíveis ainda exigem decisão explícita.
 
 - [ ] Versão e manifesto registrados; casos P0 e critérios POS/ACC associados a resultados ou lacunas explícitas.
 - [ ] Direção Studio mantida; interação e adaptação avaliadas, além da preferência visual já informada.
@@ -375,4 +393,4 @@ Este documento prepara a avaliação e não marca itens como concluídos.
 - [ ] Avaliação externa de três a cinco desenvolvedores identificada como pendente para OX-017, quando ainda não realizada.
 - [ ] Decisão de retomar M0 registrada no [status](../DEVELOPMENT_STATUS.md), sem atribuir ao piloto prova de OAuth, supervisão, Git, pooling ou ganhos de produtividade.
 
-**Decisão do gate / responsável / data:** ______. **Problemas que bloqueiam:** ______. **Pendências posteriores com destino:** ______.
+**Decisão do gate / responsável / data:** passagem ainda não decidida. **Problemas que bloqueiam:** D1-FB-01 sem reteste humano após correção; detalhamento/impacto das condições P0 indisponíveis ainda não decidido. **Pendências posteriores com destino:** avaliação externa em OX-017; provas reais de runtime, supervisão, Git e persistência nos marcos técnicos existentes.

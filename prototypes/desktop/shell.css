@@ -63,6 +63,34 @@ html[data-density="comfortable"] :is(.prompt-suggestions button,.topbar #command
 .session-list {padding:14px 12px;overflow:auto;flex:1;min-height:0}
 .session-toolbar {display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:16px}
 .session-toolbar .button {font-size:.857143rem;padding:7px 10px}
+.session-toolbar {flex-wrap:wrap}
+.session-toolbar .new-project-trigger {white-space:nowrap}
+.session-project-group {position:relative;margin:7px 0}
+.session-project-group .session-project {margin:0}
+.session-project-group summary {padding-right:40px}
+.session-project-group summary>span {min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.session-project-group summary>small {margin-left:auto;color:var(--muted);flex-shrink:0}
+.project-new-session {position:absolute;right:3px;top:2px;width:32px;height:32px;display:grid;place-items:center;color:var(--muted);border-radius:7px}
+.project-new-session>svg {width:18px;height:18px}
+.project-new-session:hover {color:var(--accent);background:var(--accent-bg)}
+.composer-tools {display:flex;align-items:center;gap:6px;flex-wrap:wrap;min-width:0;max-width:100%}
+.composer-tools .context-action {margin:0;min-height:32px;padding:5px 8px;font-size:.857143rem;gap:6px}
+.composer-tools .composer-add {width:32px;padding:6px;justify-content:center}
+.chat-context-picker {position:relative;flex-shrink:0}
+.chat-context-menu {position:absolute;bottom:calc(100% + 8px);left:0;z-index:18;padding:5px;min-width:220px;max-width:calc(100vw - 90px);background:var(--panel);border:1px solid var(--border-control);border-radius:10px;box-shadow:0 10px 28px #02071060}
+.chat-context-menu>button {display:flex;align-items:center;gap:9px;width:100%;min-height:36px;text-align:left;padding:7px 10px;border-radius:6px;font-size:.857143rem}
+.chat-context-menu>button:hover,.chat-context-menu>button:focus-visible {background:var(--accent-bg);color:var(--accent)}
+.composer-model {min-width:0;max-width:min(300px,100%);color:var(--accent)}
+.composer-model>span {overflow:hidden;white-space:nowrap;text-overflow:ellipsis;min-width:0}
+.composer-project {display:flex;gap:6px;align-items:center;min-width:0;max-width:100%;color:var(--muted)}
+.composer-project>span {min-width:0;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+.chat-attachments {display:flex;gap:6px;flex-wrap:wrap;padding-block:4px;max-width:100%}
+.chat-attachments:empty {display:none}
+.chat-attachment {display:flex;align-items:center;gap:5px;min-width:0;max-width:100%;padding:3px 5px 3px 8px;background:var(--surface);border:1px solid var(--line);border-radius:8px;font-size:.785714rem}
+.chat-attachment>span {min-width:0;max-width:240px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.chat-attachment svg {width:14px;height:14px;flex-shrink:0}
+.chat-attachment>button {display:grid;place-items:center;width:26px;height:26px;border-radius:5px;flex-shrink:0}
+.chat-attachment>button:hover {color:var(--accent);background:var(--accent-bg)}
 .session-section {margin:18px 0}
 .session-section h2,.session-section h3,.session-section-title {font-size:.785714rem;color:var(--muted);letter-spacing:.07em;text-transform:uppercase;margin:0 8px 10px}
 .session-project {margin:7px 0}

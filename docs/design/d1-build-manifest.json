@@ -1,9 +1,9 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-10-12T16:09:07.739Z",
+  "generatedAt": "2026-10-12T17:28:47.478Z",
   "scope": "D1 static prototype: app, website, video page, help center, local assets and locale sources/catalog; excludes tools, tests, server and documentation",
   "algorithm": "SHA-256 of UTF-8 JSON.stringify(files), sorted by relative path; each entry has path, bytes and sha256 of exact file bytes. generatedAt is excluded.",
-  "buildSha256": "580bc13d13801c69aac436ab5fce923691d29abb47982bd875fc9020d85c2613",
+  "buildSha256": "5a2b4e36069e8f90ded5e7c0d8c07a9bc9a13e30723503e67776337927d42288",
   "files": [
     {
       "path": "activity.css",
@@ -12,13 +12,13 @@
     },
     {
       "path": "activity.js",
-      "bytes": 18032,
-      "sha256": "f6fed4ad8eba4a7ac3017e9af268c6753be0ac6b579b2072487099258b319c59"
+      "bytes": 18385,
+      "sha256": "52f8d3c81caf765c3d6f39cb62133957586e12d45a4a220bc669c8e1f2bd15a7"
     },
     {
       "path": "app.js",
-      "bytes": 112107,
-      "sha256": "e41b149a87ebd79e732cdf96a8236321de2deefc8024c62480ce853ce9cd274f"
+      "bytes": 112959,
+      "sha256": "cc467f919cea6ec60a0fbb59e5f1f09dea037a24a90dc18fd3ff966b5acce799"
     },
     {
       "path": "assets/brand/app-icon-dark.png",
@@ -102,8 +102,8 @@
     },
     {
       "path": "assets/help/session-tree.svg",
-      "bytes": 2695,
-      "sha256": "d5aa39538d0d5f7f3d98cd98faf1cd19fc6134a689c1835f7985e735ab6d6d54"
+      "bytes": 2941,
+      "sha256": "3e7a706d43ee0da35df22dd22c6ed00feb3f087dad16c6db3bdfdace9e0cd60e"
     },
     {
       "path": "assets/help/settings-window.svg",
@@ -124,6 +124,11 @@
       "path": "assets/visuals/night-flight.png",
       "bytes": 2043139,
       "sha256": "64b643b57ad878c1797be2196a11a5724ba821029d31614e7f6af49897088ce2"
+    },
+    {
+      "path": "chat-controls.js",
+      "bytes": 11323,
+      "sha256": "84a32ba8c57f686d9a0683791f30171400f7f90ab44c9c095afef81d932c93cb"
     },
     {
       "path": "connection-diagnostics.js",
@@ -157,8 +162,8 @@
     },
     {
       "path": "docking.js",
-      "bytes": 14085,
-      "sha256": "66d7ab383bb642c3585405f769993d07d8c1ccf1ad6e50faef0b65437ac0af6f"
+      "bytes": 14197,
+      "sha256": "f99823c4ba723a311de71b2fa81f8b5f0ca7b6ab464305e524534212e202679c"
     },
     {
       "path": "experience.css",
@@ -167,8 +172,8 @@
     },
     {
       "path": "experience.js",
-      "bytes": 6191,
-      "sha256": "d6b2c26a64d6185e5e8797ae4add674fd2f1a85f931584e0bb10bf332466b6db"
+      "bytes": 5408,
+      "sha256": "3e53662b7de067ca60a8479a93e736edae92f0207204688d0425e3ef2f9f3112"
     },
     {
       "path": "files.css",
@@ -187,8 +192,8 @@
     },
     {
       "path": "help.html",
-      "bytes": 25024,
-      "sha256": "973da89e2eb0e0c6c31bfb207cfc614780e3a9e333bbabd394efc8937f6a813e"
+      "bytes": 25817,
+      "sha256": "cd809635b1a53856b17392dec4a7f88370d7d6aa8b5499d35c28de19489e5a7b"
     },
     {
       "path": "help.js",
@@ -207,8 +212,8 @@
     },
     {
       "path": "index.html",
-      "bytes": 11586,
-      "sha256": "454668069bfeacab87a4b1385dc8291f0b36b8467f4f26a87137cc51832468ef"
+      "bytes": 11635,
+      "sha256": "18474a427fe4c9142caa6d88da5a95399092e7555d63da89d0ed2bf57d4e92c9"
     },
     {
       "path": "locales/activity-shell.json",
@@ -227,8 +232,13 @@
     },
     {
       "path": "locales/catalog.js",
-      "bytes": 247771,
-      "sha256": "28cbbdecc52d19ba2829d267f74043e01b481e0b51c7b226c9426e8bb3545840"
+      "bytes": 251220,
+      "sha256": "44596d8d84aed0eee150a4a3f0cae8f75d5a000f410bdc0bf2ae726e94558c87"
+    },
+    {
+      "path": "locales/chat-controls.json",
+      "bytes": 3158,
+      "sha256": "86e902ad607d9554c1b7ae7e9f21b6d88c8bbe5f7d13a6c3b3d0eac855efcd0e"
     },
     {
       "path": "locales/chrome.json",
@@ -312,8 +322,8 @@
     },
     {
       "path": "shell.css",
-      "bytes": 13539,
-      "sha256": "363ebbae1a0902c379cc5f0371ff8dbd685d4b1b1081515a6c1a0af187cddf49"
+      "bytes": 16210,
+      "sha256": "b80cbda8317269705f39e18f68190df1be6fe2b4dc3e8d57daef84c45cbfadb0"
     },
     {
       "path": "styles.css",
@@ -352,8 +362,8 @@
     },
     {
       "path": "workspace.js",
-      "bytes": 29152,
-      "sha256": "bfbef4258a7db06682a35e7d6dee96a6859c4cd075462df694be99f8d89de253"
+      "bytes": 29284,
+      "sha256": "d8cc2c569332e6c1c0a37eaed5d6ca8fc06c03769522a9b0d06b78aa4abcc3a2"
     }
   ]
 }

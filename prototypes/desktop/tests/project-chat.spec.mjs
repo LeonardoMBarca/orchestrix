@@ -265,7 +265,7 @@ test('duas conversas do mesmo projeto isolam mensagens e trabalhos e restauram r
   const {id,card}=await reviewedRequest(page,firstObjective);
   await composer(page).fill('Rascunho da primeira conversa.');
   await composer(page).evaluate(element=>element.setSelectionRange(3,11));
-  await page.evaluate(()=>OrchestrixDock.activate('sessions'));await page.locator(`.session-project[data-project-id="${firstProject}"] .project-session-actions button`).click();
+  await page.evaluate(()=>OrchestrixDock.activate('sessions'));await page.locator(`[data-new-session-project="${firstProject}"]`).click();
   const secondConversation=await conversationIdentity(page);
   expect(secondConversation).not.toBe(firstConversation);
   expect(await projectIdentity(page)).toBe(firstProject);

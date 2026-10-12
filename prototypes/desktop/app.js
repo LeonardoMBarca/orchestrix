@@ -20,6 +20,7 @@
     file:'M14 2H5v20h14V7l-5-5ZM14 2v5h5', shield:'M12 2 3 6v6c0 5 9 10 9 10s9-5 9-10V6l-9-4Zm-4 10 3 3 5-6',
     branch:'M6 6v12m0-10c10 0 12 0 12 10M9 3a3 3 0 1 1-6 0 3 3 0 0 1 6 0m0 18a3 3 0 1 1-6 0 3 3 0 0 1 6 0m15 0a3 3 0 1 1-6 0 3 3 0 0 1 6 0',
     message:'M3 3h18v14H8l-5 4V3Z', book:'M3 3h7l2 2 2-2h7v17h-7l-2 2-2-2H3V3ZM12 5v17',
+    messagePlus:'M3 3h18v14H8l-5 4V3ZM12 6v8M8 10h8',
     panelLeft:'M3 4h18v16H3V4ZM9 4v16',panelRight:'M3 4h18v16H3V4ZM15 4v16'
   };
   const icon = name => html`<svg viewBox="0 0 24 24" aria-hidden="true"><path d="${paths[name] || paths.circle}"/></svg>`;
@@ -134,7 +135,7 @@
     const root=document.querySelector('#session-list');if(!root)return;
     const entries=[...projects.values()].filter(project=>project.projectId!==state.projectId).concat(state).sort((a,b)=>a.projectOrdinal-b.projectOrdinal);
     const sessionButton=(project,chat)=>html`<button type="button" class="session-item ${chat.id===state.chat.id?'active':''}" data-session-project="${esc(project.projectId)}" data-session-id="${esc(chat.id)}" ${chat.id===state.chat.id?'aria-current="page"':''}>${icon('message')}<span>${esc(sessionLabel(chat))}</span></button>`;
-    root.innerHTML=html`<div class="session-toolbar"><button type="button" class="button primary new-session-trigger" data-action="chat-loose">${icon('plus')}Nova sessão</button><button type="button" class="icon-button" data-action="onboarding" aria-label="Novo projeto" title="Novo projeto">${icon('folder')}</button></div><section class="session-section"><h3>Projetos</h3>${entries.filter(project=>!project.isLoose).map(project=>html`<details class="session-project" data-project-id="${esc(project.projectId)}" ${project.projectId===state.projectId||project.expanded!==false?'open':''}><summary>${icon('folder')}<span>${esc(project.project)}</span><small>${project.conversations.length}</small></summary><div class="project-session-actions"><button type="button" class="context-action" data-new-session-project="${esc(project.projectId)}">${icon('plus')}Nova sessão</button></div>${project.conversations.map(chat=>sessionButton(project,chat)).join('')}</details>`).join('')||html`<p class="session-empty">Crie um projeto para reunir sessões.</p>`}</section><section class="session-section"><h3>Sessões recentes</h3>${entries.filter(project=>project.isLoose).reverse().map(project=>project.conversations.map(chat=>sessionButton(project,chat)).join('')).join('')||html`<p class="session-empty">Suas sessões independentes aparecem aqui.</p>`}</section>`;
+    root.innerHTML=html`<div class="session-toolbar"><button type="button" class="button primary new-session-trigger" data-action="chat-loose">${icon('plus')}Nova sessão</button><button type="button" class="button new-project-trigger" data-action="onboarding">Novo projeto</button></div><section class="session-section"><h3>Projetos</h3>${entries.filter(project=>!project.isLoose).map(project=>html`<div class="session-project-group"><details class="session-project" data-project-id="${esc(project.projectId)}" ${project.projectId===state.projectId||project.expanded!==false?'open':''}><summary title="${esc(project.project)}">${icon('folder')}<span>${esc(project.project)}</span><small>${project.conversations.length}</small></summary>${project.conversations.map(chat=>sessionButton(project,chat)).join('')}</details><button type="button" class="project-new-session" data-new-session-project="${esc(project.projectId)}" aria-label="${esc(text`Nova sessão em ${project.project}`)}" title="${esc(text`Nova sessão em ${project.project}`)}">${icon('messagePlus')}</button></div>`).join('')||html`<p class="session-empty">Crie um projeto para reunir sessões.</p>`}</section><section class="session-section"><h3>Sessões recentes</h3>${entries.filter(project=>project.isLoose).reverse().map(project=>project.conversations.map(chat=>sessionButton(project,chat)).join('')).join('')||html`<p class="session-empty">Suas sessões independentes aparecem aqui.</p>`}</section>`;
     root.querySelectorAll('.session-project').forEach(details=>details.addEventListener('toggle',()=>{const project=details.dataset.projectId===state.projectId?state:projects.get(details.dataset.projectId);if(project){project.expanded=details.open;schedulePersistence();}}));
   }
   function selectSession(projectId,chatId) {
@@ -211,7 +212,7 @@
   function modelOptions(model,connectionId){const connections=connectionId==='auto'?state.connections:state.connections.filter(c=>c.id===connectionId);const catalog=connections.flatMap(c=>c.catalog||[]).filter((item,index,items)=>items.findIndex(other=>other.id===item.id)===index);const items=[['runtime','Preferido pelo runtime'],['favorite','Favorito do perfil (exemplo)'],...catalog.map(item=>[item.id,item.name])];if(!items.some(([id])=>id===model))items.push([model,text`${modelLabel(model)} — indisponível nesta conexão`]);return items.map(([id,label])=>option(esc(id),esc(['runtime','favorite'].includes(id)?t(label):label),model)).join('');}
   function configureAttempt(task) {
     if(task.contextPack&&task.configAttempt!==task.attempt){task.attemptHistory||=[];task.attemptHistory.push({number:task.configAttempt,config:structuredClone(task.config),connectionSnapshot:structuredClone(task.connectionSnapshot),contextPack:structuredClone(task.contextPack)});}
-    task.configAttempt=task.attempt;task.config={...state.preferences,systemPrompt:state.appSettings?.systemPrompt||''};
+    task.configAttempt=task.attempt;task.config={...state.preferences,...window.OrchestrixComposer.sessionConfig(state,task),systemPrompt:state.appSettings?.systemPrompt||''};
     const accounts={'codex-a':'Codex · pessoal A','codex-b':'Codex · pessoal B',claude:'Claude · pessoal'};
     if(accounts[task.config.account])task.account=accounts[task.config.account];
     const candidates=state.connections.filter(c=>window.OrchestrixConnections?.eligible(c)??true);
@@ -229,7 +230,11 @@
     record(text`${task.id} · tarefa criada`,title,'plus');return task;
   }
   function focusComposer() {const input=document.querySelector('#chat-message');if(!input)return;input.focus({preventScroll:true});if(state.chat.selection){const selection=state.chat.selection;input.setSelectionRange(selection.start,selection.end,selection.direction);input.scrollTop=selection.scroll;}input.scrollIntoView({block:'nearest',behavior:'instant'});}
-  function chatRecord(text,taskId,note='') {state.chat.messages.push({role:'orchestrator',text,taskId,note});}
+  function scrollChatToEnd(sessionId=state.chat.id) {
+    if(state.view!=='chat'||state.chat.id!==sessionId||window.OrchestrixFiles?.getState().visible)return;
+    requestAnimationFrame(()=>{if(state.view==='chat'&&state.chat.id===sessionId&&!window.OrchestrixFiles?.getState().visible)content.scrollTo({top:content.scrollHeight,behavior:'instant'});});
+  }
+  function chatRecord(text,taskId,note='') {state.chat.messages.push({role:'orchestrator',text,taskId,note});scrollChatToEnd();}
   function sendChat(messageText) {
     const message=messageText.trim();if(!message)return;
     state.chat.messages.push({role:'user',text:message});state.chat.draft='';state.chat.selection=null;
@@ -243,7 +248,7 @@
       state.chat.feedbackByTask||={};state.chat.feedbackByTask[active.id]=message;
       chatRecord(text`Registrei sua orientação para “${active.title}”. ${active.status==='review'?t('Use Pedir correção no card para revisar e enviar esta instrução em uma nova tentativa.'):active.status==='integrated'?t('O resultado já foi validado. Abra a revisão para conferir sua aplicação; este envio não modifica o resultado aceito.'):active.status==='running'?t('O trabalho continua na mesma tentativa. Confira o resultado antes de solicitar uma correção.'):t('O estado do trabalho foi preservado; use o próximo passo do card para continuar.')}`,active.id,t('Orientação registrada na conversa. Nenhuma tentativa foi iniciada ou alterada por este envio.'));
     }
-    state.view='chat';render();focusComposer();
+    state.view='chat';render();focusComposer();scrollChatToEnd();
   }
   function chatAction(name,id) {
     if(name==='new'){state.chat.activeTaskId=null;render();focusComposer();notify(t('Descreva o próximo trabalho. Os anteriores continuam disponíveis.'));return;}
@@ -543,6 +548,8 @@
   });
   document.addEventListener('input',event=>{if(event.target.id==='entry-path')event.target.setCustomValidity('');if(event.target.id==='command-search')commands(event.target.value);if(event.target.id==='correction')state.correctionDraft=event.target.value;if(event.target.id==='chat-message'){state.chat.draft=event.target.value;schedulePersistence();}});
   document.addEventListener('orchestrix:language-change',refreshInterfaceLanguage);
+  // Future runtime adapters must identify the session whose response completed.
+  document.addEventListener('orchestrix:response-complete',event=>{if(typeof event.detail?.sessionId==='string')scrollChatToEnd(event.detail.sessionId);});
   document.addEventListener('change',event=>{if(event.target.matches('[data-language-picker]')){window.OrchestrixI18n.setLanguage(event.target.value);return;}if(event.target.id==='chat-project'){switchProject(event.target.value);return;}if(event.target.id==='chat-session'){rememberComposer();const conversation=state.conversations.find(item=>item.id===event.target.value);if(conversation){state.chat=conversation;state.chat.reviewReturn=null;render();focusComposer();}return;}if(event.target.id==='account'){const model=document.querySelector('#model');model.innerHTML=modelOptions(model.value,event.target.value);}if(event.target.matches('input[name="workspace-theme"]'))setTheme(event.target.value);if(event.target.id==='density'){ui.density=event.target.value;W.saveUI(ui);}if(event.target.id==='text-size'){ui.textSize=event.target.value;W.saveUI(ui);}if(event.target.id==='entry-platform'){const path=document.querySelector('#entry-path');path.value=event.target.value==='wsl'?'/home/leo/Meu projeto – sessão':'C:\\Projetos\\Meu projeto – sessão';path.setCustomValidity('');document.querySelector('#entry-path-hint').textContent=event.target.value==='wsl'?t('Caminho Linux no WSL. A seleção deste ambiente é explícita.'):t('Caminho Windows nativo. Espaços e acentos permanecem na localização.');}});
   document.addEventListener('keydown',event=>{
     if(event.target.matches('.panel-resizer')&&['ArrowLeft','ArrowRight','Home','End'].includes(event.key)){event.preventDefault();ui.width=event.key==='Home'?220:event.key==='End'?420:Math.max(220,Math.min(420,ui.width+(event.key==='ArrowRight'?16:-16)));W.saveUI(ui);event.target.setAttribute('aria-valuenow',ui.width);return;}

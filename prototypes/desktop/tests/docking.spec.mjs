@@ -36,6 +36,56 @@ test('shared dock tabs keep arrow navigation separate from moving',async({page})
   await page.locator('[data-dock-tab="navigation"]').press('ArrowRight');await expect(sessions).toBeFocused();await sessions.press('Shift+ArrowRight');await expect(page.locator('#dock-right>#sessions-panel')).toBeVisible();
 });
 
+test('rail activities reopen their single moved workspace instead of collapsing the sessions tab',async({page})=>{
+  await openFiles(page);
+  const workspace=await page.locator('#navigation-panel').elementHandle();
+  for(const side of ['right','left','right']){
+    const handle=page.locator('#navigation-panel .dock-panel-handle');
+    await handle.press(side==='right'?'ArrowRight':'ArrowLeft');
+    await expect(page.locator(`#dock-${side}>#navigation-panel`)).toBeVisible();
+    await page.evaluate(side=>{OrchestrixDock.move('sessions',side);OrchestrixDock.activate('navigation');},side);
+    for(const activity of ['files','studio','connections']){
+      const button=page.locator(`#activity-items>[data-activity="${activity}"]`);
+      await page.evaluate(activity=>OrchestrixShell.select(activity),activity);
+      await expect(page.locator(`#dock-${side}>#navigation-panel`)).toBeVisible();
+      await expect(page.locator(`#${activity}-pane`)).toBeVisible();
+      expect(await page.locator('#navigation-panel').evaluate((element,original)=>element===original,workspace)).toBe(true);
+      await page.locator('[data-dock-tab="sessions"]').click();
+      await expect(button).toHaveAttribute('aria-expanded','false');
+      await button.click();
+      await expect(page.locator(`#dock-${side}>#navigation-panel`)).toBeVisible();
+      await expect(page.locator(`#${activity}-pane`)).toBeVisible();
+      await expect(button).toHaveAttribute('aria-expanded','true');
+      await expect(page.locator('#navigation-panel')).toHaveCount(1);
+      expect(await page.evaluate(()=>OrchestrixDock.getLayout().positions.navigation)).toBe(side);
+    }
+  }
+  await page.reload();
+  await openFiles(page);
+  await expect(page.locator('#dock-right>#navigation-panel')).toBeVisible();
+  await expect(page.locator('#navigation-panel')).toHaveCount(1);
+});
+
+test('moving an open mobile workspace retargets the overlay and rail icons follow its saved side',async({page})=>{
+  await page.setViewportSize({width:390,height:844});
+  await openFiles(page);
+  await expect(page.locator('#app')).toHaveAttribute('data-mobile-dock','left');
+  for(const side of ['right','left']){
+    await page.locator('#navigation-panel .dock-panel-handle').press(side==='right'?'ArrowRight':'ArrowLeft');
+    await expect(page.locator('#app')).toHaveAttribute('data-mobile-dock',side);
+    await expect(page.locator(`#dock-${side}>#navigation-panel`)).toBeVisible();
+    await page.keyboard.press('Escape');
+    for(const activity of ['files','studio','connections']){
+      await page.locator(`#activity-items>[data-activity="${activity}"]`).click();
+      await expect(page.locator('#app')).toHaveAttribute('data-mobile-dock',side);
+      await expect(page.locator(`#dock-${side}>#navigation-panel`)).toBeVisible();
+      await expect(page.locator(`#${activity}-pane`)).toBeVisible();
+      await page.keyboard.press('Escape');
+    }
+    await openFiles(page);
+  }
+});
+
 test('moving work independently preserves its task identity and the conversation draft',async({page})=>{
   await page.locator('#chat-message').fill('Investigate a parser edge case');await page.locator('#chat-message').press('Enter');await page.evaluate(()=>OrchestrixDock.activate('work'));
   const identity=await page.evaluate(()=>OrchestrixApp.getState().tasks.map(t=>[t.id,t.attempt,t.contextPack.id]));

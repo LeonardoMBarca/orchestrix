@@ -1,21 +1,27 @@
 # Workspace shell — sessões, painéis e Settings
 
-Contrato de interface da revisão D1 atualizado em **12 de outubro de 2026**, com [barra fixa de atividades e arquivos](../docs/design/activity-shell-revision.md). A identidade visual aprovada é mantida; a aprovação da nova organização e o piloto de uso ainda estão pendentes. Este documento orienta HTML atual e futura migração para Desktop, sem aprovar gates ou criar outra stack.
+Contrato de interface da revisão D1 atualizado em **12 de outubro de 2026**, com [barra fixa de atividades e arquivos](../docs/design/activity-shell-revision.md). A identidade visual aprovada é mantida. O responsável reportou resultado favorável do piloto, exceto no docking, cuja correção exige reteste humano; o gate permanece aberto. Este documento orienta HTML atual e futura migração para Desktop, sem aprovar gates ou criar outra stack.
 
 ## Entrada centrada na conversa
 
 1. Marca transparente acima do título “What shall we create today?”.
 2. Três cartões de início que apontam a conta, projeto e orientação.
 3. Sugestões rápidas “Fix a problem”, “Create a feature” e “Understand my code”.
-4. Composer, destino/contexto da sessão e envio.
+4. Composer com menu `+` de contexto, modelo orquestrador da sessão, modo de trabalho e envio.
 
 Não acrescentar vários parágrafos de recepção ou um segundo seletor global de projeto/conversa. A pessoa deve conseguir começar com uma sessão independente e criar organização quando precisar. A aparência Studio usa navy e índigo sem o fundo de montanhas do site. A primeira entrada não preenche contas, projetos ou tarefas fictícios.
 
 ## Sessão e projeto
 
-Sessions é a superfície principal para navegação entre conversas e começa à direita. Há um único comando principal **New session** nessa superfície; não duplicá-lo no cabeçalho, na navegação e em cartões. Ações contextuais de um projeto podem indicar explicitamente a criação dentro daquele projeto. Projetos são grupos expansíveis com contexto e diretório compartilhados; sessões independentes ficam acessíveis na mesma lista. Criar projeto e associar uma sessão existente precisam distinguir a intenção sem obrigar a pessoa a aprender dois dropdowns.
+Sessions é a superfície principal para navegação entre conversas e começa à direita. Há um único comando principal **New session** nessa superfície, com **New project** textual ao lado; não duplicá-lo no cabeçalho, na navegação e em cartões. Cada projeto tem uma ação compacta de chat com `+` na mesma linha do nome, independente da expansão do grupo. Projetos são grupos expansíveis com contexto e diretório compartilhados; sessões independentes ficam acessíveis na mesma lista. Criar projeto e associar uma sessão existente precisam distinguir a intenção sem obrigar a pessoa a aprender dois dropdowns.
 
 Selecionar uma sessão preserva o rascunho da anterior e mostra o destino/contexto ativo. Associar preserva identidade e histórico da sessão. Truncar nomes longos com acesso ao texto completo quando necessário; não permitir que um nome invada o ícone, indicador, borda ou ação da linha. Busca de sessões ocupa espaço legível, com label e foco; não prometer pesquisa em arquivos que não foram indexados.
+
+O composer não mostra “Discussing”. **Attach to project**, documentos e diretório/contexto ficam no menu `+`, com fechamento externo/Escape e navegação por teclado. O modelo da sessão vem do catálogo de uma conexão permitida, mantendo sua identidade (IDs iguais em contas diferentes não são a mesma escolha); automático usa as preferências existentes. API é excluída em Subscription Only. Catálogo e preferência não comprovam autenticação ou execução. O modo começa em Development e pode registrar os seis propósitos existentes; isso não implementa os motores especializados. Modelo/modo e documentos explicitamente selecionados entram no snapshot das próximas tentativas, sem modificar as anteriores.
+
+Documentos de texto UTF-8 selecionados pelo usuário ficam associados à sessão, com nome/remover, até 10 arquivos de 100 KB e 500 KB somados neste estudo. Cancelar ou falhar a leitura preserva o rascunho e as referências anteriores. Arquivos abertos no editor não entram automaticamente no contexto. PDFs/binários e extração de outros formatos não são implementados neste incremento. Persistência em navegador não substitui o armazenamento de produção.
+
+Enviar por Enter ou pelo botão leva a área central ao limite inferior após renderizar. O registro de resposta e o evento futuro `orchestrix:response-complete`, com `detail.sessionId`, fazem o mesmo somente para a conversa ativa e visível, sem roubar foco ou rolar outra sessão/Files. O evento é um contrato de UI; não é evidência de integração de runtime.
 
 ## Barra fixa e menus
 
@@ -44,6 +50,8 @@ A barra superior oferece **File, Edit, View e Help**, com ações pertinentes ao
 - Escape cancela arraste/menu; Reset layout restaura a disposição inicial.
 
 Mover ou redimensionar não recria o composer, não substitui a conversa e não altera configuração de uma execução. A posição e tamanho são preferências de UI, não estado de execução.
+
+Files, Studio e Connections compartilham **um único Navigation/Workspace**. Depois de mover esse painel, os ícones fixos trocam/abrem o conteúdo no lado salvo. Uma atividade selecionada atrás de Sessions/Work não equivale a um painel visível: clicar deve ativá-la, sem recolher todo o lado. `aria-expanded` acompanha essa visibilidade. Em mobile, mover o painel visível transfere o overlay ao destino.
 
 ## Arquivos e edição leve
 

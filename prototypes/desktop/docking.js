@@ -93,9 +93,10 @@
   function move(id,zone) {
     if(!Object.hasOwn(names,id)||!zones.includes(zone))return false;
     const focused=document.activeElement;
+    const from=layout.positions[id],wasActive=layout.active[from]===id&&!layout.collapsed[from];
     layout.positions[id]=zone;layout.active[zone]=id;layout.collapsed[zone]=false;apply();save();
     if(focused&&panel(id).contains(focused)&&!focused.closest('[hidden]'))focused.focus({preventScroll:true});
-    document.dispatchEvent(new CustomEvent('orchestrix:panel-move',{detail:{id,zone}}));
+    document.dispatchEvent(new CustomEvent('orchestrix:panel-move',{detail:{id,zone,from,wasActive}}));
     return true;
   }
   function collapse(zone) {

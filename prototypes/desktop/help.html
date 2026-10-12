@@ -70,11 +70,12 @@
           <p>A <strong>session</strong> is a conversation with its own messages and work. A <strong>project</strong> groups related sessions around a working folder, shared instructions, and selected project context. Find both in Sessions on the right by default.</p>
           <figure><img src="assets/help/session-tree.svg" alt="A fixed activity rail on the left, a conversation in the center, and Sessions on the right, with two conversations grouped under a project and an independent conversation below." width="920" height="440" loading="lazy"><figcaption>Related sessions share a project, while each conversation keeps its own history.</figcaption></figure>
           <div class="guide-columns">
-            <div><h3>Start inside a project</h3><ol><li>Expand the project in Sessions.</li><li>Use its new-session action.</li><li>Write your request in the conversation.</li></ol></div>
-            <div><h3>Start independently</h3><ol><li>Choose <strong>New session</strong>.</li><li>Keep it standalone or choose a working folder.</li><li>Attach it to a project later if you need shared context.</li></ol></div>
+            <div><h3>Start inside a project</h3><ol><li>Choose <strong>New project</strong> beside New session, or find an existing project.</li><li>Use the small chat-plus icon beside its name.</li><li>Write your request in the conversation.</li></ol></div>
+            <div><h3>Start independently</h3><ol><li>Choose <strong>New session</strong>.</li><li>Keep it standalone or choose a working folder from the composer's <strong>+</strong> menu.</li><li>Attach it to a project later if you need shared context.</li></ol></div>
           </div>
           <h3>Attach an existing session</h3>
-          <p>Use the session's project action to choose an existing project or create one. The conversation stays with the session. Review the new folder and shared context before asking for further file changes.</p>
+          <p>Open <strong>+</strong> in the composer and choose <strong>Attach to project</strong> to select an existing project or create one. The conversation stays with the session. Review the new folder and shared context before asking for further file changes.</p>
+          <p>Use <strong>+ → Attach documents</strong> to select UTF-8 text, Markdown, or other supported text files. Selected documents stay with the session and are copied into the context of new tasks; removing one leaves existing task snapshots intact. Opening a file in Files does not attach it to a conversation.</p>
           <h3>Find and resume work</h3>
           <p>Use session search to find a conversation by its title or project. Select a session to resume it; switching sessions preserves the conversation's draft. Open another session when you want a separate line of work.</p>
           <p>Project context is selected for relevance and permissions. Grouping sessions does not automatically include every conversation or every file in each request.</p>
@@ -171,7 +172,7 @@
           </dl>
           <p>Complexity, risk, importance, and task type guide the choice. A more expensive model or a higher reasoning level is not automatically better. Simple status checks, such as checking the Git working tree, can use a direct tool when available.</p>
           <h3>Inspect and adjust a decision</h3>
-          <p>Open Studio to inspect the selected connection, model, reasoning, and relevant context. Apply manual preferences or narrower project and task rules when appropriate. An unsupported preference cannot create a capability the runtime does not expose.</p>
+          <p>Use the model control in the composer to set a session preference or keep automatic selection. It lists models reported by permitted connections and excludes API connections in Subscription Only. Existing attempts keep their recorded choices. Open Studio to inspect the selected connection, model, reasoning, and relevant context. An unsupported preference cannot create a capability the runtime does not expose.</p>
           <p>If only one model or reasoning setting is available, Orchestrix works within that constraint rather than implying it can select another one.</p>
         </article>
 
@@ -181,7 +182,7 @@
           <p>A <strong>mode</strong> defines the purpose and expected outcome of the work. An <strong>agent profile</strong> guides a participating agent's role, such as how a coder implements changes or how a reviewer checks them.</p>
           <div class="mode-list"><span>Development</span><span>Scientific Research</span><span>Documentation</span><span>Presentations</span><span>Refactoring</span><span>Improvement Review</span></div>
           <ol>
-            <li>Choose the mode that best matches your goal before sending a request.</li>
+            <li>Use the <strong>Development</strong> control in the composer to choose the mode that best matches your goal before sending a request. The mode is stored with the session and recorded in new task contexts.</li>
             <li>State the expected output, relevant materials, and criteria for success.</li>
             <li>Adjust profile instructions or create a specialized mode when the available controls support it.</li>
           </ol>

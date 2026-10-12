@@ -2768,6 +2768,102 @@ globalThis.OrchestrixLocaleCatalog=Object.freeze({
     "en": "· simulated resumption",
     "es": "· reanudación simulada"
   },
+  "Nova sessão em": {
+    "en": "New session in",
+    "es": "Nueva sesión en"
+  },
+  "Documentos da sessão": {
+    "en": "Session documents",
+    "es": "Documentos de la sesión"
+  },
+  "Remover documento": {
+    "en": "Remove document",
+    "es": "Quitar documento"
+  },
+  "Adicionar contexto": {
+    "en": "Add context",
+    "es": "Añadir contexto"
+  },
+  "Anexar documentos": {
+    "en": "Attach documents",
+    "es": "Adjuntar documentos"
+  },
+  "Modelo automático": {
+    "en": "Automatic model",
+    "es": "Modelo automático"
+  },
+  "Modelo indisponível": {
+    "en": "Model unavailable",
+    "es": "Modelo no disponible"
+  },
+  "Modelo orquestrador da sessão": {
+    "en": "Session orchestrator model",
+    "es": "Modelo orquestador de la sesión"
+  },
+  "Modelo orquestrador": {
+    "en": "Orchestrator model",
+    "es": "Modelo orquestador"
+  },
+  "Salvar modelo da sessão": {
+    "en": "Save session model",
+    "es": "Guardar modelo de la sesión"
+  },
+  "Modo de trabalho": {
+    "en": "Work mode",
+    "es": "Modo de trabajo"
+  },
+  "Modo da sessão": {
+    "en": "Session mode",
+    "es": "Modo de la sesión"
+  },
+  "Salvar modo da sessão": {
+    "en": "Save session mode",
+    "es": "Guardar modo de la sesión"
+  },
+  "Desenvolvimento": {
+    "en": "Development",
+    "es": "Desarrollo"
+  },
+  "Pesquisa científica": {
+    "en": "Scientific research",
+    "es": "Investigación científica"
+  },
+  "Apresentações": {
+    "en": "Presentations",
+    "es": "Presentaciones"
+  },
+  "Refatoração": {
+    "en": "Refactoring",
+    "es": "Refactorización"
+  },
+  "Sugestões de melhorias": {
+    "en": "Improvement suggestions",
+    "es": "Sugerencias de mejora"
+  },
+  "Documento anexado à sessão": {
+    "en": "Document attached to the session",
+    "es": "Documento adjunto a la sesión"
+  },
+  "Os modelos vêm dos catálogos das conexões permitidas. Esta preferência vale para novas tentativas; disponibilidade e execução dependem do runtime.": {
+    "en": "Models come from the catalogs of permitted connections. This preference applies to new attempts; availability and execution depend on the runtime.",
+    "es": "Los modelos provienen de los catálogos de las conexiones permitidas. Esta preferencia se aplica a nuevos intentos; la disponibilidad y ejecución dependen del runtime."
+  },
+  "O modo acompanha o contexto das novas tarefas. As tentativas existentes mantêm suas escolhas.": {
+    "en": "The mode accompanies the context of new tasks. Existing attempts keep their choices.",
+    "es": "El modo acompaña el contexto de nuevas tareas. Los intentos existentes conservan sus opciones."
+  },
+  "Selecione até 10 documentos de texto, com até 100 KB cada e 500 KB no total.": {
+    "en": "Select up to 10 text documents, up to 100 KB each and 500 KB in total.",
+    "es": "Selecciona hasta 10 documentos de texto, de hasta 100 KB cada uno y 500 KB en total."
+  },
+  "A sessão mudou durante a leitura. Selecione os documentos novamente na sessão desejada.": {
+    "en": "The session changed while reading. Select the documents again in the intended session.",
+    "es": "La sesión cambió durante la lectura. Selecciona los documentos de nuevo en la sesión deseada."
+  },
+  "Não foi possível ler os documentos. Use arquivos de texto em UTF-8.": {
+    "en": "Could not read the documents. Use UTF-8 text files.",
+    "es": "No se pudieron leer los documentos. Usa archivos de texto UTF-8."
+  },
   "Ir para o conteúdo": {
     "en": "Skip to content",
     "es": "Ir al contenido"

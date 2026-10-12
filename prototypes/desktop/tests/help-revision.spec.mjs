@@ -33,8 +33,9 @@ test('help search filters actual content, supports empty recovery, and clears be
   const search = page.getByRole('searchbox', {name:'Search guides'});
   await search.fill('subscription only');
   await expect(page.locator('#accounts')).toBeVisible();
+  await expect(page.locator('#orchestration')).toBeVisible();
   await expect(page.locator('#layout')).toBeHidden();
-  await expect(page.getByRole('status')).toHaveText('1 guide matches your search');
+  await expect(page.getByRole('status')).toHaveText('2 guides match your search');
   await search.fill('unfindable-guide-zxcv');
   await expect(page.locator('[data-guide]:visible')).toHaveCount(0);
   await expect(page.locator('#empty-search')).toBeVisible();
