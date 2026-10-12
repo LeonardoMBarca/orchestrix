@@ -1,0 +1,100 @@
+/* Fixed activity rail, lightweight app menus and two collapsible content docks. */
+body {overflow:hidden}
+.app-titlebar {height:36px;display:flex;align-items:center;gap:12px;padding:0 12px;background:var(--sidebar);border-bottom:1px solid var(--line);position:relative;z-index:20;min-width:0}
+.titlebar-brand {display:flex;align-items:center;gap:8px;font-size:.928571rem;font-weight:650;min-width:0;flex-shrink:0}
+.titlebar-brand .identity-symbol {width:23px;height:23px}
+.titlebar-workspace {margin-left:auto;font-size:.785714rem;color:var(--faint);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.app-menubar {display:flex;align-items:center;gap:2px;min-width:0}
+.app-menubar>button {padding:5px 9px;border-radius:5px;font-size:.857143rem;color:var(--muted);white-space:nowrap}
+.app-menubar>button:hover,.app-menubar>button[aria-expanded="true"] {background:var(--surface);color:var(--text)}
+.app-menubar>button:focus-visible {outline-offset:-2px}
+.app-menu-popup {position:fixed;z-index:80;min-width:230px;max-width:calc(100vw - 16px);max-height:calc(100dvh - 44px);overflow:auto;padding:6px;background:var(--panel);border:1px solid var(--border-control);border-radius:9px;box-shadow:0 14px 44px #02071070}
+.app-menu-popup>button {display:flex;align-items:center;gap:20px;justify-content:space-between;text-align:left;width:100%;min-height:34px;padding:7px 10px;border-radius:5px;font-size:.857143rem}
+.app-menu-popup>button:hover,.app-menu-popup>button:focus-visible {background:var(--accent-bg);color:var(--accent)}
+.app-menu-popup>button:disabled {color:var(--faint);cursor:default}
+.app-menu-popup kbd {margin-left:auto;white-space:nowrap;font-size:.714286rem;color:var(--muted)}
+.app-menu-popup hr {border:0;border-top:1px solid var(--line);margin:5px}
+.app,html[data-text-size="large"] .app {--activity-width:52px;grid-template-columns:var(--activity-width) var(--dock-left) minmax(0,1fr) var(--dock-right);height:calc(100dvh - 36px);min-height:0}
+.app>.main {grid-column:3}
+.dock-left {grid-column:2}
+.dock-right {grid-column:4}
+.activity-bar {grid-column:1;grid-row:1;display:flex;flex-direction:column;align-items:center;min-height:0;width:var(--activity-width);background:var(--sidebar);border-right:1px solid var(--line);z-index:12;padding:8px 4px;overflow:auto;scrollbar-width:thin}
+.activity-items,.activity-utilities {display:flex;flex-direction:column;align-items:center;gap:6px;width:100%;flex-shrink:0}
+.activity-utilities {margin-top:auto;padding-top:24px}
+.activity-item {position:relative;display:flex;align-items:center;justify-content:center;width:42px;min-height:42px;flex-shrink:0;border-radius:9px;color:var(--muted);text-decoration:none;touch-action:none}
+.activity-item svg {width:22px;height:22px;stroke-width:1.65;flex-shrink:0}
+.activity-item:hover {color:var(--text);background:var(--surface)}
+.activity-item.active {color:var(--accent);background:var(--accent-bg)}
+.activity-item.active:before {content:"";position:absolute;left:-4px;top:9px;bottom:9px;width:3px;border-radius:0 3px 3px 0;background:var(--accent)}
+.activity-item.is-reordering {opacity:.45;cursor:grabbing}
+.activity-item.reorder-target {box-shadow:inset 0 2px var(--accent)}
+.profile-initial {display:grid;place-items:center;width:29px;height:29px;border:1px solid var(--line);border-radius:50%;font-size:.857143rem;background:var(--accent-bg);color:var(--accent)}
+.activity-sidebar {padding:18px 12px!important}
+.activity-pane {min-width:0}
+.activity-pane>h2 {font-size:.928571rem;font-weight:650;margin:0 6px 20px}
+.activity-pane>h3 {font-size:1rem;line-height:1.5;margin:6px;overflow-wrap:anywhere}
+.pane-eyebrow {font-size:.714286rem;text-transform:uppercase;letter-spacing:.08em;color:var(--faint);margin:0 6px}
+.pane-description {margin:8px 6px 20px;color:var(--muted);font-size:.857143rem;line-height:1.6;overflow-wrap:anywhere}
+.pane-note {margin:24px 6px 0;font-size:.785714rem;line-height:1.7;color:var(--faint)}
+.pane-actions {display:flex;flex-direction:column;gap:4px;border-top:1px solid var(--line);padding-top:14px}
+.activity-sidebar .studio-navigation {margin:0;padding:0;border:0}
+.activity-sidebar .studio-navigation>summary {display:none}
+.activity-sidebar .studio-navigation>.nav {margin:0 0 18px;display:flex;flex-direction:column}
+.pane-connection {display:flex;flex-direction:column;gap:5px;width:100%;text-align:left;margin:0 0 8px;padding:10px;border:1px solid var(--line);border-radius:9px;overflow-wrap:anywhere}
+.pane-connection strong {font-size:.857143rem;font-weight:550}
+.pane-connection span {color:var(--muted);font-size:.714286rem}
+.pane-connect {width:100%;font-size:.857143rem;margin-top:10px;white-space:normal}
+.topbar {min-height:52px;grid-template-columns:minmax(100px,1fr) minmax(180px,420px) auto;gap:10px;padding:8px 14px}
+.topbar-actions {gap:2px}
+.topbar-actions>.icon-button {width:30px;min-height:32px}
+.topbar-actions>.icon-button svg {width:17px;height:17px}
+.breadcrumb {flex-wrap:nowrap;white-space:nowrap;overflow:hidden}
+.breadcrumb #breadcrumb-project {max-width:130px}
+.dock-zone.is-collapsed {overflow:visible;border:0;background:transparent}
+.dock-zone.is-collapsed>:not(.dock-resizer) {display:none!important}
+.dock-zone.is-collapsed>.dock-resizer {z-index:14}
+.dock-left.is-collapsed>.dock-resizer {right:-5px}
+.dock-right.is-collapsed>.dock-resizer {left:-5px}
+.dock-resizer {transition:background .12s;max-width:none}
+.app.focus-mode,html[data-text-size="large"] .app.focus-mode {grid-template-columns:var(--activity-width) 0 minmax(0,1fr) 0}
+.app.focus-mode>.activity-bar {visibility:visible}
+.app.focus-mode>.main {grid-column:3}
+.mobile-panel-scrim {display:none}
+.editor-tabs {flex-shrink:0;min-width:0}
+.file-editor {flex:1;min-height:0;overflow:hidden}
+@media(max-width:1380px) {
+  .topbar,html[data-text-size="large"] .topbar {grid-template-columns:minmax(0,1fr) auto}
+  .topbar .breadcrumb {display:none}
+}
+@media(max-width:800px) {
+  .app,html[data-text-size="large"] .app,.app.focus-mode,html[data-text-size="large"] .app.focus-mode {--activity-width:44px;display:grid;grid-template-columns:var(--activity-width) minmax(0,1fr);grid-template-rows:minmax(0,1fr);height:calc(100dvh - 36px);min-height:0;overflow:hidden}
+  .app>.main,.app.focus-mode>.main {grid-column:2;grid-row:1;order:initial;min-height:0;overflow:hidden}
+  .activity-bar {padding:6px 1px;position:relative}
+  .activity-item {width:40px;min-height:42px}
+  .activity-items,.activity-utilities {gap:3px}
+  .activity-item.active:before {left:-1px}
+  .app-titlebar {gap:6px;padding:0 8px}
+  .titlebar-workspace {display:none}
+  .app-menubar {overflow:auto;scrollbar-width:none}
+  .app-menubar>button {padding:5px 7px}
+  .topbar {position:static;min-height:52px;padding:8px;gap:4px}
+  .topbar-actions .focus-toggle {display:none}
+  .topbar #command-trigger {padding:7px;gap:6px;min-width:0}
+  .topbar-actions>.icon-button {width:28px;min-height:36px}
+  .main>.content {overflow:auto;padding:16px 12px}
+  .dock-zone {position:fixed;top:36px;bottom:0;width:min(300px,calc(100vw - 44px));z-index:25;display:none!important;overflow:auto;box-shadow:0 0 40px #02071050}
+  .dock-left {left:44px;border-right:1px solid var(--line)}
+  .dock-right {right:0;border-left:1px solid var(--line)}
+  .app[data-mobile-dock="left"]>.dock-left.has-panels,.app[data-mobile-dock="right"]>.dock-right.has-panels {display:flex!important;visibility:visible}
+  .dock-zone.is-collapsed>:not(.dock-resizer) {display:flex!important}
+  .dock-zone .dock-resizer {display:none}
+  .dock-panel>.sidebar {overflow:auto}
+  .session-list {max-height:none;overflow:auto}
+  .mobile-panel-scrim {position:fixed;inset:36px 0 0 44px;background:#02071050;backdrop-filter:blur(3px);z-index:24;cursor:default}
+  .app[data-mobile-dock]>.mobile-panel-scrim {display:block}
+  .statusbar {padding:6px 12px}
+  .statusbar>span:last-child {display:none}
+}
+@media(max-width:480px) {.titlebar-brand>span:last-child {display:none}.app-menu-popup {min-width:210px}.activity-pane>h2 {margin-bottom:16px}}
+@media(prefers-reduced-motion:reduce) {.dock-resizer {transition:none}}
+@media(forced-colors:active) {.activity-item.active {outline:1px solid Highlight}.activity-item.active:before {background:Highlight}.app-titlebar,.activity-bar {border-color:ButtonText}}

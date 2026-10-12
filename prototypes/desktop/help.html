@@ -26,16 +26,17 @@
       <form class="help-search" role="search" id="help-search-form">
         <span class="search-mark" aria-hidden="true">⌕</span>
         <label class="sr-only" for="help-search">Search guides</label>
-        <input id="help-search" type="search" placeholder="Search sessions, accounts, themes…" autocomplete="off" aria-controls="guides">
+        <input id="help-search" type="search" placeholder="Search sessions, files, accounts…" autocomplete="off" aria-controls="guides">
         <button id="clear-search" type="button" hidden>Clear</button>
       </form>
-      <p class="search-status" id="search-status" role="status" aria-live="polite" aria-atomic="true">9 guides to help you get started</p>
+      <p class="search-status" id="search-status" role="status" aria-live="polite" aria-atomic="true">10 guides to help you get started</p>
     </div>
     <div class="help-layout">
       <nav class="help-nav" aria-label="Guide topics">
         <p class="eyebrow">ON THIS PAGE</p>
         <a href="#quickstart">Your first session</a>
         <a href="#sessions">Sessions &amp; projects</a>
+        <a href="#files">Files &amp; quick edits</a>
         <a href="#layout">Arrange your workspace</a>
         <a href="#settings">Settings &amp; personal style</a>
         <a href="#accounts">Accounts &amp; usage</a>
@@ -66,8 +67,8 @@
         <article class="guide" id="sessions" data-guide>
           <p class="guide-number">02 / KEEP THE CONTEXT CLEAR</p>
           <h2>Sessions &amp; projects</h2>
-          <p>A <strong>session</strong> is a conversation with its own messages and work. A <strong>project</strong> groups related sessions around a working folder, shared instructions, and selected project context.</p>
-          <figure><img src="assets/help/session-tree.svg" alt="Session organization: a project contains two separate conversations, while a standalone conversation sits outside the project. A standalone session can be attached to a project." width="920" height="440" loading="lazy"><figcaption>Related sessions share a project, while each conversation keeps its own history.</figcaption></figure>
+          <p>A <strong>session</strong> is a conversation with its own messages and work. A <strong>project</strong> groups related sessions around a working folder, shared instructions, and selected project context. Find both in Sessions on the right by default.</p>
+          <figure><img src="assets/help/session-tree.svg" alt="A fixed activity rail on the left, a conversation in the center, and Sessions on the right, with two conversations grouped under a project and an independent conversation below." width="920" height="440" loading="lazy"><figcaption>Related sessions share a project, while each conversation keeps its own history.</figcaption></figure>
           <div class="guide-columns">
             <div><h3>Start inside a project</h3><ol><li>Expand the project in Sessions.</li><li>Use its new-session action.</li><li>Write your request in the conversation.</li></ol></div>
             <div><h3>Start independently</h3><ol><li>Choose <strong>New session</strong>.</li><li>Keep it standalone or choose a working folder.</li><li>Attach it to a project later if you need shared context.</li></ol></div>
@@ -80,25 +81,50 @@
           <div class="video-guide" data-video-guide="sessions" hidden></div>
         </article>
 
+        <article class="guide" id="files" data-guide>
+          <p class="guide-number">03 / YOUR FILES, CLOSE AT HAND</p>
+          <h2>Files &amp; quick edits</h2>
+          <p>Read project documents or make a small text change alongside your conversation. Files gives you a folder tree, an editor, and a Markdown preview without turning the workspace into an IDE.</p>
+          <figure><img src="assets/help/files-editor.svg" alt="Files tree beside a text editor, with an .env file and Markdown document, an unsaved-change indicator, and separate Save file and Save a copy paths." width="920" height="480" loading="lazy"><figcaption>A small edit stays within reach, with the save destination clearly identified.</figcaption></figure>
+          <ol>
+            <li>Choose <strong>Files</strong> in the fixed activity rail, then <strong>Open folder</strong>. Select the folder you want to browse; a project path alone does not grant access.</li>
+            <li>Expand a folder and select a text file. Use file search to find a loaded path. UTF-8 text files up to 2 MB are supported; binary files are not edited.</li>
+            <li>For a small configuration change, open <code>.env</code> and edit the relevant line. Open a Markdown file and switch between <strong>Edit text</strong> and <strong>Markdown preview</strong> to read generated documentation.</li>
+            <li>Check the file's storage label before saving. <strong>Save file</strong> writes to the selected source only after write access is granted. <strong>Save a copy</strong> downloads the edited text when the folder was imported.</li>
+            <li>Select the Chat tab to continue the conversation. Your open files and unsaved edits remain available during the current window session.</li>
+          </ol>
+          <h3>Know where an edit is saved</h3>
+          <p>When direct folder access is supported, the browser asks for the appropriate permission. If the file changed outside Orchestrix, review the overwrite confirmation. If access is denied or saving fails, your edited text stays in the editor. An imported folder has no write connection to its original files; saving a copy does not update them.</p>
+          <h3>Keep control of unsaved work</h3>
+          <p>A dot on the file tab marks unsaved changes. Closing an edited file or replacing its folder asks before discarding those changes. Save before closing or reloading the app; file drafts are kept in memory, not restored from the conversation history.</p>
+          <p>Opening a file does not automatically add it to an agent's context or send its contents to a provider. Markdown preview displays supported formatting without executing embedded HTML or scripts. Files does not run code, launch a terminal, or provide debugging tools.</p>
+          <p>In the text editor, <kbd>Tab</kbd> inserts spaces. Press <kbd>Escape</kbd> to let Tab move focus out of the editor, or use <kbd>Ctrl M</kbd> to switch that behavior. <kbd>Ctrl S</kbd> saves using the destination shown for that file.</p>
+          <div class="video-guide" data-video-guide="files" hidden></div>
+        </article>
+
         <article class="guide" id="layout" data-guide>
-          <p class="guide-number">03 / A WORKSPACE THAT FITS</p>
+          <p class="guide-number">04 / A WORKSPACE THAT FITS</p>
           <h2>Arrange your workspace</h2>
-          <p>Sessions starts on the left and Navigation on the right. Work shows the current session's tasks when needed. Move each panel between the two sides to match the way you work.</p>
-          <figure><img src="assets/help/workspace-docking.svg" alt="Side docking: separate panels, two tabs sharing the left dock, and a side chooser that highlights the left and right destinations." width="920" height="410" loading="lazy"><figcaption>A shared dock becomes a set of tabs, leaving the conversation room to breathe.</figcaption></figure>
+          <p>The fixed rail on the left starts with <strong>Chat, Files, Studio, Connections</strong>, with Help, Settings, and Profile at the bottom. The selected activity's panel starts on the left and Sessions on the right. Work shows the current session's tasks when needed.</p>
+          <figure><img src="assets/help/workspace-docking.svg" alt="A fixed left activity rail, activity panel on the left, conversation at the center, and Sessions on the right. Panels can share tabs on one side or collapse to their resize edge." width="920" height="410" loading="lazy"><figcaption>The activity rail stays fixed while the two sides adapt to your work.</figcaption></figure>
           <ol>
             <li>Drag the panel's title or tab toward an available dock.</li>
             <li>The workspace blurs to highlight the left and right destinations. Release over the side you want, or press <kbd>Escape</kbd> to cancel.</li>
             <li>If panels occupy the same dock, select the desired tab, such as <strong>Sessions</strong> or <strong>Work</strong>, to switch between them.</li>
           </ol>
           <h3>Use the keyboard or a compact screen</h3>
+          <p>Drag the four activity icons to reorder them, or focus one and use <kbd>Alt ↑</kbd> or <kbd>Alt ↓</kbd>. Help, Settings, and Profile keep their place. The rail itself does not move or collapse.</p>
+          <p>Drag a side's inner edge to adjust its width. Reducing it to 80 pixels or less collapses that side; drag the remaining edge outward to reopen it. With the divider focused, <kbd>Home</kbd> collapses and <kbd>End</kbd> restores the last useful width. Arrow keys adjust the width without dragging.</p>
           <p>Open the panel's position menu to choose a dock without dragging. Use <kbd>Tab</kbd> to focus a tab, then activate it with <kbd>Enter</kbd> or <kbd>Space</kbd>. On smaller screens, panels adapt to the available space; the conversation remains the main workspace.</p>
+          <h3>Use the application menus</h3>
+          <p><strong>File</strong> offers session and folder actions, <strong>Edit</strong> works with the current text selection, <strong>View</strong> controls the workspace, and <strong>Help</strong> opens guidance in your browser. Open a menu with the keyboard and use its arrow keys to choose an action. File editing does not add an IDE execution menu.</p>
           <p>Use <strong>Settings → Panel layout → Reset layout</strong> if you want to return to the default arrangement. The Work panel appears when the current session has tasks to show.</p>
         </article>
 
         <article class="guide" id="settings" data-guide>
-          <p class="guide-number">04 / YOUR WAY OF WORKING</p>
+          <p class="guide-number">05 / YOUR WAY OF WORKING</p>
           <h2>Settings &amp; personal style</h2>
-          <p>Open the gear button to bring up Settings in the center of the screen. Your conversation stays behind the window; closing it returns you to the same work and draft.</p>
+          <p>Open the gear at the bottom of the fixed rail to bring up Settings in the center of the screen. Use the profile icon below it to open your profile settings directly. Your conversation stays behind the window; closing it returns you to the same work and draft.</p>
           <figure><img src="assets/help/settings-window.svg" alt="A centered Settings window above a conversation, with category tabs, Compact density, a text percentage slider, and a close button." width="920" height="440" loading="lazy"><figcaption>Settings live in a closable window rather than replacing your conversation.</figcaption></figure>
           <ul>
             <li><strong>General → Your profile:</strong> set your display name. Compact is the default density; use the text-size slider to choose a scale from 80% to 200%.</li>
@@ -113,7 +139,7 @@
         </article>
 
         <article class="guide" id="accounts" data-guide>
-          <p class="guide-number">05 / KNOW WHAT IS AVAILABLE</p>
+          <p class="guide-number">06 / KNOW WHAT IS AVAILABLE</p>
           <h2>Accounts &amp; usage</h2>
           <p>A connection identifies a provider, account, and runtime. You can use one supported connection or keep several with clear names. Availability and selectable models depend on each adapter's real capabilities.</p>
           <figure><img src="assets/help/account-usage.svg" alt="Account usage diagram: subscription limits are shown only when reported by the provider, and API balances are shown separately when available. Unknown values stay unknown." width="920" height="370" loading="lazy"><figcaption>Subscription capacity and API billing are different measurements.</figcaption></figure>
@@ -133,7 +159,7 @@
         </article>
 
         <article class="guide" id="orchestration" data-guide>
-          <p class="guide-number">06 / GIVE THE TASK THE RIGHT RESOURCES</p>
+          <p class="guide-number">07 / GIVE THE TASK THE RIGHT RESOURCES</p>
           <h2>Models &amp; reasoning</h2>
           <p>Choose a strategy and let Orchestrix work within the models, reasoning levels, and tools actually exposed by your connections. Automatic selection is useful with one account too.</p>
           <dl class="strategy-list">
@@ -149,7 +175,7 @@
         </article>
 
         <article class="guide" id="modes" data-guide>
-          <p class="guide-number">07 / SAME WORKSPACE, DIFFERENT GOALS</p>
+          <p class="guide-number">08 / SAME WORKSPACE, DIFFERENT GOALS</p>
           <h2>Modes &amp; agent profiles</h2>
           <p>A <strong>mode</strong> defines the purpose and expected outcome of the work. An <strong>agent profile</strong> guides a participating agent's role, such as how a coder implements changes or how a reviewer checks them.</p>
           <div class="mode-list"><span>Development</span><span>Scientific Research</span><span>Documentation</span><span>Presentations</span><span>Refactoring</span><span>Improvement Review</span></div>
@@ -163,7 +189,7 @@
         </article>
 
         <article class="guide" id="review" data-guide>
-          <p class="guide-number">08 / FOLLOW THE WORK, MAKE THE DECISION</p>
+          <p class="guide-number">09 / FOLLOW THE WORK, MAKE THE DECISION</p>
           <h2>Progress &amp; review</h2>
           <p>The conversation carries your request and the next step. Studio adds details about context, decisions, and the work's current state.</p>
           <figure><img src="assets/help/review-path.svg" alt="Review flow: request, work, review, then either request a correction and review again, or confirm application to the chosen target." width="920" height="330" loading="lazy"><figcaption>Validating a result and applying it are separate decisions.</figcaption></figure>
@@ -180,7 +206,7 @@
         </article>
 
         <article class="guide" id="recovery" data-guide>
-          <p class="guide-number">09 / WHEN SOMETHING NEEDS ATTENTION</p>
+          <p class="guide-number">10 / WHEN SOMETHING NEEDS ATTENTION</p>
           <h2>Permissions &amp; recovery</h2>
           <dl class="recovery-list">
             <div><dt>An account cannot connect</dt><dd>Check the connection's status and adapter availability in Accounts. Follow its authorization instructions instead of pasting credentials into chat.</dd></div>

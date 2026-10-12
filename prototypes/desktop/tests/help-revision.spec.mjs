@@ -8,10 +8,10 @@ test('help works directly from HTML, with complete guides and local illustration
   page.on('pageerror', error => errors.push(error.message));
   await page.goto(helpURL);
   await expect(page).toHaveTitle('Help — Orchestrix');
-  await expect(page.locator('[data-guide]')).toHaveCount(9);
-  await expect(page.getByRole('status')).toHaveText('9 guides to help you get started');
+  await expect(page.locator('[data-guide]')).toHaveCount(10);
+  await expect(page.getByRole('status')).toHaveText('10 guides to help you get started');
   const illustrations = page.locator('.guide figure img');
-  await expect(illustrations).toHaveCount(5);
+  await expect(illustrations).toHaveCount(6);
   for (const illustration of await illustrations.all()) {
     await illustration.scrollIntoViewIfNeeded();
     await expect.poll(() => illustration.evaluate(image => image.complete && image.naturalWidth > 0)).toBe(true);
@@ -21,6 +21,9 @@ test('help works directly from HTML, with complete guides and local illustration
   await expect(page.locator('video')).toHaveCount(0);
   await expect(page.locator('#accounts')).toContainText('Not available');
   await expect(page.locator('#accounts')).toContainText('Subscription Only');
+  await expect(page.locator('#files')).toContainText('Save a copy');
+  await expect(page.locator('#files')).toContainText('Opening a file does not automatically add it');
+  await expect(page.locator('#layout')).toContainText('Sessions on the right');
   expect(errors).toEqual([]);
 });
 
@@ -36,7 +39,10 @@ test('help search filters actual content, supports empty recovery, and clears be
   await expect(page.locator('#empty-search')).toBeVisible();
   await page.getByRole('button', {name:'Clear', exact:true}).click();
   await expect(search).toBeFocused();
-  await expect(page.locator('[data-guide]:visible')).toHaveCount(9);
+  await expect(page.locator('[data-guide]:visible')).toHaveCount(10);
+  await search.fill('save a copy');
+  await expect(page.locator('#files')).toBeVisible();
+  await expect(page.getByRole('status')).toHaveText('1 guide matches your search');
   await search.fill('subscription only');
   await page.locator('.help-nav').getByRole('link', {name:'Arrange your workspace', exact:true}).click();
   await expect(search).toHaveValue('');

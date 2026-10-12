@@ -19,7 +19,8 @@
     close:'m6 6 12 12M18 6 6 18', code:'m8 7-5 5 5 5m8-10 5 5-5 5m-3-13-2 16',
     file:'M14 2H5v20h14V7l-5-5ZM14 2v5h5', shield:'M12 2 3 6v6c0 5 9 10 9 10s9-5 9-10V6l-9-4Zm-4 10 3 3 5-6',
     branch:'M6 6v12m0-10c10 0 12 0 12 10M9 3a3 3 0 1 1-6 0 3 3 0 0 1 6 0m0 18a3 3 0 1 1-6 0 3 3 0 0 1 6 0m15 0a3 3 0 1 1-6 0 3 3 0 0 1 6 0',
-    message:'M3 3h18v14H8l-5 4V3Z', book:'M3 3h7l2 2 2-2h7v17h-7l-2 2-2-2H3V3ZM12 5v17'
+    message:'M3 3h18v14H8l-5 4V3Z', book:'M3 3h7l2 2 2-2h7v17h-7l-2 2-2-2H3V3ZM12 5v17',
+    panelLeft:'M3 4h18v16H3V4ZM9 4v16',panelRight:'M3 4h18v16H3V4ZM15 4v16'
   };
   const icon = name => html`<svg viewBox="0 0 24 24" aria-hidden="true"><path d="${paths[name] || paths.circle}"/></svg>`;
   const esc = value => String(value).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -137,6 +138,7 @@
     root.querySelectorAll('.session-project').forEach(details=>details.addEventListener('toggle',()=>{const project=details.dataset.projectId===state.projectId?state:projects.get(details.dataset.projectId);if(project){project.expanded=details.open;schedulePersistence();}}));
   }
   function selectSession(projectId,chatId) {
+    if(window.OrchestrixFiles?.getState().visible)window.OrchestrixFiles.showChat();
     if(projectId!==state.projectId){if(!projects.has(projectId))return;switchProject(projectId);}
     const chat=state.conversations.find(item=>item.id===chatId);if(!chat)return;
     rememberComposer();state.chat=chat;chat.reviewReturn=null;state.view='chat';render();focusComposer();
@@ -291,7 +293,7 @@
     window.OrchestrixExperience.syncLayout(mobileLayout.matches);
     if(composerSelection&&state.view==='chat'){const next=content.querySelector('#chat-message');next.focus({preventScroll:true});next.setSelectionRange(composerSelection.start,composerSelection.end,composerSelection.direction);next.scrollTop=composerSelection.scroll;}
     else if(focusKey){const attribute=focusKey.replace(/[A-Z]/g,letter=>`-${letter.toLowerCase()}`);const next=[...content.querySelectorAll(`[data-${attribute}]`)].find(el=>el.dataset[focusKey]===focusValue&&(!focusTask||el.dataset.chatTask===focusTask)&&!el.disabled);(next||content.querySelector('#chat-message')||content).focus({preventScroll:true});}
-    renderSessions();schedulePersistence();window.OrchestrixDock?.sync();
+    renderSessions();schedulePersistence();window.OrchestrixDock?.sync();window.OrchestrixShell?.sync(state);
   }
   function refreshInterfaceLanguage() {
     rememberComposer();
@@ -437,8 +439,9 @@
     const sessions=entries.flatMap(project=>project.conversations.filter(chat=>matches([sessionLabel(chat),project.project,project.projectPath].join(' '))).map(chat=>html`<button data-search-project="${esc(project.projectId)}" data-search-session="${esc(chat.id)}">${icon('message')}<span>${esc(sessionLabel(chat))}<small>${esc(project.project||t('Sessão independente'))}</small></span></button>`));
     document.querySelector('#command-list').innerHTML=[...sessions,...actions].join('')||html`<p class="empty-result">Nenhuma sessão, projeto ou ação encontrada.</p>`;
   }
-  function navigate(view) {rememberComposer();if(view==='settings'){window.OrchestrixSettings?.open('orchestration');return;}if(view!=='review')state.chat.reviewReturn=null;state.view=view;render();}
+  function navigate(view) {rememberComposer();if(view==='settings'){window.OrchestrixSettings?.open('orchestration');return;}if(window.OrchestrixFiles?.getState().visible)window.OrchestrixFiles.showChat();if(view!=='review')state.chat.reviewReturn=null;state.view=view;render();window.OrchestrixShell?.closeMobile();}
   function runAction(name) {
+    if(['chat-loose','chat-session-new','chat-new'].includes(name)&&window.OrchestrixFiles?.getState().visible)window.OrchestrixFiles.showChat();
     const task=selectedTask();
     if(name==='review'&&task?.id!=='OX-24'&&task?.artifact){W.supplementReview(task,state,helpers());return;}
     if(viewNames[name]) {if(name==='review')state.selected='OX-24';navigate(name);return;}
@@ -559,7 +562,7 @@
     if(typeof patch.systemPrompt==='string')next.systemPrompt=patch.systemPrompt.slice(0,8000);
     if(typeof patch.profileName==='string')next.profileName=patch.profileName.slice(0,80);
     next.subscriptionOnly=patch.subscriptionOnly!==false;
-    for(const project of projects.values())project.appSettings={...next};state.appSettings=next;return {...next};
+    for(const project of projects.values())project.appSettings={...next};state.appSettings=next;window.OrchestrixShell?.sync(state);return {...next};
   }
   function savePreferences(patch={}) {
     const allowed={routing:['balanced','quality','availability','efficiency','performance','custom'],thinking:['auto','medium','high'],context:['focused','module'],review:['fresh','other']};
@@ -570,5 +573,6 @@
   window.OrchestrixApp=Object.freeze({getState:()=>state,helpers,getThemes:()=>themes.map(theme=>({...theme,colors:[...theme.colors]})),setTheme,getUI:()=>ui,saveUI:()=>W.saveUI(ui),getSettings:()=>({...state.appSettings}),updateSettings,savePreferences,openProject:projectForm,newSession:looseConversation,selectSession,createProject,attachToProject,persistSessions,...(testScenario?{resetScenario,prepareScenario(data){W.prepareProject(data,state,{...helpers(),initialTasks,configureAttempt});}}:{})});
   window.addEventListener('pagehide',persistSessions);
   hydrateIcons();if(testScenario)resetScenario();else if(loadSessions())render();else reset();
+  window.OrchestrixShell.init({getState:()=>state,navigate,runAction,rememberComposer,focusComposer,notify});
   document.dispatchEvent(new CustomEvent('orchestrix:app-ready'));
 })();

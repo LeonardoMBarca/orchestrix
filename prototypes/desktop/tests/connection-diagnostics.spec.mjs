@@ -24,7 +24,7 @@ async function transport(page,respond) {
   return requests;
 }
 async function register(page,{name='Diagnostics API',key=secret,fromChat=false}={}) {
-  if(!fromChat)await page.locator('[data-view="connections"]').click();
+  if(!fromChat)await page.locator('#activity-items>[data-activity="connections"]').click();
   await openSettings(page,'accounts');await page.locator('[data-settings-add-account]').click();
   await page.locator('#conn-kind-form [name="kind"][value="api"]').check();await page.locator('#conn-kind-form button[type="submit"]').click();
   await page.locator('#conn-api-provider').selectOption('openai');await page.locator('#conn-name').fill(name);await page.locator('#conn-api-key').fill(key);await page.locator('[name="paidConsent"]').check();
@@ -107,7 +107,7 @@ for(const failure of [{code:'authentication-required',status:401,message:'Confir
 });
 
 test('runtime configuration reports pending authentication instead of invented resources or permissions',async ({page})=>{
-  await page.goto('/');await page.locator('[data-view="connections"]').click();await openSettings(page,'accounts');await page.locator('[data-settings-add-account]').click();await page.locator('#conn-kind-form button[type="submit"]').click();
+  await page.goto('/');await page.locator('#activity-items>[data-activity="connections"]').click();await openSettings(page,'accounts');await page.locator('[data-settings-add-account]').click();await page.locator('#conn-kind-form button[type="submit"]').click();
   await page.locator('#conn-runtime').selectOption('Codex');await page.locator('#conn-name').fill('Personal Codex');await page.locator('#conn-account-form button[type="submit"]').click();await expect(page.locator('#modal')).not.toBeVisible();
   await expect.poll(async()=> (await connection(page)).diagnostics.phase).toBe('completed');const c=await connection(page),view=await report(page,c.id);
   await view.locator('.diagnostic-checklist summary').click();await expect(view.locator('[data-diagnostic-check="identity"]')).toHaveAttribute('data-check-status','blocked');await expect(view.locator('[data-diagnostic-check="identity"]')).toContainText('authentication have not been confirmed');

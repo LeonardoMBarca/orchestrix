@@ -45,6 +45,7 @@
   const videoGuides = {
     quickstart: {src: '', captions: '', transcript: ''},
     sessions: {src: '', captions: '', transcript: ''},
+    files: {src: '', captions: '', transcript: ''},
     review: {src: '', captions: '', transcript: ''},
   };
   const mediaURL = value => {

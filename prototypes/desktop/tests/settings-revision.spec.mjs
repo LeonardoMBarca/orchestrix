@@ -139,10 +139,10 @@ test('Settings language and theme controls are centralized and translated in all
   await expect(page.locator('html')).toHaveAttribute('data-direction','medieval');
 });
 
-test('panel layout offers only side docking with Sessions on the left by default',async ({page})=>{
+test('panel layout offers only side docking with Sessions on the right by default',async ({page})=>{
   await openSettings(page,'layout');
-  await expect(page.locator('#settings-dock-sessions')).toHaveValue('left');
-  await expect(page.locator('#settings-dock-navigation')).toHaveValue('right');
+  await expect(page.locator('#settings-dock-sessions')).toHaveValue('right');
+  await expect(page.locator('#settings-dock-navigation')).toHaveValue('left');
   await expect(page.locator('#settings-dock-work')).toHaveValue('right');
   for(const id of ['sessions','navigation','work']){
     await expect(page.locator(`#settings-dock-${id} option`)).toHaveCount(2);

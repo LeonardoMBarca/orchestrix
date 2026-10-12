@@ -1,0 +1,63 @@
+/* File browsing and focused text edits, without an IDE toolchain. */
+.files-folder-heading {display:flex;align-items:center;gap:8px;min-width:0;padding:4px 0 10px}
+.files-folder-heading strong {overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;font-size:.94rem}
+.files-icon-button {display:grid;place-items:center;width:28px;height:28px;border:0;border-radius:6px;color:var(--muted);background:transparent;font-size:20px;cursor:pointer}
+.files-icon-button:hover {background:var(--surface-2,var(--surface));color:var(--text)}
+.files-icon-button svg,.files-search>svg {width:16px;height:16px;flex-shrink:0}
+.files-search {display:flex;align-items:center;gap:7px;border:1px solid var(--line);background:var(--bg);border-radius:8px;padding:6px 9px;color:var(--muted)}
+.files-search input {width:100%;min-width:0;background:transparent;border:0;outline:0;padding:0;color:var(--text);font:inherit;font-size:.87rem}
+.files-search:focus-within {border-color:var(--accent);box-shadow:0 0 0 2px color-mix(in srgb,var(--accent) 12%,transparent)}
+.files-import-note {font-size:.75rem;line-height:1.5;color:var(--muted);margin:9px 0}
+#files-tree {min-height:0;overflow:auto;padding-block:9px;scrollbar-width:thin}
+.file-tree-row {display:flex;align-items:center;gap:7px;width:100%;min-width:0;min-height:29px;padding:4px 8px 4px calc(4px + var(--file-depth)*13px);border:1px solid transparent;border-radius:5px;color:var(--text);background:transparent;font:inherit;font-size:.86rem;text-align:left;cursor:pointer}
+.file-tree-row:hover {background:color-mix(in srgb,var(--accent) 8%,transparent)}
+.file-tree-row.is-active {background:color-mix(in srgb,var(--accent) 14%,transparent);border-color:color-mix(in srgb,var(--accent) 20%,transparent)}
+.file-tree-row:focus-visible {outline:2px solid var(--accent);outline-offset:-2px}
+.file-tree-chevron {display:inline-block;flex:0 0 9px;width:9px;color:var(--muted);font-size:17px;line-height:1;transition:transform .15s}
+.file-tree-chevron.is-open {transform:rotate(90deg)}
+.file-tree-chevron svg {width:10px;height:12px}
+.file-tree-icon svg {width:16px;height:16px}
+.file-tree-icon {flex:0 0 17px;width:17px;color:var(--muted);font-size:17px;line-height:1}
+.file-tree-icon.is-markdown {font-size:10px;letter-spacing:-1px;color:var(--accent)}
+.file-tree-name {overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.files-empty {padding:28px 7px;color:var(--muted);font-size:.86rem;line-height:1.65}
+.files-empty h3 {font-size:.98rem;color:var(--text);margin:12px 0 8px}
+.files-empty-icon {font-size:30px;color:var(--accent)}
+.files-empty-icon svg {width:32px;height:32px}
+.files-empty .button {margin-top:10px}
+#editor-tabs {display:flex;flex-shrink:0;align-items:stretch;overflow-x:auto;scrollbar-width:thin;border-bottom:1px solid var(--line);background:var(--surface);min-height:37px}
+#editor-tabs[hidden],#file-editor[hidden],.file-edit-area[hidden],.file-markdown-preview[hidden] {display:none!important}
+.editor-tab,.editor-tab-close {color:var(--muted);background:transparent;border:0;font:inherit;cursor:pointer}
+.editor-tab {display:flex;align-items:center;gap:8px;white-space:nowrap;padding:10px 13px;font-size:.82rem}
+.editor-file-tab {display:flex;align-items:center;border-right:1px solid var(--line);border-top:2px solid transparent;max-width:280px}
+.editor-file-tab .editor-tab {overflow:hidden;text-overflow:ellipsis;display:block;min-width:0;padding-right:7px}
+.editor-file-tab.is-active,.editor-tab.is-active {background:var(--bg);color:var(--text);border-top-color:var(--accent)}
+.editor-file-tab.is-active .editor-tab {color:var(--text)}
+.editor-tab-close {margin-right:5px;flex-shrink:0;width:25px;height:25px;font-size:18px;border-radius:4px}
+.editor-tab-close:hover {background:color-mix(in srgb,var(--accent) 14%,transparent);color:var(--text)}
+.file-dirty {display:inline-block;margin-left:7px;color:var(--accent);font-size:8px;vertical-align:middle}
+.file-dirty[hidden] {display:none}
+#file-editor {display:flex;flex-direction:column;flex:1;min-height:0;min-width:0;background:var(--bg);color:var(--text);overflow:hidden}
+.file-editor-heading {display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:12px;padding:13px 18px;border-bottom:1px solid var(--line);flex-shrink:0;min-width:0}
+.file-editor-heading>div:first-child {min-width:0;display:flex;flex-direction:column;gap:4px}
+.file-editor-heading strong {font-size:.9rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.file-storage-label {font-size:.73rem;color:var(--muted)}
+.file-editor-actions {display:flex;flex-wrap:wrap;align-items:center;gap:10px;max-width:100%;min-width:0}
+.file-view-switch {display:flex;flex-wrap:wrap;max-width:100%;padding:3px;background:var(--surface);border:1px solid var(--line);border-radius:8px}
+.file-view-switch button {border:0;color:var(--muted);background:transparent;padding:5px 9px;border-radius:5px;font:inherit;font-size:.78rem;cursor:pointer}
+.file-view-switch button.is-active {background:color-mix(in srgb,var(--accent) 14%,transparent);color:var(--text)}
+.file-save-button {font-size:.8rem!important;min-height:31px!important;padding:6px 11px!important}
+.file-edit-area {display:flex;flex:1;min-height:0;min-width:0;padding-top:14px;overflow:hidden}
+.file-line-numbers,.file-text-editor {font-family:Consolas,'SFMono-Regular',Menlo,monospace;font-size:.91rem;line-height:1.65;white-space:pre;tab-size:2}
+.file-line-numbers {flex-shrink:0;text-align:right;width:52px;padding:0 12px 20px 0;overflow:hidden;color:var(--muted);opacity:.55;user-select:none}
+.file-text-editor {flex:1;width:100%;height:100%;min-height:0;min-width:0;resize:none;border:0!important;outline:none!important;border-radius:0!important;background:transparent!important;box-shadow:none!important;padding:0 18px 20px 8px!important;color:var(--text);overflow:auto;scrollbar-width:thin}
+.file-markdown-preview {flex:1;overflow:auto;padding:24px clamp(20px,5vw,70px);font-size:.95rem;line-height:1.75;overflow-wrap:anywhere}
+.file-markdown-preview h1,.file-markdown-preview h2,.file-markdown-preview h3 {line-height:1.35;margin:1.4em 0 .6em}
+.file-markdown-preview h1:first-child {margin-top:0}
+.file-markdown-preview pre {padding:15px;border:1px solid var(--line);border-radius:8px;background:var(--surface);overflow:auto}
+.file-markdown-preview code {font-family:Consolas,'SFMono-Regular',Menlo,monospace;font-size:.88em;white-space:pre-wrap}
+.file-markdown-preview blockquote {border-left:2px solid var(--accent);margin-inline:0;padding-left:16px;color:var(--muted)}
+.file-preview-list {padding-left:10px}
+.file-editor-status {display:flex;flex-wrap:wrap;justify-content:space-between;gap:6px 16px;padding:7px 14px;flex-shrink:0;border-top:1px solid var(--line);color:var(--muted);font-size:.71rem;background:var(--surface)}
+@media(max-width:800px) {.file-editor-heading {align-items:flex-start;flex-wrap:wrap;padding:12px}.file-editor-actions {flex-wrap:wrap;gap:7px}.file-editor-status {gap:6px;font-size:.65rem}.file-line-numbers {width:37px;padding-right:7px}.file-text-editor {font-size:.85rem}.file-markdown-preview {padding:20px}}
+@media(prefers-reduced-motion:reduce) {.file-tree-chevron {transition:none}}

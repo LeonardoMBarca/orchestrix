@@ -140,6 +140,7 @@ test('layouts refluem e direções preservam legibilidade básica',async ({page}
       expect(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth)).toBe(true);
       await openReview(page);
       expect(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth)).toBe(true);
+      await openStudio(page);
       await page.locator('[data-view="work"]').click();
     }
     await page.mouse.move(0,0);

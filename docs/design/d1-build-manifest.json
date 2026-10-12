@@ -1,14 +1,24 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-10-11T04:39:31.559Z",
+  "generatedAt": "2026-10-12T13:30:03.545Z",
   "scope": "D1 static prototype: app, website, video page, help center, local assets and locale sources/catalog; excludes tools, tests, server and documentation",
   "algorithm": "SHA-256 of UTF-8 JSON.stringify(files), sorted by relative path; each entry has path, bytes and sha256 of exact file bytes. generatedAt is excluded.",
-  "buildSha256": "8cdad562051d594ba8d6adf693a65226d79471ce4491fa9edc3c757c5a87d35c",
+  "buildSha256": "e391d566bd8e1ad7da0a05ec72ba3ba534fc8a7ee06532974883df174ca770c7",
   "files": [
     {
+      "path": "activity.css",
+      "bytes": 8257,
+      "sha256": "2fdcd0a28b67e4ece2300ba81e423fb7909671316b1582d66a44f75ec5efdc44"
+    },
+    {
+      "path": "activity.js",
+      "bytes": 18291,
+      "sha256": "719216836b34440e2019f28ddb2cf872a183583fd024e082f6d5c25cd1a8e723"
+    },
+    {
       "path": "app.js",
-      "bytes": 111499,
-      "sha256": "e9e762db07597ec4e6dd7449077ea72914ecadda75eb91f5db0b49d13bc635cf"
+      "bytes": 112107,
+      "sha256": "e41b149a87ebd79e732cdf96a8236321de2deefc8024c62480ce853ce9cd274f"
     },
     {
       "path": "assets/brand/app-icon-dark.png",
@@ -81,14 +91,19 @@
       "sha256": "1278af8849f5f9a9711711bbfb2e150dfda3964b6c13d7f19ddf282318d75594"
     },
     {
+      "path": "assets/help/files-editor.svg",
+      "bytes": 3208,
+      "sha256": "7dc2d485fa329f1c3d5ddc55610cd7ef370136bc8ae4010dfcf83a5cb5186997"
+    },
+    {
       "path": "assets/help/review-path.svg",
       "bytes": 2192,
       "sha256": "d654702808649225b447854e56bd3cd822cc865ac9193a92421f3e353b674946"
     },
     {
       "path": "assets/help/session-tree.svg",
-      "bytes": 2513,
-      "sha256": "bb97532fc1904a3263c9de10ab31b1237b7dc8a81260fe4967223cb43f7a8c69"
+      "bytes": 2695,
+      "sha256": "d5aa39538d0d5f7f3d98cd98faf1cd19fc6134a689c1835f7985e735ab6d6d54"
     },
     {
       "path": "assets/help/settings-window.svg",
@@ -97,8 +112,8 @@
     },
     {
       "path": "assets/help/workspace-docking.svg",
-      "bytes": 3058,
-      "sha256": "b49a2cdc81a2448b7334ff50df8b93b8f4b4bed4e169d1730adad786c877f161"
+      "bytes": 3656,
+      "sha256": "4d53a29566915d34b5d35206e96f108bcdee73d1a89c9ad2cdc58264dca9f227"
     },
     {
       "path": "assets/icons/github-mark-white.svg",
@@ -142,8 +157,8 @@
     },
     {
       "path": "docking.js",
-      "bytes": 11222,
-      "sha256": "87eeb6605b2656dd2c88f559eb905f5758f81feb61d319aacd4535ffef9c1ba0"
+      "bytes": 13853,
+      "sha256": "e5b0813611efae9b2e869d7fe06892b1ef82e39b226df8de194db1bc3cdf110c"
     },
     {
       "path": "experience.css",
@@ -156,19 +171,29 @@
       "sha256": "d6b2c26a64d6185e5e8797ae4add674fd2f1a85f931584e0bb10bf332466b6db"
     },
     {
+      "path": "files.css",
+      "bytes": 7202,
+      "sha256": "44320c909ef21f40172b2309b4aafbfab78259e660f2fe6c758b5dfb5f61dd35"
+    },
+    {
+      "path": "files.js",
+      "bytes": 20377,
+      "sha256": "178e2807bc30125a76ec6a6f2c259a0553b7ac6635d66c964d868f70440e56e4"
+    },
+    {
       "path": "help.css",
       "bytes": 7301,
       "sha256": "7a71e0fc287d0efb7350fa8d8604cfc4effab3e2f96e7659116c849d98a9aaf1"
     },
     {
       "path": "help.html",
-      "bytes": 19858,
-      "sha256": "eeeac5384786000cfc4e5f375f28db5a98330b8429d095c9a941dae08b7283d4"
+      "bytes": 24245,
+      "sha256": "6b049c7372a7450069090dd7d7f9b9095d54fa2a46c53f166f4ac7e9cd6f8d4a"
     },
     {
       "path": "help.js",
-      "bytes": 3690,
-      "sha256": "b2e24920e1aa76b2979086756a39fd9fb01381b53768eddf63d1eeeaa10e1ce3"
+      "bytes": 3742,
+      "sha256": "73a86c4d0e81b41d60da2aa0e1dcefff076ab538e6388e6d23b04a268994210c"
     },
     {
       "path": "i18n.js",
@@ -182,8 +207,13 @@
     },
     {
       "path": "index.html",
-      "bytes": 7585,
-      "sha256": "d116d348d0d1a479bc5dd51797b0e4edf1489207a18005c43229b3a59da9085a"
+      "bytes": 12544,
+      "sha256": "6fa3bc66d36c03ff06ed4f8cc9282b616dcc446aaca2c13a07b766f01bae541e"
+    },
+    {
+      "path": "locales/activity-shell.json",
+      "bytes": 3412,
+      "sha256": "51c68a7326c8c7bf2ebd766cd3cd34b0a1b6ea36eafb5ef1024b148ccf34ae6a"
     },
     {
       "path": "locales/api-connections.json",
@@ -197,8 +227,8 @@
     },
     {
       "path": "locales/catalog.js",
-      "bytes": 234949,
-      "sha256": "f7ef44e82382dbf36ff366af14774144857498f764829c11cd93ce1e7158e691"
+      "bytes": 244117,
+      "sha256": "cde617303aacd331a5b1246f951e879bd871977888766baec5e435f61fda2637"
     },
     {
       "path": "locales/chrome.json",
@@ -219,6 +249,11 @@
       "path": "locales/experience.json",
       "bytes": 12138,
       "sha256": "4207fa9f983474acbf4f34be882408490357b627de61d40a4ebb685802f8888e"
+    },
+    {
+      "path": "locales/files-shell.json",
+      "bytes": 5138,
+      "sha256": "a72e5310dee722ce98a8fac5c561edb24e22179378d209286d809e9c07f93d63"
     },
     {
       "path": "locales/production-copy.json",
@@ -272,8 +307,8 @@
     },
     {
       "path": "settings.js",
-      "bytes": 24152,
-      "sha256": "d72f38cf9c585696d25f978b11830671ac6aa02ed61ba4f1509e7835678c5e23"
+      "bytes": 24150,
+      "sha256": "79282648ef9c9feec97e45ee5675a21a6c2baa40c718516d5e7e448cd168e16c"
     },
     {
       "path": "shell.css",

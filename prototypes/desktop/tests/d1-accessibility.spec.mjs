@@ -10,7 +10,7 @@ test('closing the project form restores the conversation composer',async ({page}
 });
 
 test('connection registration restores useful focus after its opener is replaced',async ({page})=>{
-  await page.locator('[data-view="connections"]').click();await page.getByRole('button',{name:'Adicionar conexão',exact:true}).click();
+  await page.locator('#activity-items>[data-activity="connections"]').click();await page.getByRole('button',{name:'Adicionar conexão',exact:true}).click();
   await page.getByLabel('Nome para reconhecer a conta').fill('Codex · segunda conexão');await page.locator('#conn-workspace').fill('Pessoal · QA');
   await page.getByRole('button',{name:'Adicionar registro pendente',exact:true}).click();
   await expect(page.getByRole('dialog')).toBeHidden();await expect(page.locator('.conn-row').last()).toContainText('Codex · segunda conexão');

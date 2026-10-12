@@ -1,0 +1,48 @@
+# D1 — Barra de atividades e arquivos
+
+Revisão solicitada em **12 de outubro de 2026**. Estende o [contrato do shell](../../design-system/workspace-shell.md) e prepara a implementação de M2 sem encerrar o piloto D1 nem antecipar os gates de M0. A identidade Studio, a entrada pelo chat e a simplicidade com uma única conta permanecem.
+
+## Direção e organização
+
+| Superfície | Contrato |
+| --- | --- |
+| Barra de atividades | Fixa à esquerda. Ordem inicial Chat, Files, Studio, Connections; os quatro itens podem ser reordenados. Help, Settings e Profile ficam na base. A barra não participa do docking nem do recolhimento. |
+| Navigation | Painel da atividade selecionada, inicialmente à esquerda com 224px. |
+| Sessions | Projetos expansíveis e sessões avulsas, inicialmente à direita com 280px. Mantém o único criador principal de sessão. |
+| Docks | Painéis móveis entre esquerda/direita; itens no mesmo lado compartilham abas. Nenhum destino inferior. |
+| Divisórias | Ajustam largura, recolhem ao reduzir e permitem reabrir pela borda, com alternativa por teclado e restauração da largura útil. |
+| Menu superior | File, Edit, View e Help, com ações pertinentes ao app e sem Run, debugger ou terminal. |
+
+Chat prioriza a conversa; Files apresenta a estrutura autorizada e o arquivo aberto; Studio reúne trabalho, atenção, alterações e histórico; Connections oferece cadastro, recursos e diagnóstico. A troca entre essas atividades não apaga rascunhos. Help continua abrindo o navegador; Settings é centralizada, fechável e modeless, e Profile abre sua seção de perfil.
+
+Arrastar painéis conserva os dois destinos laterais e o blur temporário já definido. Reordenar atividades muda a preferência de navegação, sem modificar contas, papéis de agentes ou políticas de execução. Reset layout restaura os lados, larguras e disposição inicial previstos pelo controle. A barra fixa continua disponível quando um dock está recolhido.
+
+## Arquivos sem ampliar para IDE
+
+A edição leve atende casos explícitos do responsável: ajustar um `.env`, ler documentos gerados e revisar Markdown dentro do Orchestrix. Não introduz execução de código, debugger, language server, terminal ou gestão de extensões.
+
+- **Pasta autorizada:** usar concessão real de acesso. Onde handles de diretório e escrita estiverem disponíveis, salvar atua somente no arquivo permitido. Um caminho digitado ou salvo no projeto não é uma concessão.
+- **Importação:** quando a integração de escrita não estiver disponível, arquivos selecionados podem ser lidos/editados em memória; a saída é salvar uma cópia, sem afirmar que a origem foi atualizada.
+- **Estado:** diferenciar leitura, alteração não salva, gravação concluída e erro/permissão ausente. Preservar o rascunho diante de cancelamento ou falha e oferecer decisão explícita antes de descartá-lo.
+- **Markdown:** alternar leitura e edição sem executar HTML/scripts embutidos. Abrir um arquivo não o envia automaticamente ao contexto de uma AI.
+- **Desktop:** M2 deve integrar grants, versão/base e escrita com o Core. Alterações concorrentes precisam de tratamento de conflito e invalidam evidências da versão anterior. O protótipo do navegador não demonstra essa coordenação com workers.
+
+Conexões e diagnósticos mantêm suas capacidades observadas e valores desconhecidos. A revisão não altera Subscription Only, não acrescenta fallback pago e não exige várias contas. Efficiency, Performance, Balanced, Custom e presets especializados continuam no plano existente.
+
+## Validação e retomada
+
+`npm run check` passou com **1.608 chaves EN/PT-BR/ES**, incluindo sintaxe dos módulos de atividades e arquivos. A cobertura browser consolidou **173 cenários**, sem afirmar uma única rodada com todos aprovados:
+
+- A suíte inicial passou **143/172 em 15,8 minutos**. Os testes antigos ainda usavam seletores de navegação removidos, o default anterior de Sessions e um retorno ao Studio incompatível com o painel mobile fechado; dois casos de Settings excederam o timeout durante a carga concorrente.
+- Após adaptar os caminhos aos novos controles, a rodada focada passou **31/34 em 5,8 minutos**. Restaram dois timeouts de cadastro durante concorrência e uma colisão entre o nome Workspace da barra e o campo do formulário; o campo passou a usar o textbox exato.
+- A rodada final, sem outra suíte browser concorrente, passou **16/16 em 2,4 minutos**: nove casos do novo shell (incluindo uma verificação nova do menu Edit) e os sete casos ainda pendentes. O caso novo eleva o total distinto a 173. As assertions de comportamento, privacidade e permissões foram preservadas.
+
+A cobertura inclui reordenação persistente por ponteiro/teclado, recolhimento e restauração pela borda, abas e foco/rascunhos preservados, Settings/Profile, idiomas, oito temas e reflow. Os sete casos de Files incluem escrita com handles controlados, importação com download de cópia, confirmação de descarte, falha de permissão, limites de texto/binário, leitura sob demanda e Markdown com HTML/URLs ativos mantidos inertes. Os testes não autenticaram contas reais nem executaram agentes; handles e respostas de discovery foram controlados nos cenários pertinentes.
+
+Cinco capturas do shell, três do editor e três diagramas da ajuda foram examinados e [catalogados](visual-asset-catalog.md). A entrada não rolou em 1440×900 ou 1280×720 a 100%; mobile com texto a 200% manteve reflow sem overflow horizontal. Não houve chave ausente, imagem quebrada ou erro JavaScript nessas composições.
+
+`npm run check:file` passou **13 composições** por HTML direto: desktop, notebook e mobile em EN/PT-BR/ES, mais a jornada de sessões/rascunhos, associação a projeto, agrupamento real dos painéis à esquerda, restauração à direita, blur, Settings, escala/idioma persistidos e ajuda externa com as seis ilustrações. Não houve requisição HTTP/HTTPS, erro, chave ausente, imagem quebrada ou overflow horizontal. Em 320px, PT-BR/ES usam rolagem vertical interna; as entradas de notebook a 100% não rolaram. A jornada não inclui consulta a provedores nem acesso de escrita nativo ao disco.
+
+O [manifesto atual](d1-build-manifest.json) identifica **70 arquivos**, SHA-256 `e391d566bd8e1ad7da0a05ec72ba3ba534fc8a7ee06532974883df174ca770c7`. O [build anterior à barra de atividades](builds/2026-10-12-before-activity-shell.json) preserva os 63 arquivos e o digest `8cdad562051d594ba8d6adf693a65226d79471ce4491fa9edc3c757c5a87d35c`. O manifesto estático exclui testes, ferramentas, host e documentação.
+
+O [piloto](d1-pilot.md) foi atualizado para a organização atual, mas segue adiado até o responsável considerar a interface pronta. Testes automatizados e preferência estética não substituem as observações reais do piloto. O fluxo D0 → D1 → M0 → M1 → M2 e os tickets existentes são preservados.

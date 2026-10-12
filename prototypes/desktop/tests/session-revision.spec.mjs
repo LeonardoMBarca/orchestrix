@@ -42,7 +42,7 @@ test('project creation needs no account and adds a nested session without losing
 
 test('attach to an existing project preserves identity, history, draft and old context provenance',async ({page})=>{
   await page.goto('/');await createProject(page,'Shared project','/work/shared');const project=await state(page);
-  await newSession(page);await page.locator('[data-action="session-directory"]').click();await page.locator('#session-directory').fill('/work/independent');await page.getByRole('button',{name:'Save directory',exact:true}).click();
+  await newSession(page);await page.locator('#chat-form [data-action="session-directory"]').click();await page.locator('#session-directory').fill('/work/independent');await page.getByRole('button',{name:'Save directory',exact:true}).click();
   const original=await state(page);await input(page).fill('Investigate the parser');await input(page).press('Enter');await input(page).fill('Unsent clarification');
   const before=await page.evaluate(()=>structuredClone(OrchestrixApp.getState().tasks[0].contextPack));
   await page.locator('[data-action="session-attach"]').click();await page.locator(`[data-attach-project="${project.projectId}"]`).click();
@@ -80,7 +80,7 @@ test('search finds a session by project path and selection never starts its prep
 test('technical pages use product copy and preserve unknown runtime capabilities',async ({page})=>{
   await page.goto('/');await page.evaluate(()=>OrchestrixApp.savePreferences({context:'module'}));await input(page).fill('Explain the architecture');await input(page).press('Enter');
   expect(await page.evaluate(()=>OrchestrixApp.getState().tasks[0].contextPack.sources)).toEqual([]);
-  await page.evaluate(()=>OrchestrixDock.activate('navigation'));await page.locator('#studio-navigation').evaluate(element=>element.open=true);await page.locator('[data-view="work"]').click();
+  await page.locator('#activity-items>[data-activity="studio"]').click();await page.locator('[data-view="work"]').click();
   await expect(page.locator('#content')).not.toContainText(/demo|simulat|example account|prototype/i);
   await page.locator('[data-tab="code"]').click();await expect(page.locator('#content')).not.toContainText(/demo|simulat|prototype/i);
   await page.locator('[data-view="review"]').click();await expect(page.locator('#content')).not.toContainText(/demo|simulat|example|prototype/i);

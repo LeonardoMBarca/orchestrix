@@ -3,19 +3,22 @@
   'use strict';
   const {t}=OrchestrixI18n;
   const zones=['left','right'];
-  const names={navigation:'Navegação',sessions:'Sessões',work:'Trabalho'};
-  const storageKey='orchestrix-panel-layout-v2';
-  const initial=()=>({version:2,positions:{navigation:'right',sessions:'left',work:'right'},active:{left:'sessions',right:'navigation'},sizes:{left:280,right:224}});
+  const names={navigation:'Workspace',sessions:'Sessões',work:'Trabalho'};
+  const storageKey='orchestrix-panel-layout-v3';
+  const initial=()=>({version:3,positions:{navigation:'left',sessions:'right',work:'right'},active:{left:'navigation',right:'sessions'},sizes:{left:224,right:280},collapsed:{left:false,right:false}});
+  const boundedSize=size=>Math.max(210,Math.min(440,size));
   let layout=initial();
   try {
-    const saved=JSON.parse(localStorage.getItem(storageKey)||localStorage.getItem('orchestrix-panel-layout-v1')||'null');
+    const saved=JSON.parse(localStorage.getItem(storageKey)||localStorage.getItem('orchestrix-panel-layout-v2')||localStorage.getItem('orchestrix-panel-layout-v1')||'null');
     const oldDefault=saved?.version===1&&saved.positions?.navigation==='left'&&saved.positions?.sessions==='right'&&saved.positions?.work==='right';
-    if([1,2].includes(saved?.version)&&!oldDefault) {
+    const untouchedV2=saved?.version===2&&saved.positions?.navigation==='right'&&saved.positions?.sessions==='left'&&saved.positions?.work==='right'&&saved.active?.left==='sessions'&&saved.active?.right==='navigation'&&saved.sizes?.left===280&&saved.sizes?.right===224;
+    if([1,2,3].includes(saved?.version)&&!oldDefault&&!untouchedV2) {
       for(const id of Object.keys(names))if(zones.includes(saved.positions?.[id]))layout.positions[id]=saved.positions[id];
       for(const zone of zones) {
         if(Object.hasOwn(names,saved.active?.[zone]))layout.active[zone]=saved.active[zone];
         const size=Number(saved.sizes?.[zone]);
-        if(Number.isFinite(size))layout.sizes[zone]=Math.max(210,Math.min(440,size));
+        if(Number.isFinite(size))layout.sizes[zone]=boundedSize(size);
+        if(saved.version===3)layout.collapsed[zone]=saved.collapsed?.[zone]===true;
       }
     }
   } catch {}
@@ -27,16 +30,27 @@
   let menuOpener=null;
   const panel=id=>document.getElementById(`${id}-panel`);
   const save=()=>{try{localStorage.setItem(storageKey,JSON.stringify(layout));}catch{}};
+  const zonePanels=zone=>Object.keys(names).filter(id=>layout.positions[id]===zone&&available[id]);
+  function applySize(zone,transientSize) {
+    const container=document.querySelector(`[data-dock-zone="${zone}"]`);
+    const ids=zonePanels(zone),collapsed=layout.collapsed[zone],visible=ids.length>0&&!collapsed;
+    container.classList.toggle('is-collapsed',collapsed);
+    app.classList.toggle(`has-${zone}`,visible);
+    app.style.setProperty(`--dock-${zone}`,`${visible?(transientSize??layout.sizes[zone]):0}px`);
+    const tabs=container.querySelector('.dock-tabs');if(tabs)tabs.hidden=collapsed;
+    for(const id of Object.keys(names).filter(id=>layout.positions[id]===zone))panel(id).hidden=!visible||!available[id]||layout.active[zone]!==id;
+    const resizer=container.querySelector('.dock-resizer');
+    if(resizer){resizer.setAttribute('aria-valuenow',String(visible?Math.round(transientSize??layout.sizes[zone]):0));resizer.tabIndex=ids.length?0:-1;}
+  }
   function apply() {
     const focused=document.activeElement;
     for(const zone of zones) {
       const container=document.querySelector(`[data-dock-zone="${zone}"]`);
-      const ids=Object.keys(names).filter(id=>layout.positions[id]===zone&&available[id]);
+      const ids=zonePanels(zone);
       for(const id of Object.keys(names).filter(id=>layout.positions[id]===zone))if(panel(id).parentElement!==container)container.append(panel(id));
       container.querySelector('.dock-tabs')?.remove();
       if(!ids.includes(layout.active[zone]))layout.active[zone]=ids[0]||null;
       container.classList.toggle('has-panels',ids.length>0);
-      app.classList.toggle(`has-${zone}`,ids.length>0);
       container.dataset.activePanel=layout.active[zone]||'';
       if(ids.length>1) {
         const tablist=document.createElement('div');
@@ -57,31 +71,44 @@
         if(ids.length>1){element.setAttribute('role','tabpanel');element.setAttribute('aria-labelledby',`dock-tab-${id}`);}
         else {element.removeAttribute('role');element.removeAttribute('aria-labelledby');}
       }
-      app.style.setProperty(`--dock-${zone}`,`${ids.length?layout.sizes[zone]:0}px`);
       let resizer=container.querySelector('.dock-resizer');
       if(!resizer) {
         resizer=document.createElement('button');resizer.type='button';resizer.className='dock-resizer';resizer.dataset.resizeDock=zone;
         resizer.setAttribute('role','separator');resizer.setAttribute('aria-orientation','vertical');container.append(resizer);
       }
       resizer.setAttribute('aria-label',t(zone==='left'?'Largura do painel esquerdo':'Largura do painel direito'));
-      resizer.setAttribute('aria-valuemin','210');resizer.setAttribute('aria-valuemax','440');resizer.setAttribute('aria-valuenow',String(layout.sizes[zone]));
+      resizer.setAttribute('aria-valuemin','0');resizer.setAttribute('aria-valuemax','440');
+      applySize(zone);
     }
     if(focused!==document.body&&document.contains(focused)&&!focused.closest('[hidden]'))focused.focus({preventScroll:true});
     OrchestrixI18n.localizeStatic();
+    document.dispatchEvent(new CustomEvent('orchestrix:layout-change',{detail:{layout:structuredClone(layout),available:{...available}}}));
   }
   function activate(id,focus=false) {
     if(!Object.hasOwn(names,id)||!available[id])return false;
-    const zone=layout.positions[id];layout.active[zone]=id;apply();save();
+    const zone=layout.positions[id];layout.active[zone]=id;layout.collapsed[zone]=false;apply();save();
     if(focus)document.getElementById(`dock-tab-${id}`)?.focus({preventScroll:true});
     return true;
   }
   function move(id,zone) {
     if(!Object.hasOwn(names,id)||!zones.includes(zone))return false;
     const focused=document.activeElement;
-    layout.positions[id]=zone;layout.active[zone]=id;apply();save();
+    layout.positions[id]=zone;layout.active[zone]=id;layout.collapsed[zone]=false;apply();save();
     if(focused&&panel(id).contains(focused)&&!focused.closest('[hidden]'))focused.focus({preventScroll:true});
     document.dispatchEvent(new CustomEvent('orchestrix:panel-move',{detail:{id,zone}}));
     return true;
+  }
+  function collapse(zone) {
+    if(!zones.includes(zone)||!zonePanels(zone).length)return false;
+    layout.collapsed[zone]=true;apply();save();return true;
+  }
+  function expand(zone) {
+    if(!zones.includes(zone)||!zonePanels(zone).length)return false;
+    layout.collapsed[zone]=false;apply();save();return true;
+  }
+  function toggle(zone) {
+    if(!zones.includes(zone))return false;
+    return layout.collapsed[zone]?expand(zone):collapse(zone);
   }
   function sync() {
     const work=document.querySelector('#content .chat-work');
@@ -120,7 +147,8 @@
     if(event.button!==0||(!handle&&!resize))return;
     event.preventDefault();
     const id=handle?.dataset.dockTab||handle?.closest('[data-panel]')?.dataset.panel;
-    dragging={id,resize:resize?.dataset.resizeDock,x:event.clientX,y:event.clientY,startSize:resize?layout.sizes[resize.dataset.resizeDock]:0,handle:handle||resize,pointer:event.pointerId,active:false};
+    const zone=resize?.dataset.resizeDock;
+    dragging={id,resize:zone,x:event.clientX,y:event.clientY,startSize:resize?(layout.collapsed[zone]?0:layout.sizes[zone]):0,expandedSize:resize?layout.sizes[zone]:0,startCollapsed:resize?layout.collapsed[zone]:false,handle:handle||resize,pointer:event.pointerId,active:false};
     dragging.handle.setPointerCapture?.(event.pointerId);
   });
   document.addEventListener('pointermove',event=>{
@@ -131,8 +159,9 @@
     event.preventDefault();
     if(dragging.resize) {
       const zone=dragging.resize;
-      layout.sizes[zone]=Math.round(Math.max(210,Math.min(440,dragging.startSize+(zone==='left'?dx:-dx))));
-      app.style.setProperty(`--dock-${zone}`,`${layout.sizes[zone]}px`);
+      const size=Math.round(Math.max(0,Math.min(440,dragging.startSize+(zone==='left'?dx:-dx))));
+      dragging.currentSize=size;layout.collapsed[zone]=size<=80;
+      applySize(zone,size);
     } else {
       const zone=dropZone(event.clientX,event.clientY);
       [...targets.children].forEach(element=>element.classList.toggle('drop-active',element.dataset.dropZone===zone));
@@ -141,13 +170,17 @@
   document.addEventListener('pointerup',event=>{
     if(!dragging||event.pointerId!==dragging.pointer)return;
     const current=dragging;
-    if(current.active&&current.resize){save();apply();}
+    if(current.active&&current.resize){if(!layout.collapsed[current.resize])layout.sizes[current.resize]=boundedSize(current.currentSize);save();apply();}
     else if(current.active){const zone=dropZone(event.clientX,event.clientY);if(zone)move(current.id,zone);}
     else if(current.handle.matches('[data-dock-tab]'))activate(current.id,true);
     else if(!current.resize)openMenu(current.id,current.handle);
     endDrag();
   });
-  document.addEventListener('pointercancel',endDrag);
+  function cancelDrag() {
+    if(dragging?.resize){layout.sizes[dragging.resize]=dragging.expandedSize;layout.collapsed[dragging.resize]=dragging.startCollapsed;apply();}
+    endDrag();
+  }
+  document.addEventListener('pointercancel',cancelDrag);
   document.addEventListener('dragstart',event=>{if(event.target.closest('.dock-panel-handle'))event.preventDefault();});
   document.addEventListener('click',event=>{
     const choice=event.target.closest('[data-move-panel]');
@@ -157,11 +190,12 @@
   document.addEventListener('keydown',event=>{
     const handle=event.target.closest('.dock-panel-handle,[data-dock-tab]');
     const resize=event.target.closest('[data-resize-dock]');
-    if(event.key==='Escape'){if(dragging)endDrag();if(!menu.hidden){event.preventDefault();closeMenu(true);}return;}
+    if(event.key==='Escape'){if(dragging)cancelDrag();if(!menu.hidden){event.preventDefault();closeMenu(true);}return;}
     if(resize) {
       const zone=resize.dataset.resizeDock;
+      if(event.key==='Home'||event.key==='End'){event.preventDefault();(event.key==='Home'?collapse:expand)(zone);resize.focus({preventScroll:true});return;}
       const change={ArrowLeft:zone==='right'?20:-20,ArrowRight:zone==='right'?-20:20,ArrowUp:20,ArrowDown:-20}[event.key];
-      if(change!==undefined){event.preventDefault();layout.sizes[zone]=Math.max(210,Math.min(440,layout.sizes[zone]+change));apply();save();resize.focus();}return;
+      if(change!==undefined){event.preventDefault();if(layout.collapsed[zone]){if(change>0)layout.collapsed[zone]=false;}else layout.sizes[zone]=boundedSize(layout.sizes[zone]+change);apply();save();resize.focus({preventScroll:true});}return;
     }
     if(!handle)return;
     const id=handle.dataset.dockTab||handle.closest('[data-panel]').dataset.panel;
@@ -175,7 +209,7 @@
     }
   });
   document.addEventListener('orchestrix:language-change',()=>{closeMenu();apply();});
-  addEventListener('blur',()=>{if(dragging)endDrag();});
-  window.OrchestrixDock=Object.freeze({move,activate,sync,getLayout:()=>structuredClone(layout),restore:()=>{layout=initial();apply();save();}});
+  addEventListener('blur',()=>{if(dragging)cancelDrag();});
+  window.OrchestrixDock=Object.freeze({move,activate,sync,collapse,expand,toggle,isCollapsed:zone=>zones.includes(zone)&&layout.collapsed[zone],getLayout:()=>structuredClone(layout),restore:()=>{layout=initial();apply();save();}});
   apply();
 })();

@@ -1,0 +1,132 @@
+{
+  "Studio": {"en": "Studio", "es": "Studio"},
+  "Atalhos de teclado": {"en": "Keyboard shortcuts", "es": "Atajos de teclado"},
+  "Menu do aplicativo": {
+    "en": "Application menu",
+    "es": "Menú de la aplicación"
+  },
+  "Atividades do workspace": {
+    "en": "Workspace activities",
+    "es": "Actividades del espacio de trabajo"
+  },
+  "Atividades": {
+    "en": "Activities",
+    "es": "Actividades"
+  },
+  "Arquivo": {
+    "en": "File",
+    "es": "Archivo"
+  },
+  "Editar": {
+    "en": "Edit",
+    "es": "Editar"
+  },
+  "Exibir": {
+    "en": "View",
+    "es": "Ver"
+  },
+  "Ajuda": {
+    "en": "Help",
+    "es": "Ayuda"
+  },
+  "Arquivos": {
+    "en": "Files",
+    "es": "Archivos"
+  },
+  "Sessão atual": {
+    "en": "Current session",
+    "es": "Sesión actual"
+  },
+  "Explorar arquivos": {
+    "en": "Browse files",
+    "es": "Explorar archivos"
+  },
+  "Acompanhar o trabalho": {
+    "en": "Follow the work",
+    "es": "Seguir el trabajo"
+  },
+  "Suas sessões e projetos ficam no painel de sessões.": {
+    "en": "Your sessions and projects live in the Sessions panel.",
+    "es": "Tus sesiones y proyectos están en el panel de sesiones."
+  },
+  "Acompanhe tarefas, decisões e alterações.": {
+    "en": "Follow tasks, decisions and changes.",
+    "es": "Sigue tareas, decisiones y cambios."
+  },
+  "Preferências de orquestração": {
+    "en": "Orchestration preferences",
+    "es": "Preferencias de orquestación"
+  },
+  "As contas que dão capacidade aos seus agentes.": {
+    "en": "The accounts that power your agents.",
+    "es": "Las cuentas que dan capacidad a tus agentes."
+  },
+  "Alternar painel esquerdo": {
+    "en": "Toggle left panel",
+    "es": "Mostrar u ocultar el panel izquierdo"
+  },
+  "Alternar painel direito": {
+    "en": "Toggle right panel",
+    "es": "Mostrar u ocultar el panel derecho"
+  },
+  "Fechar painel lateral": {
+    "en": "Close side panel",
+    "es": "Cerrar panel lateral"
+  },
+  "Salvar arquivo ativo": {
+    "en": "Save active file",
+    "es": "Guardar archivo activo"
+  },
+  "Fechar arquivo ativo": {
+    "en": "Close active file",
+    "es": "Cerrar archivo activo"
+  },
+  "Desfazer": {
+    "en": "Undo",
+    "es": "Deshacer"
+  },
+  "Refazer": {
+    "en": "Redo",
+    "es": "Rehacer"
+  },
+  "Recortar": {
+    "en": "Cut",
+    "es": "Cortar"
+  },
+  "Copiar": {
+    "en": "Copy",
+    "es": "Copiar"
+  },
+  "Colar": {
+    "en": "Paste",
+    "es": "Pegar"
+  },
+  "Selecionar tudo": {
+    "en": "Select all",
+    "es": "Seleccionar todo"
+  },
+  "Mover atividade para cima": {
+    "en": "Move activity up",
+    "es": "Subir actividad"
+  },
+  "Mover atividade para baixo": {
+    "en": "Move activity down",
+    "es": "Bajar actividad"
+  },
+  "Mover workspace para a esquerda": {
+    "en": "Move workspace to left",
+    "es": "Mover espacio de trabajo a la izquierda"
+  },
+  "Mover workspace para a direita": {
+    "en": "Move workspace to right",
+    "es": "Mover espacio de trabajo a la derecha"
+  },
+  "Use Ctrl+V ou Command+V para colar no campo selecionado.": {
+    "en": "Use Ctrl+V or Command+V to paste into the selected field.",
+    "es": "Usa Ctrl+V o Command+V para pegar en el campo seleccionado."
+  },
+  "Arraste para ordenar. Use Alt com as setas para mover a atividade.": {
+    "en": "Drag to reorder. Use Alt with the arrow keys to move the activity.",
+    "es": "Arrastra para ordenar. Usa Alt con las flechas para mover la actividad."
+  }
+}

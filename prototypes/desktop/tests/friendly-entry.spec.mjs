@@ -12,7 +12,7 @@ test('entry keeps the brand, starter cards, suggestions and composer in a clear 
   expect(ordered).toEqual([...ordered].sort((a,b)=>a-b));
   await expect(page.locator('.welcome-stage')).not.toContainText(/An idea|simulated|demo/i);
   await expect(page.locator('#chat-project,#chat-session,.project-switch,#interface-language')).toHaveCount(0);
-  await expect(page.locator('#studio-navigation')).toHaveJSProperty('open',false);
+  await expect(page.locator('#studio-pane')).toBeHidden();
   await expect(page.locator('.chat-task-card')).toHaveCount(0);
 });
 
@@ -69,7 +69,7 @@ for(const language of ['en','pt-BR','es'])test(`${language}: essentials reflow a
 test('help opens in the browser and account registration begins with billing source without provider requests',async ({page})=>{
   await expect(page.locator('#help-link')).toHaveAttribute('href','help.html');await expect(page.locator('#help-link')).toHaveAttribute('target','_blank');
   const external=[];page.on('request',r=>{if(new URL(r.url()).origin!==new URL(page.url()).origin)external.push(r.url());});
-  await page.locator('[data-action="connect-account"]').click();
+  await page.locator('.quick-start [data-action="connect-account"]').click();
   await expect(page.getByRole('dialog')).toBeVisible();await expect(page.getByRole('dialog').locator('input[type="password"]')).toHaveCount(0);
   await expect(page.getByRole('dialog').locator('input[type="email"]')).toHaveCount(0);
   await page.keyboard.press('Escape');await expect(page.getByRole('dialog')).toBeHidden();expect(external).toEqual([]);

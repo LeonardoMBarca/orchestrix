@@ -13,13 +13,13 @@ async function prepare(page,template='short',agent='codex-a') {
   await page.getByRole('button',{name:'Confirmar configuração'}).click();
   await page.getByRole('checkbox').check();
   await page.getByRole('button',{name:'Salvar configuração'}).click();
-  await page.locator('[data-view="work"]').click();
+  await openStudio(page);await page.locator('[data-view="work"]').click();
 }
 async function completePrimary(page) {
   await page.locator('[data-task="OX-24"]').click();
   await page.getByRole('button',{name:'Iniciar demonstração',exact:true}).click();
   await page.getByRole('button',{name:'Concluir trabalho simulado'}).click();
-  await page.locator('[data-view="review"]').click();
+  await openStudio(page);await page.locator('[data-view="review"]').click();
   await page.getByRole('button',{name:'Validar tarefa no Run…'}).click();
   await page.getByRole('button',{name:'Validar na demonstração',exact:true}).click();
 }
@@ -28,14 +28,14 @@ test('entrada curta usa uma conexão com confirmação e percorre o ciclo comple
   await prepare(page,'short','claude');
   await expect(page.locator('.task-item')).toHaveCount(1);
   await expect(page.locator('.detail-footer')).toContainText('Claude · pessoal');
-  await page.locator('[data-view="review"]').click();
+  await openStudio(page);await page.locator('[data-view="review"]').click();
   await expect(page.locator('h1')).toHaveText('O resultado aparece quando o trabalho termina');
-  await page.locator('[data-view="work"]').click();
+  await openStudio(page);await page.locator('[data-view="work"]').click();
   await completePrimary(page);
   await page.getByRole('button',{name:'Revisar aplicação do Run…'}).click();
   await page.getByRole('button',{name:'Aplicar na demonstração',exact:true}).click();
   await expect(page.getByRole('button',{name:'Run aplicado na demonstração'})).toBeDisabled();
-  await page.locator('[data-view="connections"]').click();
+  await page.locator('#activity-items>[data-activity="connections"]').click();
   await expect(page.locator('.connection-row')).toHaveCount(1);
 });
 
@@ -52,7 +52,7 @@ test('feature bloqueia aplicação até as quatro tarefas serem validadas',async
   await page.getByRole('button',{name:'Simular mudança de base'}).click();
   await page.getByRole('button',{name:'Revalidar candidato do Run'}).click();
   await expect(page.getByRole('button',{name:'Revisar aplicação do Run…'})).toBeDisabled();
-  await page.locator('[data-view="work"]').click();
+  await openStudio(page);await page.locator('[data-view="work"]').click();
   await page.locator('[data-task="OX-27"]').click();
   await expect(page.getByRole('button',{name:'Iniciar demonstração',exact:true})).toBeDisabled();
   for(const id of ['OX-25','OX-26','OX-27']) {
@@ -69,22 +69,22 @@ test('feature bloqueia aplicação até as quatro tarefas serem validadas',async
     if(id==='OX-26')await expect(page.getByRole('dialog')).toContainText('/admin');
     await page.getByRole('button',{name:'Validar resultado complementar'}).click();
   }
-  await page.locator('[data-view="review"]').click();
+  await openStudio(page);await page.locator('[data-view="review"]').click();
   await expect(page.locator('.review-inspector')).toContainText('5 arquivos');
   await page.getByRole('button',{name:'session-policy.md',exact:true}).click();
   await expect(page.locator('.diff')).toContainText('docs/session-policy.md');
   await expect(page.locator('.diff')).toContainText('/admin, /perfil');
-  await page.locator('[data-view="work"]').click();
+  await openStudio(page);await page.locator('[data-view="work"]').click();
   await page.locator('[data-task="OX-24"]').click();
   await page.getByRole('tab',{name:'Código',exact:true}).click();
   await expect(page.locator('.diff-header')).toContainText('src/auth/token-service.ts');
-  await page.locator('[data-view="review"]').click();
+  await openStudio(page);await page.locator('[data-view="review"]').click();
   await page.getByRole('button',{name:'Revisar aplicação do Run…'}).click();
   await expect(page.getByRole('dialog')).toContainText('OX-24, OX-25, OX-26, OX-27');
   await expect(page.getByRole('dialog')).not.toContainText('OX-28');
   await page.getByRole('button',{name:'Aplicar na demonstração',exact:true}).click();
   await expect(page.getByRole('button',{name:'Run aplicado na demonstração'})).toBeDisabled();
-  await page.locator('[data-view="work"]').click();
+  await openStudio(page);await page.locator('[data-view="work"]').click();
   await page.locator('[data-task="OX-28"]').click();
   await page.getByRole('button',{name:'Iniciar demonstração',exact:true}).click();
   await page.getByRole('button',{name:'Concluir resultado complementar simulado'}).click();
@@ -95,9 +95,9 @@ test('feature bloqueia aplicação até as quatro tarefas serem validadas',async
   await expect(page.getByRole('dialog')).toContainText('b9f87d3');
   await expect(page.getByRole('button',{name:'Revisar aplicação deste Run'})).toHaveCount(0);
   await page.getByRole('dialog').getByRole('button',{name:'Voltar',exact:true}).click();
-  await page.locator('[data-view="review"]').click();
+  await openStudio(page);await page.locator('[data-view="review"]').click();
   await expect(page.getByRole('button',{name:'Run aplicado na demonstração'})).toBeDisabled();
-  await page.locator('[data-view="work"]').click();
+  await openStudio(page);await page.locator('[data-view="work"]').click();
   await page.getByRole('button',{name:'Nova tarefa',exact:true}).click();
   await page.getByLabel('Título da tarefa').fill('Run independente na base atual');
   await page.getByLabel('Objetivo e critérios').fill('Preparar novo trabalho sobre a base atual sem reabrir R-08.');
@@ -111,7 +111,7 @@ test('feature bloqueia aplicação até as quatro tarefas serem validadas',async
   await page.getByRole('button',{name:'Revisar aplicação deste Run'}).click();
   await expect(page.getByRole('dialog')).toContainText('R-13');
   await page.getByRole('button',{name:'Aplicar este Run na demonstração'}).click();
-  await page.locator('[data-view="review"]').click();
+  await openStudio(page);await page.locator('[data-view="review"]').click();
   await expect(page.getByRole('button',{name:'Run aplicado na demonstração'})).toBeDisabled();
 });
 
@@ -127,7 +127,7 @@ test('contexto futuro não altera pacote e revisão conserva contexto do produto
   await page.getByRole('button',{name:'Inspecionar contexto e arquivos'}).click();
   await expect(page.locator('.context-source')).toHaveCount(3);
   await page.getByRole('button',{name:'Voltar',exact:true}).click();
-  await page.locator('[data-view="review"]').click();
+  await openStudio(page);await page.locator('[data-view="review"]').click();
   await page.getByLabel('O que precisa mudar?').fill('Preserve auditoria.');
   await page.getByRole('button',{name:'Pedir correção',exact:true}).click();
   await page.getByText('Conta, modelo, raciocínio e contexto',{exact:true}).click();
@@ -137,7 +137,7 @@ test('contexto futuro não altera pacote e revisão conserva contexto do produto
   await expect(page.getByRole('dialog')).toContainText('Preserve auditoria.');
   await expect(page.locator('.context-source')).toHaveCount(2);
   await page.getByRole('button',{name:'Voltar',exact:true}).click();
-  await page.locator('[data-view="review"]').click();
+  await openStudio(page);await page.locator('[data-view="review"]').click();
   await page.locator('.review-checks summary').click();
   await page.getByRole('button',{name:'Contexto da revisão'}).click();
   await expect(page.getByRole('dialog')).toContainText('CP-OX-24-1 · c1');
@@ -145,10 +145,10 @@ test('contexto futuro não altera pacote e revisão conserva contexto do produto
 });
 
 test('nova autorização e desconexão preservam tentativa ativa e não afirmam revogação',async ({page})=>{
-  await page.locator('[data-view="connections"]').click();
+  await page.locator('#activity-items>[data-activity="connections"]').click();
   await page.getByRole('button',{name:'Adicionar conexão'}).click();
   await page.getByLabel('Nome para reconhecer a conta').fill('Codex extra');
-  await page.getByLabel('Workspace').fill('Equipe fictícia');
+  await page.getByRole('textbox',{name:'Workspace',exact:true}).fill('Equipe fictícia');
   await page.getByRole('button',{name:'Adicionar registro pendente'}).click();
   await page.locator('.connection-row').filter({hasText:'Codex extra'}).getByRole('button',{name:'Inspecionar conexão'}).click();
   await page.getByRole('button',{name:'Confirmar configuração'}).click();
@@ -161,7 +161,7 @@ test('nova autorização e desconexão preservam tentativa ativa e não afirmam 
   await page.getByRole('button',{name:'Registrar revogação sem resposta'}).click();
   await expect(page.getByRole('dialog')).toContainText('Não confirmada · sem resposta');
   await page.getByRole('button',{name:'Fechar',exact:true}).click();
-  await page.locator('[data-view="work"]').click();
+  await openStudio(page);await page.locator('[data-view="work"]').click();
   await page.locator('[data-task="OX-25"]').click();
   await expect(page.locator('.detail-meta')).toContainText('Tentativa 1');
   await expect(page.locator('.detail-footer')).toContainText('Claude · pessoal');
@@ -170,7 +170,7 @@ test('nova autorização e desconexão preservam tentativa ativa e não afirmam 
 
 test('limite e catálogo incompatível bloqueiam início sem fallback para API',async ({page})=>{
   await prepare(page);
-  await page.locator('[data-view="connections"]').click();
+  await page.locator('#activity-items>[data-activity="connections"]').click();
   await page.getByRole('button',{name:'Inspecionar conexão',exact:true}).click();
   await page.locator('.conn-scenarios summary').click();
   await page.getByRole('button',{name:'Definir catálogo pendente'}).click();
@@ -180,7 +180,7 @@ test('limite e catálogo incompatível bloqueiam início sem fallback para API',
   await page.locator('.conn-scenarios summary').click();
   await page.getByRole('button',{name:'Marcar limite',exact:true}).click();
   await page.getByRole('button',{name:'Fechar',exact:true}).click();
-  await page.locator('[data-view="work"]').click();
+  await openStudio(page);await page.locator('[data-view="work"]').click();
   await page.getByRole('button',{name:'Iniciar demonstração',exact:true}).click();
   await expect(page.locator('h1')).toHaveText('Contas distintas, escolhas claras');
   await page.getByRole('button',{name:'Inspecionar conexão',exact:true}).click();
@@ -190,7 +190,7 @@ test('limite e catálogo incompatível bloqueiam início sem fallback para API',
   await page.getByRole('button',{name:'Marcar catálogo incompatível'}).click();
   await expect(page.getByRole('dialog')).toContainText('Nenhum fallback para API');
   await page.getByRole('button',{name:'Fechar',exact:true}).click();
-  await page.locator('[data-view="work"]').click();
+  await openStudio(page);await page.locator('[data-view="work"]').click();
   await page.getByRole('button',{name:'Iniciar demonstração',exact:true}).click();
   await expect(page.locator('h1')).toHaveText('Contas distintas, escolhas claras');
 });
@@ -213,7 +213,7 @@ test('permissão recusada e cancelamento incerto mantêm controle sem duplicar t
 });
 
 test('novo evento preserva arquivo, foco, cursor e posição; candidato alterado invalida aprovação',async ({page})=>{
-  await page.locator('[data-view="review"]').click();
+  await openStudio(page);await page.locator('[data-view="review"]').click();
   await page.getByRole('button',{name:'token-service.test.ts',exact:true}).click();
   const input=page.getByLabel('O que precisa mudar?');
   await input.fill('Confira este resultado.');
@@ -254,7 +254,8 @@ test('layout por teclado persiste; texto ampliado e entrada WSL permanecem naveg
   for(const width of [1920,1280,1024,720,390,320]) {
     await page.setViewportSize({width,height:800});
     for(const view of ['work','review','connections']) {
-      await page.locator(`[data-view="${view}"]`).click();
+      if(view==='connections')await page.locator('#activity-items>[data-activity="connections"]').click();
+      else {await openStudio(page);await page.locator(`[data-view="${view}"]`).click();}
       expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
     }
   }
@@ -272,7 +273,7 @@ test('modelo nomeado automático seleciona catálogo elegível e conexão fixa i
   await page.getByLabel('Estratégia de modelo').selectOption('claude-example');
   await page.getByRole('button',{name:'Salvar orquestração'}).click();
   await page.evaluate(()=>OrchestrixSettings.close());
-  await page.locator('[data-view="work"]').click();
+  await openStudio(page);await page.locator('[data-view="work"]').click();
   await page.getByRole('button',{name:'Nova tarefa',exact:true}).click();
   await page.getByLabel('Título da tarefa').fill('Usar modelo Claude ilustrativo');
   await page.getByLabel('Objetivo e critérios').fill('Selecionar uma conexão compatível.');
@@ -283,7 +284,7 @@ test('modelo nomeado automático seleciona catálogo elegível e conexão fixa i
   await expect(page.getByLabel('Estratégia de modelo')).toHaveValue('claude-example');
   await page.getByRole('button',{name:'Salvar orquestração'}).click();
   await page.evaluate(()=>OrchestrixSettings.close());
-  await page.locator('[data-view="work"]').click();
+  await openStudio(page);await page.locator('[data-view="work"]').click();
   await page.getByRole('button',{name:'Nova tarefa',exact:true}).click();
   await page.getByLabel('Título da tarefa').fill('Catálogo incompatível');
   await page.getByLabel('Objetivo e critérios').fill('A escolha fixa não permite trocar conta silenciosamente.');
@@ -298,11 +299,11 @@ test('capturas dos novos estados D1',async ({page})=>{
   await page.evaluate(()=>OrchestrixApp.openProject());
   await page.screenshot({path:`${folder}d1-entry.png`,fullPage:true});
   await page.keyboard.press('Escape');
-  await page.locator('[data-view="connections"]').click();
+  await page.locator('#activity-items>[data-activity="connections"]').click();
   await page.locator('[data-conn-id="codex-b"][data-conn-action="inspect"]').click();
   await page.screenshot({path:`${folder}d1-connection.png`,fullPage:true});
   await page.getByRole('button',{name:'Fechar',exact:true}).click();
-  await page.locator('[data-view="work"]').click();
+  await openStudio(page);await page.locator('[data-view="work"]').click();
   await page.getByText('Conta, modelo, raciocínio e contexto',{exact:true}).click();
   await page.getByRole('button',{name:'Inspecionar contexto e arquivos'}).click();
   await page.screenshot({path:`${folder}d1-context.png`,fullPage:true});

@@ -1,6 +1,6 @@
 # Workspace shell — sessões, painéis e Settings
 
-Contrato de interface da revisão D1 de **10 de outubro de 2026**, incluindo os sete refinamentos seguintes de navegação e configurações. A identidade visual aprovada é mantida; a aprovação da nova organização e o piloto de uso ainda estão pendentes. Este documento orienta HTML atual e futura migração para Desktop, sem aprovar gates ou criar outra stack.
+Contrato de interface da revisão D1 atualizado em **12 de outubro de 2026**, com [barra fixa de atividades e arquivos](../docs/design/activity-shell-revision.md). A identidade visual aprovada é mantida; a aprovação da nova organização e o piloto de uso ainda estão pendentes. Este documento orienta HTML atual e futura migração para Desktop, sem aprovar gates ou criar outra stack.
 
 ## Entrada centrada na conversa
 
@@ -13,16 +13,24 @@ Não acrescentar vários parágrafos de recepção ou um segundo seletor global 
 
 ## Sessão e projeto
 
-Sessions é a superfície principal para navegação entre conversas e começa à esquerda. Há um único comando principal **New session** nessa superfície; não duplicá-lo no cabeçalho, na navegação e em cartões. Ações contextuais de um projeto podem indicar explicitamente a criação dentro daquele projeto. Projetos são grupos expansíveis com contexto e diretório compartilhados; sessões independentes ficam acessíveis na mesma lista. Criar projeto e associar uma sessão existente precisam distinguir a intenção sem obrigar a pessoa a aprender dois dropdowns.
+Sessions é a superfície principal para navegação entre conversas e começa à direita. Há um único comando principal **New session** nessa superfície; não duplicá-lo no cabeçalho, na navegação e em cartões. Ações contextuais de um projeto podem indicar explicitamente a criação dentro daquele projeto. Projetos são grupos expansíveis com contexto e diretório compartilhados; sessões independentes ficam acessíveis na mesma lista. Criar projeto e associar uma sessão existente precisam distinguir a intenção sem obrigar a pessoa a aprender dois dropdowns.
 
 Selecionar uma sessão preserva o rascunho da anterior e mostra o destino/contexto ativo. Associar preserva identidade e histórico da sessão. Truncar nomes longos com acesso ao texto completo quando necessário; não permitir que um nome invada o ícone, indicador, borda ou ação da linha. Busca de sessões ocupa espaço legível, com label e foco; não prometer pesquisa em arquivos que não foram indexados.
+
+## Barra fixa e menus
+
+A barra de atividades fica na borda esquerda, independente dos painéis. A ordem inicial é **Chat, Files, Studio, Connections**; **Help, Settings e Profile** permanecem na base. Os quatro primeiros itens podem ser reordenados, mantendo nomes acessíveis e uma alternativa ao arraste. A barra não muda de lado, não se recolhe com os docks e permanece um caminho para reabrir uma atividade.
+
+Chat mantém a conversa como entrada principal. Files mostra a árvore autorizada e abre leitura/edição leve no centro. Studio reúne as superfícies técnicas existentes, sem obrigá-las no primeiro uso. Connections conserva cadastro, recursos e diagnósticos. Settings continua modeless; Profile encaminha ao perfil, sem duplicar sua edição. Help abre a página externa.
+
+A barra superior oferece **File, Edit, View e Help**, com ações pertinentes ao aplicativo e atalhos quando disponíveis. Ela não acrescenta Run, debugger ou terminal de IDE. Ações indisponíveis devem explicar sua condição ou ficar desabilitadas; não apresentar comandos sem efeito. Marca e busca continuam reconhecíveis sem ocupar o espaço de trabalho.
 
 ## Docking e abas
 
 | Painel | Papel | Disposição inicial |
 | --- | --- | --- |
-| Navigation | Entradas do workspace, Studio e utilitários | Direita |
-| Sessions | Projetos e conversas | Esquerda |
+| Navigation | Conteúdo da atividade selecionada: Chat, Files, Studio ou Connections | Esquerda, 224px |
+| Sessions | Projetos e conversas | Direita, 280px |
 | Work | Tarefas e próximos passos da sessão | Direita, quando há trabalho |
 
 **Esquerda e direita são os destinos válidos nesta revisão.** O dock inferior da versão anterior foi retirado. Múltiplos painéis no mesmo lado viram abas; selecionar uma mantém os demais disponíveis. A conversa conserva a prioridade de espaço. Reflow deve reorganizar docks em telas menores, com rolagem vertical previsível e sem esconder ações essenciais fora de alcance.
@@ -32,9 +40,18 @@ Selecionar uma sessão preserva o rascunho da anterior e mostra o destino/contex
 - Na alça, setas esquerda/direita movem o painel; Enter/Space abre o menu.
 - Nas abas, esquerda/direita e Home/End mudam a seleção; Shift + setas esquerda/direita muda o dock.
 - Separadores têm nome acessível, orientação, faixa de tamanho e alternativa por teclado.
+- Arrastar a divisória reduz a largura até recolher o lado; a borda permanece disponível para expandi-lo novamente. Restaurar usa a última largura útil. Não exigir um botão permanente de minimizar nem ocultar a barra fixa.
 - Escape cancela arraste/menu; Reset layout restaura a disposição inicial.
 
 Mover ou redimensionar não recria o composer, não substitui a conversa e não altera configuração de uma execução. A posição e tamanho são preferências de UI, não estado de execução.
+
+## Arquivos e edição leve
+
+Files apresenta somente conteúdo de uma pasta concedida pelo usuário ou de arquivos importados. Um path salvo no projeto não concede leitura/escrita. Quando o navegador oferece handles de diretório e permissão de escrita, salvar pode alterar o arquivo autorizado; sem essa integração, importar permite ler e editar uma cópia, com **Save a copy** em vez de fingir gravação na origem. Cancelamento, permissão negada e pasta ausente conservam os rascunhos.
+
+A árvore e o editor devem permitir abrir texto, fazer ajustes pequenos como um `.env` e visualizar Markdown produzido pelos agentes. A prévia não executa HTML/scripts do documento. O arquivo aberto e seus rascunhos não desaparecem ao trocar de atividade, sessão ou layout; mudanças não salvas precisam de uma saída explícita. Abrir um arquivo não o inclui automaticamente no contexto de um agente nem envia segredos ao provedor.
+
+No Desktop de M2, escrita coordenada com o Core deve conferir versão/base e conflitos com workers; uma alteração manual invalida as evidências que dependiam da versão anterior. O editor leve não oferece execução, debugger, ambiente integrado de testes, language server ou gestão de extensões. Os checks do Core seguem separados como evidências de trabalho orquestrado.
 
 ## Settings modeless
 
@@ -65,9 +82,9 @@ A abertura normal não injeta cenários de estudo. Controles que fabricam limite
 
 Help abre outra página no navegador, sem virar aba de conteúdo do app. Usar destino externo com `target="_blank"` e `rel="noopener"` no HTML; a integração Desktop deverá usar o mecanismo de abertura externa apropriado. O centro de ajuda público permanece em inglês, com busca, diagramas locais e vídeos apenas quando publicados.
 
-Fontes atuais: [index.html](../prototypes/desktop/index.html), [app.js](../prototypes/desktop/app.js), [experience.js](../prototypes/desktop/experience.js), [docking.js](../prototypes/desktop/docking.js), [settings.js](../prototypes/desktop/settings.js), [styles.css](../prototypes/desktop/styles.css), [experience.css](../prototypes/desktop/experience.css), [settings.css](../prototypes/desktop/settings.css) e [help.html](../prototypes/desktop/help.html). Usar [tokens](tokens/README.md), [componentes](components/README.md) e [catálogo textual](../docs/design/visual-asset-catalog.md) como base para novas telas.
+Fontes atuais: [index.html](../prototypes/desktop/index.html), [app.js](../prototypes/desktop/app.js), [experience.js](../prototypes/desktop/experience.js), [docking.js](../prototypes/desktop/docking.js), [activity.js](../prototypes/desktop/activity.js), [activity.css](../prototypes/desktop/activity.css), [files.js](../prototypes/desktop/files.js), [files.css](../prototypes/desktop/files.css), [settings.js](../prototypes/desktop/settings.js), [styles.css](../prototypes/desktop/styles.css), [experience.css](../prototypes/desktop/experience.css), [settings.css](../prototypes/desktop/settings.css) e [help.html](../prototypes/desktop/help.html). O [registro da barra de atividades](../docs/design/activity-shell-revision.md) reúne o escopo da revisão de 12/10. Usar [tokens](tokens/README.md), [componentes](components/README.md) e [catálogo textual](../docs/design/visual-asset-catalog.md) como base para novas telas.
 
-Verificar teclado, mover/agrupamento dos painéis laterais, blur removido ao cancelar, foco e rascunho preservados, Settings centralizada e fechamento externo, idiomas/temas, slider e nomes longos em telas compactas. Medidas e aprovações humanas devem ser registradas na [revisão D1](../docs/design/d1-shell-revision.md), no [piloto](../docs/design/d1-pilot.md) e no [status](../docs/DEVELOPMENT_STATUS.md). Evidências da composição anterior, que tinha Sessions à direita e dock inferior, continuam históricas; não certificam estes refinamentos.
+Verificar teclado, ordem da barra fixa, recolhimento/restauração e agrupamento dos painéis laterais, blur removido ao cancelar, foco e rascunho preservados, acesso e gravação explícitos em Files, Settings centralizada e fechamento externo, idiomas/temas, slider e nomes longos em telas compactas. Medidas e aprovações humanas devem ser registradas na [revisão atual](../docs/design/activity-shell-revision.md), no [piloto](../docs/design/d1-pilot.md) e no [status](../docs/DEVELOPMENT_STATUS.md). Evidências de composições anteriores continuam históricas; não certificam estes refinamentos.
 
 ## Proporções do shell
 

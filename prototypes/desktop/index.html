@@ -13,6 +13,8 @@
   <link rel="stylesheet" href="resources.css">
   <link rel="stylesheet" href="diagnostics.css">
   <link rel="stylesheet" href="controls.css">
+  <link rel="stylesheet" href="activity.css">
+  <link rel="stylesheet" href="files.css">
   <link rel="icon" type="image/png" href="assets/brand/transparent/symbol-indigo.png">
   <script src="locales/catalog.js" defer></script>
   <script src="i18n.js" defer></script>
@@ -25,21 +27,44 @@
   <script src="experience.js" defer></script>
   <script src="docking.js" defer></script>
   <script src="settings.js" defer></script>
+  <script src="files.js" defer></script>
+  <script src="activity.js" defer></script>
   <script src="app.js" defer></script>
 </head>
 <body>
   <a class="skip-link" href="#content" data-i18n="Ir para o conteúdo">Skip to content</a>
+  <header class="app-titlebar">
+    <button type="button" class="titlebar-brand" data-activity="chat" aria-label="Orchestrix — home" data-i18n-aria-label="Orchestrix — início"><span class="identity-symbol" aria-hidden="true"><img class="identity-light" src="assets/brand/transparent/symbol-graphite.png" alt=""><img class="identity-dark" src="assets/brand/transparent/symbol-indigo.png" alt=""></span><span>Orchestrix</span></button>
+    <nav id="app-menubar" class="app-menubar" role="menubar" aria-label="Application menu" data-i18n-aria-label="Menu do aplicativo">
+      <button type="button" role="menuitem" data-app-menu="file" aria-haspopup="menu" aria-expanded="false" data-i18n="Arquivo">File</button>
+      <button type="button" role="menuitem" data-app-menu="edit" aria-haspopup="menu" aria-expanded="false" data-i18n="Editar">Edit</button>
+      <button type="button" role="menuitem" data-app-menu="view" aria-haspopup="menu" aria-expanded="false" data-i18n="Exibir">View</button>
+      <button type="button" role="menuitem" data-app-menu="help" aria-haspopup="menu" aria-expanded="false" data-i18n="Ajuda">Help</button>
+    </nav>
+    <span class="titlebar-workspace" id="titlebar-workspace">Orchestrix</span>
+  </header>
   <div class="app" id="app">
+    <aside id="activity-bar" class="activity-bar" aria-label="Workspace activities" data-i18n-aria-label="Atividades do workspace">
+      <nav id="activity-items" class="activity-items" aria-label="Activities" data-i18n-aria-label="Atividades">
+        <button type="button" class="activity-item active" data-activity="chat" aria-label="Chat" data-i18n-aria-label="Conversa" title="Chat" data-i18n-title="Conversa" aria-current="page"><span data-icon="message"></span><span class="sr-only" data-i18n="Conversa">Chat</span></button>
+        <button type="button" class="activity-item" data-activity="files" aria-label="Files" data-i18n-aria-label="Arquivos" title="Files" data-i18n-title="Arquivos"><span data-icon="file"></span><span class="sr-only" data-i18n="Arquivos">Files</span></button>
+        <button type="button" class="activity-item" data-activity="studio" aria-label="Studio" title="Studio"><span data-icon="sliders"></span><span class="sr-only">Studio</span></button>
+        <button type="button" class="activity-item" data-activity="connections" aria-label="Connections" data-i18n-aria-label="Conexões" title="Connections" data-i18n-title="Conexões"><span data-icon="plug"></span><span class="sr-only" data-i18n="Conexões">Connections</span></button>
+      </nav>
+      <div class="activity-utilities">
+        <a id="help-link" class="activity-item" href="help.html" target="_blank" rel="noopener noreferrer" aria-label="Help & tutorials" data-i18n-aria-label="Ajuda e tutoriais" title="Help & tutorials" data-i18n-title="Ajuda e tutoriais"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M9.2 9a3 3 0 0 1 5.6 1c0 2-2.8 2-2.8 4m0 3v.1"/></svg></a>
+        <button type="button" class="activity-item app-settings-trigger" data-action="app-settings" aria-label="Settings" data-i18n-aria-label="Configurações do aplicativo" title="Settings" data-i18n-title="Configurações do aplicativo"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 3-.5 3-2 1.2-2.8-1-2 3.6L4 12v2.3l-2.3 2.2 2 3.5 2.8-1 2 1.2.5 2.8h4l.5-2.8 2-1.2 2.8 1 2-3.5-2.3-2.2V12l2.3-2.2-2-3.6-2.8 1-2-1.2L13 3Z"/><circle cx="11" cy="12.5" r="3"/></svg></button>
+        <button type="button" class="activity-item activity-profile" data-activity-profile aria-label="Your profile" data-i18n-aria-label="Seu perfil" title="Your profile" data-i18n-title="Seu perfil"><span class="profile-initial">O</span></button>
+      </div>
+    </aside>
+    <button type="button" class="mobile-panel-scrim" data-close-mobile aria-label="Close side panel" data-i18n-aria-label="Fechar painel lateral"></button>
     <div class="dock-zone dock-left" data-dock-zone="left" id="dock-left">
       <section class="dock-panel" data-panel="navigation" id="navigation-panel">
         <div class="dock-panel-handle" tabindex="0" role="button" draggable="true" aria-label="Move navigation panel" data-i18n-aria-label="Mover painel de navegação"><span class="dock-grip" aria-hidden="true">⠿</span><span data-i18n="Navegação">Navigation</span><span class="dock-handle-hint" aria-hidden="true">↔</span></div>
-        <aside class="sidebar" aria-label="Main navigation" data-i18n-aria-label="Navegação principal">
-          <button type="button" class="brand brand-home" data-view="chat" aria-label="Orchestrix — home" data-i18n-aria-label="Orchestrix — início"><span class="identity-symbol" aria-hidden="true"><img class="identity-light" src="assets/brand/transparent/symbol-graphite.png" alt=""><img class="identity-dark" src="assets/brand/transparent/symbol-indigo.png" alt=""></span><span>Orchestrix</span></button>
-          <nav class="nav">
-            <button data-view="chat" class="nav-item active"><span data-icon="message"></span><span data-i18n="Conversa">Chat</span></button>
-            <button data-view="connections" class="nav-item"><span data-icon="plug"></span><span data-i18n="Conexões">Connections</span></button>
-          </nav>
-          <details class="studio-navigation" id="studio-navigation">
+        <aside class="sidebar activity-sidebar" aria-label="Workspace" data-i18n-aria-label="Workspace">
+          <section class="activity-pane" id="chat-pane" data-activity-pane="chat"><h2 data-i18n="Conversa">Chat</h2><p class="pane-eyebrow" data-i18n="Sessão atual">Current session</p><h3 id="pane-session-name"></h3><p id="pane-project-name" class="pane-description"></p><div class="pane-actions"><button type="button" class="nav-item" data-action="session-directory"><span data-icon="folder"></span><span data-i18n="Diretório de trabalho">Working directory</span></button><button type="button" class="nav-item" data-activity="files"><span data-icon="file"></span><span data-i18n="Explorar arquivos">Browse files</span></button><button type="button" class="nav-item" data-activity="studio"><span data-icon="sliders"></span><span data-i18n="Acompanhar o trabalho">Follow the work</span></button></div><p class="pane-note" data-i18n="Suas sessões e projetos ficam no painel de sessões.">Your sessions and projects live in the Sessions panel.</p></section>
+          <section class="activity-pane" id="files-pane" data-activity-pane="files" hidden><h2 data-i18n="Arquivos">Files</h2><div id="files-toolbar"></div><div id="files-tree"></div></section>
+          <section class="activity-pane" id="studio-pane" data-activity-pane="studio" hidden><h2>Studio</h2><p class="pane-description" data-i18n="Acompanhe tarefas, decisões e alterações.">Follow tasks, decisions and changes.</p><details class="studio-navigation" id="studio-navigation" open>
             <summary><span data-icon="sliders"></span><span>Studio</span><span class="studio-chevron" aria-hidden="true">⌄</span></summary>
             <nav class="nav" aria-label="Studio controls" data-i18n-aria-label="Controles do Studio">
               <button data-view="work" class="nav-item"><span data-icon="layers"></span><span data-i18n="Trabalho">Work</span><span class="nav-number" id="work-count">0</span></button>
@@ -48,11 +73,8 @@
               <button data-view="history" class="nav-item"><span data-icon="clock"></span><span data-i18n="Histórico">History</span></button>
             </nav>
           </details>
-          <div class="shell-utilities">
-            <a id="help-link" class="nav-item" href="help.html" target="_blank" rel="noopener noreferrer"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M9.2 9a3 3 0 0 1 5.6 1c0 2-2.8 2-2.8 4m0 3v.1"/></svg><span data-i18n="Ajuda e tutoriais">Help & tutorials</span><span class="external-link-mark" aria-hidden="true">↗</span></a>
-            <button class="nav-item app-settings-trigger" data-action="app-settings"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 3-.5 3-2 1.2-2.8-1-2 3.6L4 12v2.3l-2.3 2.2 2 3.5 2.8-1 2 1.2.5 2.8h4l.5-2.8 2-1.2 2.8 1 2-3.5-2.3-2.2V12l2.3-2.2-2-3.6-2.8 1-2-1.2L13 3Z"/><circle cx="11" cy="12.5" r="3"/></svg><span data-i18n="Configurações do aplicativo">Settings</span></button>
-            <a class="product-link" href="website.html" target="_blank" rel="noopener noreferrer"><span data-i18n="Conheça o Orchestrix">Discover Orchestrix</span><span aria-hidden="true">↗</span></a>
-          </div>
+          <button type="button" class="nav-item" data-shell-settings="orchestration"><span data-icon="sliders"></span><span data-i18n="Preferências de orquestração">Orchestration preferences</span></button></section>
+          <section class="activity-pane" id="connections-pane" data-activity-pane="connections" hidden><h2 data-i18n="Conexões">Connections</h2><p class="pane-description" data-i18n="As contas que dão capacidade aos seus agentes.">The accounts that power your agents.</p><div id="pane-connections"></div><button type="button" class="button pane-connect" data-action="connect-account"><span data-icon="plus"></span><span data-i18n="Conectar conta">Connect account</span></button></section>
         </aside>
       </section>
     </div>
@@ -60,9 +82,11 @@
       <header class="topbar">
         <div class="breadcrumb"><span data-icon="folder"></span><span id="breadcrumb-project">Orchestrix</span><span id="project-name" hidden></span><span class="slash">/</span><strong id="view-name">Chat</strong></div>
         <button id="command-trigger" class="command-trigger" data-action="commands" aria-label="Search sessions, projects and actions" data-i18n-aria-label="Buscar sessões, projetos e ações"><span data-icon="search"></span><span data-i18n="Buscar sessões, projetos e ações…">Search sessions, projects and actions…</span><kbd>Ctrl K</kbd></button>
-        <div class="topbar-actions"><button class="icon-button focus-toggle" data-action="focus" aria-label="Enable focus mode" aria-pressed="false" title="Focus mode" data-i18n-title="Modo de foco"><span data-icon="focus"></span></button><button class="avatar" data-action="app-settings" aria-label="Your profile" data-i18n-aria-label="Seu perfil">O</button></div>
+        <div class="topbar-actions"><button class="icon-button" type="button" data-toggle-dock="left" aria-label="Toggle left panel" data-i18n-aria-label="Alternar painel esquerdo" title="Toggle left panel" data-i18n-title="Alternar painel esquerdo"><span data-icon="panelLeft"></span></button><button class="icon-button" type="button" data-toggle-dock="right" aria-label="Toggle right panel" data-i18n-aria-label="Alternar painel direito" title="Toggle right panel" data-i18n-title="Alternar painel direito"><span data-icon="panelRight"></span></button><button class="icon-button focus-toggle" data-action="focus" aria-label="Enable focus mode" aria-pressed="false" title="Focus mode" data-i18n-title="Modo de foco"><span data-icon="focus"></span></button></div>
       </header>
+      <div id="editor-tabs" class="editor-tabs" hidden></div>
       <section class="content" id="content" tabindex="-1"></section>
+      <section id="file-editor" class="file-editor" hidden></section>
       <footer class="statusbar"><span><span class="status-dot"></span><span data-i18n="Pronto para começar">Ready when you are</span></span><span><kbd>Ctrl K</kbd> <span data-i18n="Buscar ações">Search actions</span></span></footer>
     </main>
     <div class="dock-zone dock-right" data-dock-zone="right" id="dock-right">
@@ -78,6 +102,7 @@
   </div>
   <div id="dock-drop-targets" hidden><div data-drop-zone="left" data-i18n="Esquerda">Left</div><div data-drop-zone="right" data-i18n="Direita">Right</div></div>
   <div id="dock-position-menu" class="dock-position-menu" hidden></div>
+  <div id="app-menu-popup" class="app-menu-popup" role="menu" hidden></div>
   <dialog id="modal" aria-labelledby="modal-title"></dialog>
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
 </body>

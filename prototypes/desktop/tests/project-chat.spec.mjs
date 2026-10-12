@@ -1,7 +1,7 @@
 import {test,expect} from '@playwright/test';
 import {openStudio,usePortuguese} from './navigation.mjs';
 
-test.beforeEach(async ({page})=>{await usePortuguese(page);await page.goto('/');await navigation(page);await openStudio(page);});
+test.beforeEach(async ({page})=>{await usePortuguese(page);await page.goto('/');await navigation(page);});
 
 const transcript=page=>page.locator('.chat-transcript[role="log"]');
 const composer=page=>page.locator('#chat-message');
@@ -10,6 +10,13 @@ const taskCard=(page,id)=>page.getByRole('article',{name:`Trabalho ${id}`,exact:
 const projectIdentity=page=>page.evaluate(()=>OrchestrixApp.getState().projectId);
 const conversationIdentity=page=>page.evaluate(()=>OrchestrixApp.getState().chat.id);
 async function navigation(page){await page.evaluate(()=>OrchestrixDock.activate('navigation'));}
+async function showDock(page,id){
+  await page.evaluate(id=>OrchestrixDock.activate(id),id);
+  if(await page.evaluate(()=>innerWidth<=800)){
+    const zone=await page.evaluate(id=>OrchestrixDock.getLayout().positions[id],id);
+    if(await page.locator('#app').getAttribute('data-mobile-dock')!==zone)await page.locator(`[data-toggle-dock="${zone}"]`).click();
+  }
+}
 async function newSession(page){await page.evaluate(()=>OrchestrixDock.activate('sessions'));await page.locator('.new-session-trigger').click();}
 async function selectTree(page,projectId,chatId) {
   await page.evaluate(()=>OrchestrixDock.activate('sessions'));
@@ -28,10 +35,11 @@ async function conversation(page) {
   await page.evaluate(()=>OrchestrixDock.activate('work'));
 }
 async function send(page,text) {
+  if(await page.evaluate(()=>innerWidth<=800))await page.keyboard.press('Escape');
   await composer(page).fill(text);
   await page.getByRole('button',{name:'Enviar',exact:true}).click();
   await expect(userMessages(page).last()).toContainText(text);
-  await page.evaluate(()=>OrchestrixDock.activate('work'));
+  await showDock(page,'work');
 }
 async function request(page,text) {
   await send(page,text);
@@ -130,6 +138,7 @@ test('pedido livre permanece texto seguro e enviar não inicia nem aplica',async
   await expect(page.locator('#chat-injected')).toHaveCount(0);
   await page.getByRole('button',{name:'Conexões',exact:true}).click();
   await expect(page.getByRole('heading',{level:1})).toHaveText('Contas distintas, escolhas claras');
+  await openStudio(page);
   await page.getByRole('button',{name:'Alterações',exact:true}).click();
   await expect(page.getByRole('heading',{level:1})).toHaveText('Examine o resultado da tarefa');
   await conversation(page);
@@ -344,11 +353,11 @@ test('conversa avulsa permite preparar e revisar mas não aplicar sem destino',a
   const looseProject=await projectIdentity(page);
   expect(looseProject).not.toBe(originalProject);
   await expect(composer(page)).toBeVisible();
-  await expect(page.locator('[data-action="session-directory"]')).toHaveText('Definir diretório');
+  await expect(page.locator('#chat-form [data-action="session-directory"]')).toHaveText('Definir diretório');
   await expect(userMessages(page)).toHaveCount(0);
-  await navigation(page);await page.getByRole('button',{name:/^Trabalho\s*\d*$/}).click();
+  await openStudio(page);await page.getByRole('button',{name:/^Trabalho\s*\d*$/}).click();
   await expect(page.getByRole('heading',{level:1})).toHaveText('Comece pela conversa');
-  await navigation(page);await page.getByRole('button',{name:'Alterações',exact:true}).click();
+  await openStudio(page);await page.getByRole('button',{name:'Alterações',exact:true}).click();
   await expect(page.getByRole('heading',{level:1})).toHaveText('O resultado aparece quando o trabalho termina');
   await conversation(page);
 
@@ -422,7 +431,7 @@ test('chat com texto longo e escala200% mantém seletores, envio e próximo pass
   await expect(userMessages(page).last()).toContainText(text);
   for(const width of [320,1920]) {
     await page.setViewportSize({width,height:900});
-    await page.evaluate(()=>OrchestrixDock.activate('sessions'));await expect(page.locator('#session-list')).toBeVisible();await page.evaluate(()=>OrchestrixDock.activate('work'));
+    await showDock(page,'sessions');await expect(page.locator('#session-list')).toBeVisible();await showDock(page,'work');
     await expect(composer(page)).toBeVisible();
     await expect(page.getByRole('button',{name:'Enviar',exact:true})).toBeVisible();
     await expect(card.getByRole('button',{name:'Iniciar trabalho',exact:true})).toBeVisible();
@@ -448,7 +457,7 @@ test('mudança de base em outro Run bloqueia a aplicação do resultado livre j�
   await expect(card).toContainText('Validada no Run');
   await expect(card).not.toContainText('Aplicado · simulação');
 
-  await navigation(page);await page.getByRole('button',{name:'Alterações',exact:true}).click();
+  await openStudio(page);await page.getByRole('button',{name:'Alterações',exact:true}).click();
   await page.getByRole('button',{name:'Validar tarefa no Run…',exact:true}).click();
   await page.getByRole('dialog').getByRole('button',{name:'Validar na demonstração',exact:true}).click();
   await page.getByRole('button',{name:'Simular mudança de base',exact:true}).click();

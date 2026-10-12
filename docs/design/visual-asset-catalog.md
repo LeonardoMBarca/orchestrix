@@ -1,6 +1,6 @@
 # Catálogo textual de imagens do Orchestrix
 
-Atualizado em **11 de outubro de 2026**. Este é o índice para encontrar imagens pelo assunto, aparência e uso, sem abrir cada arquivo. A coleção mapeada reúne **58 arquivos de imagem versionáveis** e **124 capturas locais de QA e diagnóstico**, incluindo conceitos, variantes transparentes e cinco diagramas de ajuda. A revisão de sessões acrescentou treze capturas e o refinamento Compact/API acrescentou dezoito; o histórico anterior tinha 53 imagens e 77 capturas. Caminhos são relativos a este documento; nomes e aliases podem ser pesquisados com `rg`.
+Atualizado em **12 de outubro de 2026**. Este é o índice para encontrar imagens pelo assunto, aparência e uso, sem abrir cada arquivo. A coleção mapeada reúne **59 arquivos de imagem versionáveis** e **135 capturas locais de QA e diagnóstico**, incluindo conceitos, variantes transparentes e seis diagramas de ajuda. A revisão de atividades/arquivos acrescentou um SVG de ajuda e onze capturas locais; a revisão de sessões acrescentou treze capturas e o refinamento Compact/API acrescentou dezoito. O histórico anterior tinha 53 imagens e 77 capturas. Caminhos são relativos a este documento; nomes e aliases podem ser pesquisados com `rg`.
 
 ## Como encontrar e interpretar
 
@@ -123,11 +123,12 @@ Os cinco SVGs seguintes são diagramas escritos em código, com texto, title/des
 
 | ID / arquivo | Assunto e aliases para busca | Uso / estado | Dimensões |
 | --- | --- | --- | --- |
-| H01 · [session-tree.svg](../../prototypes/desktop/assets/help/session-tree.svg) | Projeto expansível, contexto compartilhado, duas sessões com histórico próprio e sessão independente associável. Project tree; shared context; independent session; attach to project; histórico; associação. | Capítulo Sessions & projects; ativo no centro de ajuda. | 920 × 440 |
-| H02 · [workspace-docking.svg](../../prototypes/desktop/assets/help/workspace-docking.svg) | Três composições: painéis separados, dock comum com abas e escolha de lado sobre o workspace desfocado. Left/right; docking; tabs; Sessions; Work; blur; abas; painéis móveis. | Capítulo Arrange your workspace; ativo. É esquema de opções, não captura do layout padrão. | 920 × 410 |
+| H01 · [session-tree.svg](../../prototypes/desktop/assets/help/session-tree.svg) | Barra fixa à esquerda, conversa no centro e Sessions à direita, com projeto expansível, duas sessões com histórico próprio e sessão independente associável. Fixed rail; right sessions; project tree; shared context; independent session; attach to project; histórico; associação. | Capítulo Sessions & projects; ativo no centro de ajuda. Revisado em 12/10. | 920 × 440 |
+| H02 · [workspace-docking.svg](../../prototypes/desktop/assets/help/workspace-docking.svg) | Três composições: barra fixa/painel de atividade à esquerda e Sessions à direita; dock comum com abas; lados recolhidos com divisórias para reabrir. Fixed rail; left/right; docking; tabs; resize edge; collapse; restore; Home; End; abas; painéis móveis. | Capítulo Arrange your workspace; ativo. Esquema de opções revisado em 12/10, sem captura de dados. | 920 × 410 |
 | H03 · [settings-window.svg](../../prototypes/desktop/assets/help/settings-window.svg) | Settings centralizada sobre conversa, botão de fechar, abas, densidade Compact e slider percentual. Centered settings; floating window; outside click; text scale; Compact; configurações; tamanho do texto. | Capítulo Settings & personal style; ativo. Esquema com General selecionada. | 920 × 440 |
 | H04 · [account-usage.svg](../../prototypes/desktop/assets/help/account-usage.svg) | Assinatura e API em cartões separados; quota/saldo desconhecidos; Subscription Only. Quota; API credit; billing; unavailable usage; créditos; limite; cobrança. | Capítulo Accounts & usage; ativo. Não exibe percentuais ou saldo inventados. | 920 × 370 |
 | H05 · [review-path.svg](../../prototypes/desktop/assets/help/review-path.svg) | Pedido → trabalho → revisão → confirmação de aplicação, com correção voltando ao fluxo. Review; correction; validate; apply; target; revisão; validação; destino. | Capítulo Progress & review; ativo. Explica decisões distintas sem alegar execução real. | 920 × 330 |
+| H06 · [files-editor.svg](../../prototypes/desktop/assets/help/files-editor.svg) | Árvore Files com `.env` e Markdown, editor de texto, indicador de alterações não salvas e caminhos distintos de Save file na origem autorizada e Save a copy para importação. File tree; lightweight editor; .env; Markdown; unsaved changes; folder grant; save source; save copy; arquivos. | Capítulo Files & quick edits; ativo. SVG nativo criado em 12/10, com texto pesquisável. | 920 × 480 |
 
 ### Capturas locais da ajuda
 
@@ -218,10 +219,10 @@ Evidência local regenerável, não arte do produto; capturas ignoradas pelo Git
 | Arquivo em `prototypes/desktop/artifacts/` | Assunto, finalidade e aliases | Dimensões |
 | --- | --- | --- |
 | `dropdown-controls-desktop.png` | Selects em Settings e Studio; estilos navy, chevron, foco; dropdown, select, controles, native menu. | 1440 × 1000 |
-| `dropdown-controls-mobile-200.png` | Selects em mobile com texto a200%; reflow e legibilidade; mobile, scale, acessibilidade. | 390 × 844 |
+| `dropdown-controls-mobile-200.png` | Selects em mobile com texto a 200%; reflow e legibilidade; mobile, scale, acessibilidade. | 390 × 844 |
 | `dropdown-menu-studio.png` | Menu nativo aberto com opções escuras e highlight do navegador; open menu, options, keyboard. | 1440 × 1000 |
 | `api-resources-observed-desktop.png` | Inspector de catálogo com reasoning, contexto, tools e campos unknown; resources, capabilities, discovery, metadados, catálogo. | 1440 × 960 |
-| `api-resources-accounts-mobile-200.png` | Accounts com resumo de discovery e quota/reset/crédito desconhecidos a200%; usage, settings, accounts, unknown. | 390 × 844 |
+| `api-resources-accounts-mobile-200.png` | Accounts com resumo de discovery e quota/reset/crédito desconhecidos a 200%; usage, settings, accounts, unknown. | 390 × 844 |
 
 ## Diagnósticos de conexões — 10/10/2026
 
@@ -232,7 +233,7 @@ Capturas locais regeneráveis em `prototypes/desktop/artifacts/`, ignoradas pelo
 | `connection-diagnostics-running-desktop.png` | Relatório em andamento; 19/20 verificações concluídas e catálogo pendente. Auto checks; progress; pending catalog; cancel diagnostic. | 1440 × 960 |
 | `connection-diagnostics-completed-desktop.png` | Conclusão com recurso de acesso não confirmado; suporte e disponibilidade separados, recheck e fontes/checklist expansíveis. Report; unknown access; capabilities; diagnostics. | 1440 × 960 |
 | `connection-diagnostics-model-details-desktop.png` | Detalhes por modelo, níveis de reasoning, contexto, ferramentas, provenance e timestamp. Model matrix; thinking; source; observed resources. | 1440 × 960 |
-| `connection-diagnostics-mobile-200.png` | Relatório em mobile com texto a200%, contagens empilhadas, janela fechável e reflow sem overflow horizontal. Responsive report; narrow; large text; accessibility. | 390 × 844 |
+| `connection-diagnostics-mobile-200.png` | Relatório em mobile com texto a 200%, contagens empilhadas, janela fechável e reflow sem overflow horizontal. Responsive report; narrow; large text; accessibility. | 390 × 844 |
 
 ## Proporções e composer compacto — 11/10/2026
 
@@ -247,3 +248,21 @@ Capturas locais em `prototypes/desktop/artifacts/`, ignoradas pelo Git e revisad
 | `lower-composer-notebook.png` | Campo junto à parte inferior em notebook, mantendo todos os controles na primeira dobra. Laptop; bottom chat; initial fold. | 1280 × 720 |
 | `raised-start-cards-desktop.png` | Três cartões da entrada mais acima, separados das sugestões por 45px, preservando composer junto ao rodapé. Starter cards; breathing room; welcome spacing. | 1440 × 900 |
 | `raised-start-cards-notebook.png` | Separação de 36px entre cartões e sugestões em notebook, sem rolagem inicial. Laptop; raised cards; initial fold. | 1280 × 720 |
+
+## Barra de atividades e arquivos — 12/10/2026
+
+Capturas locais de QA em `prototypes/desktop/artifacts/`, ignoradas pelo Git e regeneráveis. Não são ativos para compor o produto nem avaliação humana do piloto. Os oito registros da interface mostram a organização atual e arquivos de estudo; os três últimos são renders dos SVGs H01/H02/H06. [Registro do incremento](activity-shell-revision.md).
+
+| Arquivo | Assunto, finalidade e aliases | Dimensões |
+| --- | --- | --- |
+| `activity-shell-home-desktop.png` | Entrada desktop com barra fixa, painel da atividade à esquerda e Sessions à direita. Fixed activity rail; welcome; default layout; desktop. | 1440 × 900 |
+| `activity-shell-home-notebook.png` | Entrada em notebook, cartões e composer com navegação fixa e dois painéis. Laptop; initial fold; compact shell. | 1280 × 720 |
+| `activity-shell-collapsed-desktop.png` | Painéis laterais recolhidos com bordas disponíveis para expandir e barra fixa preservada. Collapsed docks; resize edge; restore; focus. | 1440 × 900 |
+| `activity-shell-menu-desktop.png` | Menu superior do aplicativo aberto, com ações contextuais e atalhos. Application menu; File; Edit; View; Help; keyboard. | 1440 × 900 |
+| `activity-shell-files-mobile-200.png` | Navegação Files em mobile com texto a 200%, acesso às atividades e reflow. Files activity; mobile; large text; accessibility. | 390 × 844 |
+| `activity-files-editor-desktop.png` | Editor leve com árvore de arquivos, texto e ações de gravação. File tree; text editor; save destination; small edits. | 1440 × 900 |
+| `activity-files-preview-desktop.png` | Leitura de Markdown no centro do workspace, com arquivos próximos. Markdown preview; generated documents; desktop. | 1440 × 900 |
+| `activity-files-preview-mobile.png` | Prévia Markdown em janela compacta, com leitura adaptada. Markdown preview; mobile; document reading. | 390 × 844 |
+| `session-tree-help.png` | Render H01 revisado: barra fixa, conversa e Sessions à direita com projeto/conversas independentes. Help diagram; session grouping; right sessions. | 920 × 440 |
+| `workspace-docking-help.png` | Render H02 revisado: lados separados, abas compartilhadas e divisórias recolhidas. Help diagram; docking; collapse; Home; End. | 920 × 410 |
+| `files-editor-help.png` | Render H06: `.env`, editor e distinção visual entre origem autorizada e cópia importada. Help diagram; file editing; permission; save copy. | 920 × 480 |

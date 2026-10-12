@@ -21,9 +21,13 @@ async function chooseLanguage(page,language,keepOpen=false) {
 async function view(page,name) {
   if(name==='settings'){await openSettings(page);return;}
   if(await page.locator('#floating-settings').isVisible())await page.locator('[data-settings-close]').click();
-  if(!['chat','connections'].includes(name))await openStudio(page);
-  await page.locator(`.nav-item[data-view="${name}"]`).click();
-  await expect(page.locator(`.nav-item[data-view="${name}"]`)).toHaveAttribute('aria-current','page');
+  if(['chat','connections'].includes(name)){
+    await page.locator(`#activity-items>[data-activity="${name}"]`).click();
+    await expect(page.locator(`#activity-items>[data-activity="${name}"]`)).toHaveAttribute('aria-current','page');
+  }else{
+    await openStudio(page);await page.locator(`.nav-item[data-view="${name}"]`).click();
+    await expect(page.locator(`.nav-item[data-view="${name}"]`)).toHaveAttribute('aria-current','page');
+  }
 }
 async function send(page,message) {await composer(page).fill(message);await composer(page).press('Enter');await expect(userText(page).last()).toHaveText(message);}
 async function projectForm(page) {await page.evaluate(()=>OrchestrixApp.openProject());await expect(page.locator('#session-project-form')).toBeVisible();}
@@ -147,7 +151,7 @@ for(const language of ['en','es']) {
     const message='ConversaSinEspaciosWithNoSpaces'.repeat(70).slice(0,2000);await page.setViewportSize({width:320,height:900});await send(page,message);
     for(const width of [320,1920]) {
       await page.setViewportSize({width,height:900});for(const selector of ['#chat-message','#chat-form button[type="submit"]'])await expect(page.locator(selector)).toBeVisible();
-      await page.evaluate(()=>OrchestrixDock.activate('work'));await expect(page.locator('.chat-task-card').last()).toBeVisible();
+      await page.evaluate(()=>OrchestrixDock.activate('work'));if(width<=800)await page.locator('[data-toggle-dock="right"]').click();await expect(page.locator('.chat-task-card').last()).toBeVisible();
       expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
       await openSettings(page);await expect(page.locator('#settings-language')).toBeVisible();await expect(page.locator('#floating-settings')).toBeVisible();
       expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);await page.locator('[data-settings-close]').click();
@@ -157,7 +161,7 @@ for(const language of ['en','es']) {
     test.setTimeout(45000);await page.goto('/');await chooseLanguage(page,language);
     expect(await page.evaluate(()=>Object.entries(OrchestrixLocaleCatalog).filter(([,entry])=>!['en','es'].every(locale=>typeof entry[locale]==='string'&&entry[locale].trim())).map(([source])=>source))).toEqual([]);
     await page.evaluate(()=>OrchestrixI18n.clearMissing());await view(page,'chat');
-    await expect(page.locator('.nav-item[data-view="chat"]')).toHaveText(labels[language].chat);await expect(page.locator('[data-view="connections"]')).toHaveText(labels[language].connections);
+    await expect(page.locator('#activity-items>[data-activity="chat"]')).toHaveAccessibleName(labels[language].chat);await expect(page.locator('#activity-items>[data-activity="connections"]')).toHaveAccessibleName(labels[language].connections);
     await expect(page.getByRole('heading',{level:1})).not.toHaveText('O que vamos criar hoje?');
     await view(page,'work');for(const tab of ['summary','code','checks','activity'])await page.locator(`[data-tab="${tab}"]`).click();
     for(const name of ['attention','review','history','connections','settings'])await view(page,name);

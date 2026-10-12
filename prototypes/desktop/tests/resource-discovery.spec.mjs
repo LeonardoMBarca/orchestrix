@@ -46,7 +46,7 @@ async function mockDiscovery(page,responses) {
 }
 
 async function registerAPI(page,{name='Research API',provider='openai',key=apiKey,endpoint='',deployment=''}={}) {
-  await page.locator('[data-view="connections"]').click();
+  await page.locator('#activity-items>[data-activity="connections"]').click();
   await page.locator('#content [data-conn-action="add"]').click();
   await page.locator('#conn-kind-form [name="kind"][value="api"]').check();
   await page.locator('#conn-kind-form button[type="submit"]').click();

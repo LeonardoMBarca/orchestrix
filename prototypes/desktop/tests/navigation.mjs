@@ -6,8 +6,7 @@ export async function usePortuguese(page) {
 }
 
 export async function openStudio(page) {
-  const studio=page.locator('#studio-navigation');
-  if(!await studio.evaluate(element=>element.open))await studio.locator('summary').click();
+  if(!await page.locator('#studio-pane').isVisible())await page.locator('#activity-items>[data-activity="studio"]').click();
 }
 
 export async function openWorkspaceOptions(page) {

@@ -87,8 +87,8 @@
   function layout() {
     const dock=api.dock||window.OrchestrixDock;
     const current=dock?.getLayout?.()||{};
-    const position=id=>current.positions?.[id]||(typeof current[id]==='string'?current[id]:current[id]?.zone)||current.panels?.[id]?.zone||({navigation:'right',sessions:'left',work:'right'}[id]);
-    return html`<h3>Organize seu espaço</h3><p class="settings-description">Arraste os títulos dos painéis ou escolha onde cada um fica. Painéis no mesmo lado compartilham abas.</p><div class="settings-layout-options">${[['navigation','Navegação'],['sessions','Sessões e projetos'],['work','Trabalho']].map(([id,label])=>html`<div><label for="settings-dock-${id}">${t(label)}</label><select id="settings-dock-${id}" data-settings-dock="${id}" ${dock?.move?'':'disabled'}>${[['left','Esquerda'],['right','Direita']].map(([value,source])=>option(value,t(source),position(id))).join('')}</select></div>`).join('')}</div><div class="settings-actions"><button class="button" type="button" data-settings-restore-layout ${dock?.restore?'':'disabled'}>Restaurar layout</button></div>`;
+    const position=id=>current.positions?.[id]||(typeof current[id]==='string'?current[id]:current[id]?.zone)||current.panels?.[id]?.zone||({navigation:'left',sessions:'right',work:'right'}[id]);
+    return html`<h3>Organize seu espaço</h3><p class="settings-description">Arraste os títulos dos painéis ou escolha onde cada um fica. Painéis no mesmo lado compartilham abas.</p><div class="settings-layout-options">${[['navigation','Workspace'],['sessions','Sessões e projetos'],['work','Trabalho']].map(([id,label])=>html`<div><label for="settings-dock-${id}">${t(label)}</label><select id="settings-dock-${id}" data-settings-dock="${id}" ${dock?.move?'':'disabled'}>${[['left','Esquerda'],['right','Direita']].map(([value,source])=>option(value,t(source),position(id))).join('')}</select></div>`).join('')}</div><div class="settings-actions"><button class="button" type="button" data-settings-restore-layout ${dock?.restore?'':'disabled'}>Restaurar layout</button></div>`;
   }
   const views={general,accounts,themes,conversation,orchestration,layout};
   function render() {
