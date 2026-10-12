@@ -1,20 +1,18 @@
 import {spawn} from 'node:child_process';
 import {EventEmitter} from 'node:events';
-
-export class HarnessError extends Error {
-  constructor(kind, message, metadata={}) {
-    super(message);this.name='HarnessError';this.kind=kind;this.metadata=metadata;
-  }
-}
+import {HarnessError} from './errors.mjs';
+import {WindowsJobProcess} from './windows-job-process.mjs';
+export {HarnessError} from './errors.mjs';
 
 /** A bounded JSONL stdio client. It owns only the subprocess it spawned. */
 export class JsonRpcProcess extends EventEmitter {
-  constructor({command,args=[],cwd,env=process.env,requestTimeoutMs=10000,maxMessageBytes=1024*1024,maxOutboundMessageBytes=1024*1024,maxPendingWriteBytes=2*1024*1024,exitDrainTimeoutMs=250}) {
+  constructor({command,args=[],cwd,env=process.env,windowsJob=false,requestTimeoutMs=10000,maxMessageBytes=1024*1024,maxOutboundMessageBytes=1024*1024,maxPendingWriteBytes=2*1024*1024,exitDrainTimeoutMs=250}) {
     super();
     if(!Number.isSafeInteger(exitDrainTimeoutMs)||exitDrainTimeoutMs<1||exitDrainTimeoutMs>10000)throw new HarnessError('arguments','Invalid exit drain timeout');
     for(const [name,value] of Object.entries({maxMessageBytes,maxOutboundMessageBytes,maxPendingWriteBytes})) {
       if(!Number.isSafeInteger(value)||value<1)throw new HarnessError('arguments','A positive safe-integer byte limit is required',{limit:name});
     }
+    if(windowsJob&&windowsJob!==true&&(typeof windowsJob!=='object'||Array.isArray(windowsJob)||Object.keys(windowsJob).some(key=>!['lifetimeMs','startupTimeoutMs'].includes(key))))throw new HarnessError('arguments','Invalid Windows Job options');
     this.pending=new Map();this.serverRequests=new Set();this.nextId=1;
     this.requestTimeoutMs=requestTimeoutMs;this.maxMessageBytes=maxMessageBytes;
     this.maxOutboundMessageBytes=maxOutboundMessageBytes;this.maxPendingWriteBytes=maxPendingWriteBytes;
@@ -22,14 +20,16 @@ export class JsonRpcProcess extends EventEmitter {
     this.closed=false;this.parentExited=false;this.spawned=false;this.failure=null;this.stderrBytes=0;this.messages=0;this.exit=null;
     this.exitDrainTimeoutMs=exitDrainTimeoutMs;this.exitDrainTimer=null;this.stopPromise=null;
     this.closedPromise=new Promise(resolve=>{this.resolveClosed=resolve;});
-    this.child=spawn(command,args,{cwd,env,stdio:['pipe','pipe','pipe'],shell:false,windowsHide:true});
+    this.windowsJob=!!windowsJob;
+    this.child=windowsJob?new WindowsJobProcess({command,args,cwd,env,...(windowsJob===true?{}:windowsJob)}):spawn(command,args,{cwd,env,stdio:['pipe','pipe','pipe'],shell:false,windowsHide:true});
     this.pid=this.child.pid;
-    this.child.on('spawn',()=>{this.spawned=true;});
+    this.child.on('spawn',()=>{this.spawned=true;this.pid=this.child.pid;});
+    if(windowsJob)this.child.on('supervision',state=>{this.supervision=state;if(this.exit)this.exit={...this.exit,...state};});
     this.child.stdout.on('data',chunk=>this.consume(chunk));
     this.child.stderr.on('data',chunk=>{this.stderrBytes+=chunk.length;});
     this.child.stdin.on('error',()=>{if(!this.parentExited&&!this.closed)this.fail(new HarnessError('transport','Unable to write to runtime stdin'));});
     for(const stream of [this.child.stdout,this.child.stderr])stream.on('error',()=>{if(!this.closed)this.fail(new HarnessError('transport','Unable to read runtime output'));});
-    this.child.on('error',()=>this.fail(new HarnessError(this.spawned?'transport':'launch',this.spawned?'Runtime process operation failed':'Runtime process could not be launched')));
+    this.child.on('error',error=>this.fail(error instanceof HarnessError?error:new HarnessError(this.spawned?'transport':'launch',this.spawned?'Runtime process operation failed':'Runtime process could not be launched')));
     this.child.stdout.on('end',()=>{
       if(this.failure)return;
       try{this.buffer+=this.decoder.decode();}catch{this.fail(new HarnessError('protocol','Incomplete UTF-8 stream'));return;}
@@ -49,7 +49,7 @@ export class JsonRpcProcess extends EventEmitter {
   finishTransport({code=this.exit?.code??null,signal=this.exit?.signal??null,stdioClosed=false,observationDetached=true}={}) {
     if(this.closed)return;
     clearTimeout(this.exitDrainTimer);
-    this.closed=true;this.exit={code,signal,parentExited:this.parentExited,treeTermination:'unknown',stdioClosed,observationDetached};
+    this.closed=true;this.exit={code,signal,parentExited:this.parentExited,treeTermination:'unknown',stdioClosed,observationDetached,...(this.supervision||{})};
     const reason=this.failure||new HarnessError('process-exit','Runtime observation ended',{code,signal,parentExited:this.parentExited});
     this.rejectPending(reason);this.serverRequests.clear();this.resolveClosed(this.exit);this.emit('closed',this.exit);
   }
@@ -145,19 +145,28 @@ export class JsonRpcProcess extends EventEmitter {
   fail(reason) {
     if(this.failure)return;
     this.failure=reason;this.rejectPending(reason);this.emit('failure',reason);
-    if(!this.closed&&!this.parentExited)this.child.kill();
+    if(this.windowsJob||(!this.closed&&!this.parentExited))this.child.kill();
   }
   stop(timeoutMs=3000) {
     if(!Number.isSafeInteger(timeoutMs)||timeoutMs<1)return Promise.reject(new HarnessError('arguments','Invalid stop timeout'));
     this.stopPromise??=Promise.resolve().then(()=>this.stopOwnedProcess(timeoutMs));
     return this.stopPromise;
   }
+  terminateOwnedJob() {
+    if(!this.windowsJob)return Promise.reject(new HarnessError('supervision','Forced tree stop requires an owned Windows Job'));
+    this.stopPromise??=Promise.resolve().then(()=>this.stopOwnedProcess(1,true));return this.stopPromise;
+  }
   async waitForClose(timeoutMs) {
     let timer;
     const result=await Promise.race([this.closedPromise,new Promise(resolve=>{timer=setTimeout(()=>resolve(null),timeoutMs);})]);
     clearTimeout(timer);return result;
   }
-  async stopOwnedProcess(timeoutMs) {
+  async stopOwnedProcess(timeoutMs,force=false) {
+    if(this.windowsJob) {
+      const state=await (force?this.child.terminate():this.child.stop(timeoutMs));this.supervision=state;
+      if(!this.closed)this.finishTransport({...state,observationDetached:!state.stdioClosed});
+      this.exit={...this.exit,...state};return this.exit;
+    }
     if(this.closed)return this.exit;
     if(!this.parentExited)this.child.stdin.end();
     const exited=await this.waitForClose(timeoutMs);

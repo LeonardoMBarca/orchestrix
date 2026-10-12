@@ -1,4 +1,5 @@
-// Experimental synthetic-only Windows supervisor. No provider, authentication or shell launch.
+// Experimental Windows Job owner. The synthetic entry point remains separate
+// from the raw transport bridge; neither entry point launches through a shell.
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
@@ -81,6 +82,9 @@ namespace Orchestrix.WindowsSpike
         StreamWriter childInput;
         StreamReader childOutput;
         StreamReader childError;
+        public Stream RawInput { get; private set; }
+        public Stream RawOutput { get; private set; }
+        public Stream RawError { get; private set; }
         public BoundedLines Output;
         public BoundedLines Control;
         public uint RootPid;
@@ -95,7 +99,17 @@ namespace Orchestrix.WindowsSpike
 
         public void ArmWatchdog(int lifetimeMs, int outputGraceMs)
         {
-            if (lifetimeMs < 1000 || lifetimeMs > 30000 || outputGraceMs < 1 || outputGraceMs > 3000) throw new ProbeException("arguments", 0);
+            ArmWatchdogCore(lifetimeMs, outputGraceMs, 30000);
+        }
+
+        public void ArmBridgeWatchdog(int lifetimeMs, int outputGraceMs)
+        {
+            ArmWatchdogCore(lifetimeMs, outputGraceMs, 300000);
+        }
+
+        void ArmWatchdogCore(int lifetimeMs, int outputGraceMs, int maximumMs)
+        {
+            if (lifetimeMs < 1000 || lifetimeMs > maximumMs || outputGraceMs < 1 || outputGraceMs > 3000) throw new ProbeException("arguments", 0);
             lock (handleSync)
             {
                 if (disposed || !Resumed || watchdog != null) throw new ProbeException("watchdog-state", 0);
@@ -199,19 +213,46 @@ namespace Orchestrix.WindowsSpike
             result.Append('\\', slashes * 2); result.Append('"'); return result.ToString();
         }
 
-        static IntPtr SafeEnvironment()
+        static IDictionary<string, string> SafeEnvironment()
         {
             // Synthetic Node fixture does not require user credentials, NODE_OPTIONS or package hooks.
             string[] allow = { "SystemRoot", "WINDIR", "SystemDrive", "TEMP", "TMP", "COMSPEC", "PATH", "PATHEXT", "NUMBER_OF_PROCESSORS", "PROCESSOR_ARCHITECTURE" };
             SortedDictionary<string, string> variables = new SortedDictionary<string, string>(StringComparer.OrdinalIgnoreCase);
             foreach (string name in allow) { string value = Environment.GetEnvironmentVariable(name); if (value != null) variables[name] = value; }
+            return variables;
+        }
+
+        static IntPtr EnvironmentBlock(IDictionary<string, string> source, bool raw)
+        {
+            if (source == null || source.Count > 64) throw new ProbeException("environment", 0);
+            string[] allow = { "PATH", "PATHEXT", "SYSTEMROOT", "WINDIR", "SYSTEMDRIVE", "COMSPEC", "TEMP", "TMP", "TMPDIR", "USERPROFILE", "HOME", "HOMEDRIVE", "HOMEPATH", "APPDATA", "LOCALAPPDATA", "PROGRAMDATA", "PROGRAMFILES", "PROGRAMFILES(X86)", "COMMONPROGRAMFILES", "PROCESSOR_ARCHITECTURE", "NUMBER_OF_PROCESSORS", "CODEX_HOME", "LANG", "LC_ALL" };
+            HashSet<string> names = new HashSet<string>(allow, StringComparer.OrdinalIgnoreCase);
+            SortedDictionary<string, string> variables = new SortedDictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            foreach (KeyValuePair<string, string> entry in source)
+            {
+                if (entry.Key == null || !names.Contains(entry.Key) || (raw && entry.Key.Equals("SYSTEMDRIVE", StringComparison.OrdinalIgnoreCase)) || entry.Value == null || entry.Value.Length > 32767 || entry.Value.IndexOf('\0') >= 0 || variables.ContainsKey(entry.Key)) throw new ProbeException("environment", 0);
+                variables.Add(entry.Key, entry.Value);
+            }
             StringBuilder block = new StringBuilder();
             foreach (KeyValuePair<string, string> entry in variables) block.Append(entry.Key).Append('=').Append(entry.Value).Append('\0');
             block.Append('\0');
+            if (block.Length == 1) block.Append('\0');
+            if (block.Length > 65536) throw new ProbeException("environment", 0);
             return Marshal.StringToHGlobalUni(block.ToString());
         }
 
         public void Launch(string executable, string[] arguments, string cwd, bool failBeforeResume)
+        {
+            LaunchCore(executable, arguments, cwd, SafeEnvironment(), false, failBeforeResume);
+        }
+
+        public void LaunchRaw(string executable, string[] arguments, string cwd, IDictionary<string, string> environment)
+        {
+            if (executable == null || cwd == null || !Path.IsPathRooted(executable) || !Path.IsPathRooted(cwd) || arguments == null || arguments.Length > 256) throw new ProbeException("arguments", 0);
+            LaunchCore(executable, arguments, cwd, environment, true, false);
+        }
+
+        void LaunchCore(string executable, string[] arguments, string cwd, IDictionary<string, string> suppliedEnvironment, bool raw, bool failBeforeResume)
         {
             lock (handleSync)
             {
@@ -253,7 +294,7 @@ namespace Orchestrix.WindowsSpike
                 StringBuilder command = new StringBuilder(QuoteArgument(executable));
                 foreach (string argument in arguments) command.Append(' ').Append(QuoteArgument(argument));
                 if (command.Length >= 32767) throw new ProbeException("arguments", 0);
-                environment = SafeEnvironment();
+                environment = EnvironmentBlock(suppliedEnvironment, raw);
                 PROCESS_INFORMATION info;
                 Require(CreateProcessW(executable, command, IntPtr.Zero, IntPtr.Zero, true,
                     CREATE_SUSPENDED | CREATE_NO_WINDOW | CREATE_UNICODE_ENVIRONMENT | EXTENDED_STARTUPINFO_PRESENT,
@@ -269,12 +310,19 @@ namespace Orchestrix.WindowsSpike
                 Resumed = true;
                 Close(ref thread);
                 Close(ref inputRead); Close(ref outputWrite); Close(ref errorWrite);
-                childInput = new StreamWriter(new FileStream(new SafeFileHandle(inputWrite, true), FileAccess.Write), new UTF8Encoding(false)); inputWrite = IntPtr.Zero; childInput.AutoFlush = true;
-                childOutput = new StreamReader(new FileStream(new SafeFileHandle(outputRead, true), FileAccess.Read), new UTF8Encoding(false, true)); outputRead = IntPtr.Zero;
-                childError = new StreamReader(new FileStream(new SafeFileHandle(errorRead, true), FileAccess.Read), new UTF8Encoding(false, true)); errorRead = IntPtr.Zero;
-                Output = new BoundedLines(childOutput);
-                Control = new BoundedLines(new StreamReader(Console.OpenStandardInput(), new UTF8Encoding(false, true)));
-                Thread drain = new Thread(DrainError); drain.IsBackground = true; drain.Start();
+                // Raw writes have no managed buffer to flush during cancellation.
+                RawInput = new FileStream(new SafeFileHandle(inputWrite, true), FileAccess.Write, raw ? 1 : 4096, false); inputWrite = IntPtr.Zero;
+                RawOutput = new FileStream(new SafeFileHandle(outputRead, true), FileAccess.Read, raw ? 1 : 4096, false); outputRead = IntPtr.Zero;
+                RawError = new FileStream(new SafeFileHandle(errorRead, true), FileAccess.Read, raw ? 1 : 4096, false); errorRead = IntPtr.Zero;
+                if (!raw)
+                {
+                    childInput = new StreamWriter(RawInput, new UTF8Encoding(false)); childInput.AutoFlush = true;
+                    childOutput = new StreamReader(RawOutput, new UTF8Encoding(false, true));
+                    childError = new StreamReader(RawError, new UTF8Encoding(false, true));
+                    Output = new BoundedLines(childOutput);
+                    Control = new BoundedLines(new StreamReader(Console.OpenStandardInput(), new UTF8Encoding(false, true)));
+                    Thread drain = new Thread(DrainError); drain.IsBackground = true; drain.Start();
+                }
             }
             finally
             {
@@ -395,6 +443,9 @@ namespace Orchestrix.WindowsSpike
             if (childInput != null) childInput.Dispose();
             if (childOutput != null) childOutput.Dispose();
             if (childError != null) childError.Dispose();
+            if (RawInput != null) RawInput.Dispose();
+            if (RawOutput != null) RawOutput.Dispose();
+            if (RawError != null) RawError.Dispose();
             watchdogCancel.Dispose();
         }
     }

@@ -8,6 +8,8 @@ import {mkdtemp,mkdir,writeFile,readdir,readFile} from 'node:fs/promises';
 import {createHash} from 'node:crypto';
 import {JsonRpcProcess,HarnessError} from './src/json-rpc.mjs';
 import {CodexSession} from './src/codex-session.mjs';
+import {runtimeEnvironment,fixtureGitEnvironment} from './src/runtime-environment.mjs';
+export {runtimeEnvironment,fixtureGitEnvironment} from './src/runtime-environment.mjs';
 
 const execute=promisify(execFile);
 const root=dirname(fileURLToPath(import.meta.url));
@@ -20,15 +22,6 @@ const EXPECTED='ORCHESTRIX_PROBE_OK';
 export function codexLaunchArguments({windowsSandbox}={}) {
   if(windowsSandbox!==undefined&&windowsSandbox!=='mxc')throw new HarnessError('arguments','Only an explicit MXC override is supported by this experiment');
   return ['--no-daemon','-c','model_provider="openai"','-c','openai_base_url=""','-c','chatgpt_base_url="https://chatgpt.com/backend-api/"','-c','analytics.enabled=false','-c','features.hooks=false','-c','features.plugins=false','-c','features.apps=false','-c','features.multi_agent=false','-c','notify=[]',...(windowsSandbox?['-c','windows.sandbox="mxc"']:[]),'app-server','--listen','stdio://'];
-}
-
-/** Keep only OS/auth-location variables. Never transfer API keys or endpoint overrides. */
-export function runtimeEnvironment(source=process.env) {
-  const allowed=new Set(['PATH','PATHEXT','SYSTEMROOT','WINDIR','COMSPEC','TEMP','TMP','TMPDIR','USERPROFILE','HOME','HOMEDRIVE','HOMEPATH','APPDATA','LOCALAPPDATA','PROGRAMDATA','PROGRAMFILES','PROGRAMFILES(X86)','COMMONPROGRAMFILES','PROCESSOR_ARCHITECTURE','NUMBER_OF_PROCESSORS','CODEX_HOME','LANG','LC_ALL']);
-  return Object.fromEntries(Object.entries(source).filter(([key])=>allowed.has(key.toUpperCase())));
-}
-export function fixtureGitEnvironment(source=process.env) {
-  return {...runtimeEnvironment(source),GIT_CONFIG_GLOBAL:process.platform==='win32'?'NUL':'/dev/null',GIT_CONFIG_NOSYSTEM:'1',GIT_TERMINAL_PROMPT:'0'};
 }
 
 function safeLabel(value) {return typeof value==='string'&&/^[\w.:-]{1,100}$/.test(value)?value:'unknown';}

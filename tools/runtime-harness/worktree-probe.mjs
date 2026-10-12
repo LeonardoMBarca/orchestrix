@@ -8,6 +8,7 @@ import {tmpdir} from 'node:os';
 import {mkdtemp,mkdir,writeFile,readFile,readdir,realpath} from 'node:fs/promises';
 import {createHash,randomUUID} from 'node:crypto';
 import {JsonRpcProcess,HarnessError} from './src/json-rpc.mjs';
+import {cleanWindowsJobExit} from './src/windows-job-process.mjs';
 import {CodexSession} from './src/codex-session.mjs';
 import {runtimeEnvironment,fixtureGitEnvironment,codexLaunchArguments,supportsCodexVersion,reportEvents,reportConfiguration,observeCancellation} from './probe.mjs';
 
@@ -90,11 +91,11 @@ export async function inspectAttempt(fixture) {
   return {passed:expectedOnly&&checks.passed&&checksSameSnapshot,mainUnchanged,baseMatched,expectedOnly,checksSameSnapshot,base:fixture.base,paths,diffSha256:sha(diff),checks,sources:before,diff};
 }
 
-export async function connect(binary,cwd,requestTimeoutMs,{windowsSandbox}={}) {
-  const args=codexLaunchArguments({windowsSandbox});let client,session;
+export async function connect(binary,cwd,requestTimeoutMs,{windowsSandbox,windowsJob=false}={}) {
+  const args=codexLaunchArguments({windowsSandbox});let client,session;const bootstrapProcesses=[];
   try {
     async function launch() {
-      client=new JsonRpcProcess({command:binary,args,cwd,env:runtimeEnvironment(),requestTimeoutMs});
+      client=new JsonRpcProcess({command:binary,args,cwd,env:runtimeEnvironment(),windowsJob,requestTimeoutMs});
       session=new CodexSession(client,{turnTimeoutMs:90000});await session.initialize();
       const discovery=await session.discover(),endpoints=await session.inspectEndpoints(cwd);
       if(!discovery.auth.subscriptionGate||discovery.availability!==true||!endpoints.providerOpenai||!endpoints.officialEndpointConfirmed)throw new HarnessError('subscription-gate','Subscription/availability/official endpoint not confirmed');
@@ -104,25 +105,37 @@ export async function connect(binary,cwd,requestTimeoutMs,{windowsSandbox}={}) {
     let metadata=await launch();
     if(!metadata.endpoints.resources.mcpDisabled&&session.mcpDisableOverrides) {
       args.splice(args.indexOf('app-server'),0,...session.mcpDisableOverrides.flatMap(value=>['-c',value]));
-      const stopped=await client.stop();if(!stopped.parentExited||stopped.code!==0||client.failure)throw new HarnessError('process-exit','Bootstrap exit not confirmed');
+      const stopped=await client.stop();bootstrapProcesses.push(stopped);if(!stopped.parentExited||stopped.code!==0||client.failure||(windowsJob&&!cleanWindowsJobExit(stopped)))throw new HarnessError('process-exit','Bootstrap exit not confirmed');
       metadata=await launch();
     }
     if(Object.entries(metadata.endpoints.resources).some(([key,value])=>key!=='mcpConfiguredCount'&&value!==true))throw new HarnessError('extensions','Extensions are not confirmed disabled');
-    return {client,session,...metadata};
+    return {client,session,bootstrapProcesses,...metadata};
   } catch(error) {if(client)await client.stop();throw error;}
 }
 
-export async function runWorktreeProbe({binary=process.platform==='win32'?'codex.exe':'codex',live=false,windowsSandbox,requestTimeoutMs=15000,artifactDirectory=join(root,'artifacts')}={}) {
+export async function observeOwnedProcessStop(session,id) {
+  if(!session.client.windowsJob)throw new HarnessError('supervision','Owned Job required for the forced process proof');
+  const start=await session.waitForTurnStart(id);
+  if(!start.started)return {kind:'owned-process-stop',startObserved:false,forcedConfirmed:false,terminalStatus:start.terminal?.status??null,turnInterruptedConfirmed:false};
+  if(session.turns.has(id))return {kind:'owned-process-stop',startObserved:true,forcedConfirmed:false,terminalStatus:session.turns.get(id).status,turnInterruptedConfirmed:false};
+  const stopped=await session.client.terminateOwnedJob();
+  const terminalStatus=session.turns.get(id)?.status??null,processTerminationConfirmed=cleanWindowsJobExit(stopped,137)&&stopped.termination==='forced';
+  return {kind:'owned-process-stop',startObserved:true,processTerminationConfirmed,forcedConfirmed:processTerminationConfirmed&&terminalStatus===null,terminalStatus,turnInterruptedConfirmed:false};
+}
+
+export async function runWorktreeProbe({binary=process.platform==='win32'?'codex.exe':'codex',live=false,windowsSandbox,windowsJob=false,processStop=false,requestTimeoutMs=15000,artifactDirectory=join(root,'artifacts')}={}) {
   const started=Date.now(),report={schemaVersion:1,date:new Date().toISOString(),experiment:'OX-001/worktree-resume',liveRequested:live,liveStarted:false,status:'starting',checks:[],events:[],processes:[],limits:['Disposable fixture only; not the production worker or SQLite recovery','Runtime conversational persistence remains owned by Codex','Parent exits observed; Windows process-tree containment integration is still pending','No CLI exec comparison or independent account/quota proof','Sandbox resolution is not a Windows filesystem/network enforcement certification']};
   let fixture,connection;const events=[];
   try {
     if(windowsSandbox!==undefined&&(process.platform!=='win32'||windowsSandbox!=='mxc'))throw new HarnessError('arguments','The explicit MXC selection requires Windows');
-    report.requestedWindowsSandbox=windowsSandbox??null;
+    if(typeof live!=='boolean'||typeof processStop!=='boolean'||(processStop&&!windowsJob))throw new HarnessError('arguments','Explicit live and owned Job opt-in required for process stop');
+    report.requestedWindowsSandbox=windowsSandbox??null;report.windowsJobRequested=!!windowsJob;report.processStopRequested=processStop;
+    if(windowsJob)report.limits[2]='Experimental owned Job containment; independent from filesystem/network sandbox and not a production supervisor';
     fixture=await createWorktreeFixture();report.workspace={disposable:true,retainedForInspection:true,base:fixture.base,baselineCheck:fixture.baselineCheck};
     const version=await execute(binary,['--version'],{cwd:fixture.worktree,windowsHide:true,timeout:10000,env:runtimeEnvironment()});
     report.runtimeVersion=version.stdout.match(/codex-cli ([\w.-]+)/)?.[1]??'unknown';
     if(!supportsCodexVersion(report.runtimeVersion))throw new HarnessError('version','Runtime version not schema-reviewed');
-    connection=await connect(binary,fixture.worktree,requestTimeoutMs,{windowsSandbox});
+    connection=await connect(binary,fixture.worktree,requestTimeoutMs,{windowsSandbox,windowsJob});report.processes.push(...connection.bootstrapProcesses);
     report.auth=connection.discovery.auth;report.availability=connection.discovery.availability;report.endpoints=connection.endpoints;
     report.checks.push('subscription-gates-confirmed','extensions-disabled','disposable-worktree','baseline-check-failed');
     if(!live){report.status='metadata-passed';return report;}
@@ -141,8 +154,8 @@ export async function runWorktreeProbe({binary=process.platform==='win32'?'codex
     report.attempt={...attempt,patch:patchName};if(!attempt.passed){report.status='artifact-check-failed';return report;}
     report.checks.push('diff-attempt-bound','checks-same-snapshot','main-checkout-preserved');
     events.push(...connection.session.events);const stopped=await connection.client.stop();report.processes.push(stopped);
-    if(!stopped.parentExited||stopped.code!==0||connection.client.failure)throw new HarnessError('process-exit','First app-server exit unconfirmed');
-    connection=null;connection=await connect(binary,fixture.worktree,requestTimeoutMs,{windowsSandbox});
+    if(!stopped.parentExited||stopped.code!==0||connection.client.failure||(windowsJob&&!cleanWindowsJobExit(stopped)))throw new HarnessError('process-exit','First app-server exit unconfirmed');
+    connection=null;connection=await connect(binary,fixture.worktree,requestTimeoutMs,{windowsSandbox,windowsJob});report.processes.push(...connection.bootstrapProcesses);
     if(connection.session.accountBinding!==accountBinding)throw new HarnessError('connection-binding','Observed account metadata changed');
     if(!connection.discovery.models.some(value=>value.model===model.model&&value.efforts.includes(effort)))throw new HarnessError('capability','Resumed model/effort no longer announced');
     report.resumedConfiguration=reportConfiguration(await connection.session.resumeThread({threadId,...options}));
@@ -154,17 +167,17 @@ export async function runWorktreeProbe({binary=process.platform==='win32'?'codex
     if(!afterResume.passed||!report.resume.artifactUnchanged){report.status='resume-artifact-changed';return report;}
     report.checks.push('same-thread-resumed-after-restart','prior-runtime-context-observed');
     const cancelId=await connection.session.startTurn('Without tools, files, network or delegation, output integers from 1 to 5000 separated by spaces. This turn is intended for immediate interruption.',{effort});
-    report.cancellation=await observeCancellation(connection.session,cancelId);
-    if(!report.cancellation.interruptedConfirmed){report.status='cancellation-not-proven';return report;}
+    report.cancellation=processStop?await observeOwnedProcessStop(connection.session,cancelId):await observeCancellation(connection.session,cancelId);
+    if(!(processStop?report.cancellation.forcedConfirmed:report.cancellation.interruptedConfirmed)){report.status='cancellation-not-proven';return report;}
     const finalAttempt=await inspectAttempt(fixture);
     report.cancellation.artifactUnchanged=finalAttempt.passed&&finalAttempt.diffSha256===attempt.diffSha256&&JSON.stringify(finalAttempt.sources)===JSON.stringify(attempt.sources);
     if(!report.cancellation.artifactUnchanged){report.status='cancel-artifact-changed';return report;}
-    report.checks.push('resumed-turn-interrupted','artifact-preserved-after-cancellation');report.status='passed';return report;
+    report.checks.push(processStop?'owned-tree-forced-stop-confirmed':'resumed-turn-interrupted','artifact-preserved-after-cancellation');report.status='passed';return report;
   } catch(error) {report.status='failed';report.error={kind:error instanceof HarnessError?error.kind:'local-error',method:error.metadata?.method??null,code:Number.isSafeInteger(error.metadata?.code)?error.metadata.code:null};return report;
   } finally {
     if(connection) {
       events.push(...connection.session.events);
-      try {const stopped=await connection.client.stop();report.processes.push(stopped);if(['passed','metadata-passed'].includes(report.status)&&(!stopped.parentExited||stopped.code!==0||connection.client.failure))report.status='runtime-exit-failed';}
+      try {const stopped=await connection.client.stop();report.processes.push(stopped);const forced=processStop&&report.cancellation?.forcedConfirmed;if(['passed','metadata-passed'].includes(report.status)&&(!stopped.parentExited||stopped.code!==(forced?137:0)||connection.client.failure||(windowsJob&&!cleanWindowsJobExit(stopped,forced?137:0))))report.status='runtime-exit-failed';}
       catch {report.status='termination-unconfirmed';}
     }
     report.events=reportEvents(events).map((event,index)=>({...event,sequence:index+1}));
@@ -177,17 +190,19 @@ export async function runWorktreeProbe({binary=process.platform==='win32'?'codex
 }
 
 async function main() {
-  let binary,live=false,output,windowsSandbox;const args=process.argv.slice(2);
+  let binary,live=false,output,windowsSandbox,windowsJob=false,processStop=false;const args=process.argv.slice(2);
   for(let index=0;index<args.length;index++) {
     if(args[index]==='--live')live=true;
+    else if(args[index]==='--windows-job')windowsJob=true;
+    else if(args[index]==='--process-stop')processStop=true;
     else if(args[index]==='--binary'&&args[index+1])binary=args[++index];
     else if(args[index]==='--windows-sandbox'&&args[index+1])windowsSandbox=args[++index];
     else if(args[index]==='--output'&&args[index+1])output=resolve(args[++index]);
-    else if(args[index]==='--help'){process.stdout.write('node worktree-probe.mjs [--live] [--windows-sandbox mxc] [--binary path] [--output path]\nDefault: metadata only. Live: three bounded turns on an existing subscription, disposable worktree edit/checks, app-server restart/resume and interruption. Explicit MXC requires Windows and confirmed configuration; no setup or API fallback.\n');return;}
+    else if(args[index]==='--help'){process.stdout.write('node worktree-probe.mjs [--live] [--windows-job] [--process-stop] [--windows-sandbox mxc] [--binary path] [--output path]\nDefault: metadata only. Live: three bounded turns on an existing subscription, disposable worktree edit/checks, app-server restart/resume and interruption. --process-stop replaces cooperative turn interruption with explicit forced owned-Job stop, without inventing a remote terminal. Windows Job containment is separate from MXC filesystem/network sandbox; no setup or API fallback.\n');return;}
     else throw new HarnessError('arguments','Unknown or incomplete option');
   }
   const target=output||join(root,'artifacts',`worktree-probe-${Date.now()}.json`);
-  const report=await runWorktreeProbe({binary,live,windowsSandbox,artifactDirectory:dirname(target)});
+  const report=await runWorktreeProbe({binary,live,windowsSandbox,windowsJob,processStop,artifactDirectory:dirname(target)});
   await mkdir(dirname(target),{recursive:true});await writeFile(target,JSON.stringify(report,null,2)+'\n');
   process.stdout.write(JSON.stringify({status:report.status,runtimeVersion:report.runtimeVersion,liveStarted:report.liveStarted,checks:report.checks,report:target})+'\n');
   process.exitCode=['passed','metadata-passed'].includes(report.status)?0:1;
