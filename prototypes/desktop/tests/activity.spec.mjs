@@ -47,12 +47,23 @@ test('activity reordering works with keyboard and pointer and persists independe
 });
 
 test('File and View menus expose working app actions, keyboard navigation and layout reset',async({page})=>{
-  const fileMenu=page.locator('[data-app-menu="file"]');await fileMenu.focus();await fileMenu.press('ArrowDown');
-  await expect(page.locator('#app-menu-popup')).toBeVisible();await expect(page.locator('[data-menu-command="save"]')).toBeDisabled();
-  await expect(page.locator('[data-menu-command="new-session"]')).toBeFocused();await page.keyboard.press('Escape');await expect(fileMenu).toBeFocused();
   await page.locator('#chat-message').fill('Keep this session draft');const original=await page.evaluate(()=>OrchestrixApp.getState().chat.id);
-  await fileMenu.click();await page.locator('[data-menu-command="new-session"]').click();expect(await page.evaluate(()=>OrchestrixApp.getState().chat.id)).not.toBe(original);
-  await page.locator(`[data-session-id="${original}"]`).click();await expect(page.locator('#chat-message')).toHaveValue('Keep this session draft');
+  await page.evaluate(()=>{
+    window.filePickerCalls=0;window.folderPickerCalls=0;
+    window.showOpenFilePicker=async()=>{window.filePickerCalls++;throw new DOMException('Cancelled','AbortError');};
+    window.showDirectoryPicker=async()=>{window.folderPickerCalls++;throw new DOMException('Cancelled','AbortError');};
+  });
+  const fileMenu=page.locator('[data-app-menu="file"]');await fileMenu.focus();await fileMenu.press('ArrowDown');
+  await expect(page.locator('#app-menu-popup')).toBeVisible();
+  expect(await page.locator('#app-menu-popup [data-menu-command]').evaluateAll(buttons=>buttons.map(button=>button.dataset.menuCommand))).toEqual(['new-file','open-file','open-folder']);
+  await expect(page.locator('[data-menu-command="new-file"]')).toBeFocused();await page.keyboard.press('Escape');await expect(fileMenu).toBeFocused();
+  await fileMenu.click();await page.locator('[data-menu-command="open-file"]').click();await expect.poll(()=>page.evaluate(()=>window.filePickerCalls)).toBe(1);
+  await page.keyboard.press('Control+o');await expect.poll(()=>page.evaluate(()=>window.filePickerCalls)).toBe(2);
+  await page.keyboard.press('Control+Shift+o');await expect.poll(()=>page.evaluate(()=>window.folderPickerCalls)).toBe(1);
+  await fileMenu.click();await page.locator('[data-menu-command="open-folder"]').click();await expect.poll(()=>page.evaluate(()=>window.folderPickerCalls)).toBe(2);
+  await page.keyboard.press('Control+n');await expect(page.locator('#new-file-dialog')).toBeVisible();await page.locator('#new-file-dialog [data-new-file-cancel]').click();
+  await fileMenu.click();await page.locator('[data-menu-command="new-file"]').click();await expect(page.locator('#new-file-dialog')).toBeVisible();await page.locator('#new-file-dialog [data-new-file-cancel]').click();
+  expect(await page.evaluate(()=>OrchestrixApp.getState().chat.id)).toBe(original);await expect(page.locator('#chat-message')).toHaveValue('Keep this session draft');
   await page.locator('[data-app-menu="view"]').click();await page.locator('[data-menu-command="toggle-right"]').click();await expect(page.locator('#dock-right')).toHaveClass(/is-collapsed/);
   await page.locator('[data-app-menu="view"]').click();await page.locator('[data-menu-command="restore-layout"]').click();await expect(page.locator('#sessions-panel')).toBeVisible();
   await expect(page.locator('#app-menubar')).not.toContainText(/Run|Terminal/);

@@ -102,7 +102,7 @@
     app.classList.toggle('editing-file',visible);
   }
   const menuItems={
-    file:()=>[['Nova sessão','new-session','Ctrl N'],['Abrir pasta','open-folder','Ctrl O'],['Abrir ou criar projeto','open-project'],'-', ['Salvar arquivo ativo','save','Ctrl S'],['Fechar arquivo ativo','close-file']],
+    file:()=>[['Novo arquivo','new-file','Ctrl N'],['Abrir arquivo','open-file','Ctrl O'],['Abrir pasta','open-folder','Ctrl Shift O']],
     edit:()=>[['Desfazer','undo','Ctrl Z'],['Refazer','redo','Ctrl Shift Z'],'-',['Recortar','cut','Ctrl X'],['Copiar','copy','Ctrl C'],['Colar','paste','Ctrl V'],'-',['Selecionar tudo','selectAll','Ctrl A']],
     view:()=>[['Conversa','chat'],['Arquivos','files'],['Studio','studio'],['Conexões','connections'],'-',['Alternar painel esquerdo','toggle-left','Ctrl B'],['Alternar painel direito','toggle-right','Ctrl Alt B'],['Modo de foco','focus'],'-',['Restaurar layout','restore-layout']],
     help:()=>[['Ajuda e tutoriais','help'],['Atalhos de teclado','shortcuts'],['Conheça o Orchestrix','website'],['GitHub','github']],
@@ -120,7 +120,6 @@
       const [label,command,key]=item,button=document.createElement('button');button.type='button';button.setAttribute('role','menuitem');button.dataset.menuCommand=command;
       const text=document.createElement('span');text.textContent=label==='Studio'||label==='GitHub'?label:t(label);button.append(text);
       if(key){const shortcut=document.createElement('kbd');shortcut.textContent=key;button.append(shortcut);}
-      if(['save','close-file'].includes(command))button.disabled=!window.OrchestrixFiles?.getState().active;
       if(['undo','redo','cut','copy','paste','selectAll'].includes(command)){
         const target=editableTarget();button.disabled=!target||(target.readOnly&&['undo','redo','cut','paste'].includes(command));
       }
@@ -156,10 +155,8 @@
     if(defaults.includes(command)){select(command);return;}
     if(['undo','redo','cut','copy','paste','selectAll'].includes(command)){edit(command);return;}
     if(command==='open-folder'){select('files');window.OrchestrixFiles.openFolder();return;}
-    if(command==='save'){window.OrchestrixFiles.save();return;}
-    if(command==='close-file'){window.OrchestrixFiles.closeActive();return;}
-    if(command==='new-session'){window.OrchestrixFiles.showChat();api.runAction('chat-loose');closeMobile();setActive('chat');return;}
-    if(command==='open-project'){api.runAction('onboarding');return;}
+    if(command==='open-file'){select('files');window.OrchestrixFiles.pickFile();return;}
+    if(command==='new-file'){select('files');window.OrchestrixFiles.newFile();return;}
     if(command==='focus'){api.runAction('focus');closeMobile();return;}
     if(command==='restore-layout'){dock().restore();setOrder(defaults);closeMobile();return;}
     if(command.startsWith('toggle-')){toggleZone(command.slice(7));return;}
@@ -219,8 +216,8 @@
       if((event.ctrlKey||event.metaKey)&&!event.shiftKey&&event.key===','){event.preventDefault();window.OrchestrixSettings.open('general');}
       if((event.ctrlKey||event.metaKey)&&event.shiftKey&&event.key.toLowerCase()==='e'){event.preventDefault();select('files');}
       if((event.ctrlKey||event.metaKey)&&!event.shiftKey&&event.key.toLowerCase()==='b'){event.preventDefault();toggleZone(event.altKey?'right':'left');}
-      if((event.ctrlKey||event.metaKey)&&!event.shiftKey&&!event.altKey&&event.key.toLowerCase()==='n'){event.preventDefault();execute('new-session');}
-      if((event.ctrlKey||event.metaKey)&&!event.shiftKey&&!event.altKey&&event.key.toLowerCase()==='o'){event.preventDefault();execute('open-folder');}
+      if((event.ctrlKey||event.metaKey)&&!event.shiftKey&&!event.altKey&&event.key.toLowerCase()==='n'){event.preventDefault();execute('new-file');}
+      if((event.ctrlKey||event.metaKey)&&!event.altKey&&event.key.toLowerCase()==='o'){event.preventDefault();execute(event.shiftKey?'open-folder':'open-file');}
     });
     document.addEventListener('orchestrix:files-chat',()=>{if(api.getState().view!=='chat')api.navigate('chat');setActive('chat');closeMobile();api.focusComposer?.();});
     document.addEventListener('orchestrix:layout-change',()=>setActive(active));

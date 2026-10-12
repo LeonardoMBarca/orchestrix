@@ -1,6 +1,6 @@
 # Catálogo textual de imagens do Orchestrix
 
-Atualizado em **12 de outubro de 2026**. Este é o índice para encontrar imagens pelo assunto, aparência e uso, sem abrir cada arquivo. A coleção mapeada reúne **59 arquivos de imagem versionáveis** e **138 capturas locais de QA e diagnóstico**, incluindo conceitos, variantes transparentes e seis diagramas de ajuda. A revisão de atividades/arquivos acrescentou um SVG de ajuda e onze capturas locais; o refinamento de Chat direto acrescentou três capturas. A revisão de sessões acrescentou treze capturas e o refinamento Compact/API acrescentou dezoito. O histórico anterior tinha 53 imagens e 77 capturas. Caminhos são relativos a este documento; nomes e aliases podem ser pesquisados com `rg`.
+Atualizado em **12 de outubro de 2026**. Este é o índice para encontrar imagens pelo assunto, aparência e uso, sem abrir cada arquivo. A coleção mapeada reúne **59 arquivos de imagem versionáveis** e **141 capturas locais de QA e diagnóstico**, incluindo conceitos, variantes transparentes e seis diagramas de ajuda. A revisão de atividades/arquivos acrescentou um SVG de ajuda e onze capturas locais; os refinamentos de Chat direto e de ações de arquivos acrescentaram três capturas cada. A revisão de sessões acrescentou treze capturas e o refinamento Compact/API acrescentou dezoito. O histórico anterior tinha 53 imagens e 77 capturas. Caminhos são relativos a este documento; nomes e aliases podem ser pesquisados com `rg`.
 
 ## Como encontrar e interpretar
 
@@ -276,3 +276,13 @@ Capturas locais em `prototypes/desktop/artifacts/`, ignoradas pelo Git e regener
 | `direct-chat-home-1440.png` | Entrada desktop com Chat direto, rail fixo, Sessions à direita e busca expandida. Direct chat; no activity sidebar; full header search; independent Sessions; desktop. | 1440 × 900 |
 | `direct-chat-home-1280.png` | Entrada em notebook com espaço central ampliado após remover o painel próprio de Chat. Laptop; direct conversation; compact shell; stretched search. | 1280 × 720 |
 | `direct-chat-home-390.png` | Entrada mobile com Chat direto, navegação fixa e busca adaptada ao cabeçalho. Mobile; direct chat; responsive search; fixed activity rail. | 390 × 844 |
+
+## Ações de arquivos — 12/10/2026
+
+Capturas locais em `prototypes/desktop/artifacts/`, ignoradas pelo Git e regeneráveis. Documentam o menu File simplificado e a criação de arquivo com nome/extensão e destino, antes de conceder uma pasta. Nenhuma captura demonstra escrita de produção ou execução de agentes.
+
+| Arquivo | Assunto, finalidade e aliases | Dimensões |
+| --- | --- | --- |
+| `file-actions-menu-1440.png` | Menu File com New file, Open file e Open folder, sem sessões ou ações globais de salvar/fechar. File menu; file actions; single file; keyboard shortcuts. | 1440 × 900 |
+| `new-file-dialog-1440-en.png` | Diálogo centralizado New file em inglês, nome night-flight.md e destino obrigatório ainda não selecionado. Filename; extension; destination folder; explicit create; English. | 1440 × 900 |
+| `new-file-dialog-390-es.png` | Diálogo Nuevo archivo em espanhol no mobile; nome preservado e seleção de pasta refluída verticalmente. Spanish; mobile; destination; responsive dialog; preserved input. | 390 × 844 |

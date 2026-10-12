@@ -1,9 +1,9 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-10-12T14:17:15.007Z",
+  "generatedAt": "2026-10-12T16:09:07.739Z",
   "scope": "D1 static prototype: app, website, video page, help center, local assets and locale sources/catalog; excludes tools, tests, server and documentation",
   "algorithm": "SHA-256 of UTF-8 JSON.stringify(files), sorted by relative path; each entry has path, bytes and sha256 of exact file bytes. generatedAt is excluded.",
-  "buildSha256": "8f6b0ea41c8328800e4c475c63e37a4b04053e32b7d89cbee02f8ea94fc59511",
+  "buildSha256": "580bc13d13801c69aac436ab5fce923691d29abb47982bd875fc9020d85c2613",
   "files": [
     {
       "path": "activity.css",
@@ -12,8 +12,8 @@
     },
     {
       "path": "activity.js",
-      "bytes": 18388,
-      "sha256": "e00ea7451de651e24ba048eae9b7aeddd8dd6c8456656fb5a84ad7f9d8c65a7b"
+      "bytes": 18032,
+      "sha256": "f6fed4ad8eba4a7ac3017e9af268c6753be0ac6b579b2072487099258b319c59"
     },
     {
       "path": "app.js",
@@ -172,13 +172,13 @@
     },
     {
       "path": "files.css",
-      "bytes": 7202,
-      "sha256": "44320c909ef21f40172b2309b4aafbfab78259e660f2fe6c758b5dfb5f61dd35"
+      "bytes": 10005,
+      "sha256": "1a30be6ac7fee0a751963b107dd69ac216fb0bc4c7de27cdfa891b3f39f481ed"
     },
     {
       "path": "files.js",
-      "bytes": 20377,
-      "sha256": "178e2807bc30125a76ec6a6f2c259a0553b7ac6635d66c964d868f70440e56e4"
+      "bytes": 33303,
+      "sha256": "280c85a873eea5d2d27e767e468c9aa02f57e1dcf927437beedff9d353d96a96"
     },
     {
       "path": "help.css",
@@ -187,8 +187,8 @@
     },
     {
       "path": "help.html",
-      "bytes": 24442,
-      "sha256": "77cfda14a29f66b95261e9f604d454217d0f29c4523acb88544d4da3c044819b"
+      "bytes": 25024,
+      "sha256": "973da89e2eb0e0c6c31bfb207cfc614780e3a9e333bbabd394efc8937f6a813e"
     },
     {
       "path": "help.js",
@@ -227,8 +227,8 @@
     },
     {
       "path": "locales/catalog.js",
-      "bytes": 244117,
-      "sha256": "cde617303aacd331a5b1246f951e879bd871977888766baec5e435f61fda2637"
+      "bytes": 247771,
+      "sha256": "28cbbdecc52d19ba2829d267f74043e01b481e0b51c7b226c9426e8bb3545840"
     },
     {
       "path": "locales/chrome.json",
@@ -252,8 +252,8 @@
     },
     {
       "path": "locales/files-shell.json",
-      "bytes": 5138,
-      "sha256": "a72e5310dee722ce98a8fac5c561edb24e22179378d209286d809e9c07f93d63"
+      "bytes": 8447,
+      "sha256": "c33e347da80b0fd10139e19959b328fd8bd0460310cf49a9da03d3ca71945615"
     },
     {
       "path": "locales/production-copy.json",
