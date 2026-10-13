@@ -4,6 +4,10 @@ This directory contains the evolving design and engineering documentation for Or
 
 ## Core documents
 
+### [Codex Contract Integration — OX-003](./research/codex-contract-integration.md)
+
+Connects the experimental app-server adapter to the portable 1.1 observer and harnesses, with private native mappings, bounded per-model discovery and offline replay of historical/synthetic evidence. Records 255 passing harness checks and the reexecuted 21 transport/9 helper Windows checks. Missing ACK/catalog/process associations remain unknown. OX-003 stays open for Rust consumption/conformance; toolchains were not installed and no new provider inference ran.
+
 ### [Local Technical Reference Library](./research/REFERENCE_REPOSITORIES.md)
 
 Verified public repositories, exact commits, licenses, architecture and component paths for targeted engineering consultation. Nine shallow clones live outside Orchestrix in `../orchestrix-references/`; Conductor.build and Cobalt are documentary entries with no fabricated source repository. Notes and explicit fetch records preserve existing snapshots. This tool does not reopen D0 or import competitor code/features.

@@ -67,6 +67,8 @@ Os códigos RPC `-32001` e `-32029` e os dados `kind` de auth/limite são conven
 
 ## Limitações e uso no harness
 
+OX-003 tem também [codex-contract-replay.json](codex-contract-replay.json): entradas e expectativas provider-neutral portáteis para dois relatórios reais sanitizados e três casos sintéticos explícitos. `npm.cmd run replay:codex` usa o adapter/observador comum, conserva campos históricos ausentes e não lança runtime. Associações de processo são permitidas somente quando declaradas nas fixtures sintéticas; posição em `processes[]` nunca estabelece ownership. [Escopo e resultados](../../../docs/research/codex-contract-integration.md).
+
 - Uma thread aceita um turno ativo; threads diferentes podem manter turnos separados. Repetir `initialize` não reinicia o estado. A notificação `initialized` é tolerada, mas seu envio não é exigido pelo fake.
 - Não há validação completa de parâmetros, descoberta real de modelo, sandbox efetivo, aplicação de permissões, ferramentas, compaction, contexto, billing ou telemetria. `items` fica vazio mesmo quando há deltas de mensagem.
 - `permission` exercita somente aprovação de comando negada/cancelada. Aprovação de filesystem e grants de permissions possuem contratos diferentes e não estão simulados aqui.

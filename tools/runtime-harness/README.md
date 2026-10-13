@@ -123,6 +123,21 @@ O [resultado registrado](../../docs/research/runtime-harness-results.md) disting
 
 ## Contrato experimental
 
+### Fronteira Codex → contrato provider-neutral (OX-003)
+
+[codex-contract.mjs](src/codex-contract.mjs) conecta `CodexSession` ao [contrato 1.1](../../docs/contracts/runtime-contract-v1.md) e ao mesmo observador usado pelo fake provider-neutral. `probe.mjs` e `worktree-probe.mjs` agora produzem `normalized`, com IDs locais, configuração solicitada/observada, lifecycle, erros e evidência de processo independente. Mapas nativos ficam privados e sobrevivem ao reinício/resume em memória; não são recuperação durável. O percurso worktree com essa nova instrumentação não foi executado live.
+
+`discover()` pagina o catálogo com budgets e completude explícita, conserva metadata presente por modelo e mantém entitlement desconhecido. A projeção portátil não faz união de capacidades nem converte níveis nativos sem mapeamento em `maximum`. A [evidência do incremento](../../docs/research/codex-contract-integration.md) registra as regras, verificações atuais e os aceites pendentes de OX-003/Rust.
+
+```powershell
+npm.cmd run check:codex-contract
+npm.cmd run replay:codex
+```
+
+O replay é offline e não importa/lança transporte Codex: lê os dois relatórios sanitizados existentes e a [fixture JSON com expectativas portáteis](fixtures/codex-contract-replay.json). Ausência de ACK/catálogo e processos sem vínculo explícito permanecem desconhecidos. Os três casos sintéticos estão identificados; defaults neutros não históricos têm rótulo próprio. O artefato inclui hashes dos inputs e fica em `artifacts/`, ignorado pelo Git. Replay aprovado não é nova prova live, auth ou contenção Windows. Cargo/rustc continuam ausentes; não foram instalados.
+
+### Transporte e sessão nativos
+
 `JsonRpcProcess` cuida de JSONL/UTF-8, correlação, requests bidirecionais, limites, timeouts e subprocesso próprio. Drena stderr sem registrar seu conteúdo. Respostas atrasadas não assumem ownership de outro request. Erro de framing encerra o processo próprio; não repete turn/start.
 
 Os limites de bytes precisam ser inteiros positivos seguros; a validação precede o lançamento do filho. `maxMessageBytes` limita a linha recebida, sem LF, em 1 MiB por padrão. `maxOutboundMessageBytes` limita o frame enviado em 1 MiB **incluindo LF**, medido em bytes UTF-8. `maxPendingWriteBytes` limita o orçamento de escrita pendente do Writable a 2 MiB. Antes de cada escrita, a soma de `stdin.writableLength` e bytes do novo frame precisa caber nesse orçamento.
@@ -142,10 +157,12 @@ Saída do pai e fechamento dos pipes são observações distintas. No caminho se
 | `runtime.initialized` | Handshake confirmado. |
 | `connection.observed` | Tipo/boolean de autenticação observado. |
 | `session.started` | Configuração resolvida e vínculo da sessão observados. |
+| `attempt.turn.accepted` | ACK de admissão vinculado antes de entregar notificações em buffer; não prova início. |
 | `attempt.turn.started` | Início de turno da sessão/tentativa correspondente. |
 | `response.delta` | Quantidade de bytes, sem persistir conteúdo. |
 | `permission.observed/denied` | Request específico identificado e rejeitado. |
 | `attempt.interrupt.requested` | Pedido de interrupção reconhecido; ainda não confirma fim. |
+| `attempt.interrupt.sent` | Início do pedido antes do RPC; não confirma escrita/transmissão nem substitui o ACK legado acima. |
 | `attempt.turn.ended` | Status terminal confirmado pelo runtime. |
 | `attempt.observation.unknown` | Timeout sem confirmação de resultado. |
 

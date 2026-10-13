@@ -10,6 +10,7 @@ import {createHash,randomUUID} from 'node:crypto';
 import {JsonRpcProcess,HarnessError} from './src/json-rpc.mjs';
 import {cleanWindowsJobExit} from './src/windows-job-process.mjs';
 import {CodexSession} from './src/codex-session.mjs';
+import {CodexRuntimeAdapter,CodexIdentityMap,collectCodexObservation} from './src/codex-contract.mjs';
 import {runtimeEnvironment,fixtureGitEnvironment,codexLaunchArguments,supportsCodexVersion,reportEvents,reportConfiguration,observeCancellation} from './probe.mjs';
 
 const execute=promisify(execFile),root=dirname(fileURLToPath(import.meta.url));
@@ -125,7 +126,9 @@ export async function observeOwnedProcessStop(session,id) {
 
 export async function runWorktreeProbe({binary=process.platform==='win32'?'codex.exe':'codex',live=false,windowsSandbox,windowsJob=false,processStop=false,requestTimeoutMs=15000,artifactDirectory=join(root,'artifacts')}={}) {
   const started=Date.now(),report={schemaVersion:1,date:new Date().toISOString(),experiment:'OX-001/worktree-resume',liveRequested:live,liveStarted:false,status:'starting',checks:[],events:[],processes:[],limits:['Disposable fixture only; not the production worker or SQLite recovery','Runtime conversational persistence remains owned by Codex','Parent exits observed; Windows process-tree containment integration is still pending','No CLI exec comparison or independent account/quota proof','Sandbox resolution is not a Windows filesystem/network enforcement certification']};
-  let fixture,connection;const events=[];
+  let fixture,connection,adapter;const events=[],normalized=[];
+  const mappings=new CodexIdentityMap({connectionId:'worktree-connection',connectionRevision:1});
+  function finishAdapter(state){if(!adapter)return true;try{const group=collectCodexObservation(adapter,state);normalized.push(group);return !group.normalizationError;}finally{adapter=null;}}
   try {
     if(windowsSandbox!==undefined&&(process.platform!=='win32'||windowsSandbox!=='mxc'))throw new HarnessError('arguments','The explicit MXC selection requires Windows');
     if(typeof live!=='boolean'||typeof processStop!=='boolean'||(processStop&&!windowsJob))throw new HarnessError('arguments','Explicit live and owned Job opt-in required for process stop');
@@ -145,28 +148,33 @@ export async function runWorktreeProbe({binary=process.platform==='win32'?'codex
     const accountBinding=connection.session.accountBinding;
     const options={cwd:fixture.worktree,model:model.model,effort,sandbox:'workspace-write',ephemeral:false};
     report.configuration=reportConfiguration(await connection.session.startThread(options));const threadId=connection.session.threadId,marker=`ORCHESTRIX_${randomUUID()}`;
+    adapter=new CodexRuntimeAdapter({session:connection.session,discovery:connection.discovery,runtimeVersion:report.runtimeVersion,connectionId:'worktree-connection',connectionRevision:1,sessionId:'worktree-session',mappings});
     report.liveStarted=true;
-    const id=await connection.session.startTurn(`Remember this marker for a later continuation: ${marker}. Fix only src/add.mjs so add(a, b) returns the sum for integers and decimals. Preserve the function signature and an arithmetic-only return expression. Do not change checks or AGENTS.md, create other files, install anything, use network, delegate or commit. You may inspect the fixture and change that one file inside this worktree.`,{effort});
-    const first=await connection.session.waitForTurn(id);report.firstTurn={status:first.status,errorKind:first.errorKind};
+    await adapter.startAttempt({attemptId:'worktree-edit',text:`Remember this marker for a later continuation: ${marker}. Fix only src/add.mjs so add(a, b) returns the sum for integers and decimals. Preserve the function signature and an arithmetic-only return expression. Do not change checks or AGENTS.md, create other files, install anything, use network, delegate or commit. You may inspect the fixture and change that one file inside this worktree.`,effort});
+    const id=[...connection.session.knownTurns].at(-1);await adapter.waitForAttempt('worktree-edit');
+    const first=connection.session.turns.get(id);report.firstTurn={status:first.status,errorKind:first.errorKind};
     if(first.status!=='completed'){report.status='turn-not-completed';return report;}
     const attempt=await inspectAttempt(fixture);await mkdir(artifactDirectory,{recursive:true});
     const patchName=`worktree-attempt-${Date.now()}.patch`;await writeFile(join(artifactDirectory,patchName),attempt.diff);delete attempt.diff;
     report.attempt={...attempt,patch:patchName};if(!attempt.passed){report.status='artifact-check-failed';return report;}
     report.checks.push('diff-attempt-bound','checks-same-snapshot','main-checkout-preserved');
     events.push(...connection.session.events);const stopped=await connection.client.stop();report.processes.push(stopped);
+    if(!finishAdapter(stopped)){connection=null;report.status='normalization-failed';return report;}
     if(!stopped.parentExited||stopped.code!==0||connection.client.failure||(windowsJob&&!cleanWindowsJobExit(stopped)))throw new HarnessError('process-exit','First app-server exit unconfirmed');
     connection=null;connection=await connect(binary,fixture.worktree,requestTimeoutMs,{windowsSandbox,windowsJob});report.processes.push(...connection.bootstrapProcesses);
     if(connection.session.accountBinding!==accountBinding)throw new HarnessError('connection-binding','Observed account metadata changed');
     if(!connection.discovery.models.some(value=>value.model===model.model&&value.efforts.includes(effort)))throw new HarnessError('capability','Resumed model/effort no longer announced');
     report.resumedConfiguration=reportConfiguration(await connection.session.resumeThread({threadId,...options}));
-    const resumedId=await connection.session.startTurn('Reply only with the exact marker I asked you to remember earlier. Do not use tools or modify files.',{effort});
-    const resumed=await connection.session.waitForTurn(resumedId);
+    adapter=new CodexRuntimeAdapter({session:connection.session,discovery:connection.discovery,runtimeVersion:report.runtimeVersion,connectionId:'worktree-connection',connectionRevision:1,sessionId:'worktree-session',mappings});
+    await adapter.startAttempt({attemptId:'worktree-resume',text:'Reply only with the exact marker I asked you to remember earlier. Do not use tools or modify files.',effort});
+    const resumedId=[...connection.session.knownTurns].at(-1);await adapter.waitForAttempt('worktree-resume');const resumed=connection.session.turns.get(resumedId);
     report.resume={serverRestarted:true,sameThread:connection.session.threadId===threadId,sameObservedAccount:true,status:resumed.status,priorMarkerMatched:(connection.session.deltaText.get(resumedId)||'').trim()===marker};
     if(resumed.status!=='completed'||!report.resume.priorMarkerMatched) {report.status='resume-not-proven';return report;}
     const afterResume=await inspectAttempt(fixture);report.resume.artifactUnchanged=afterResume.diffSha256===attempt.diffSha256&&JSON.stringify(afterResume.sources)===JSON.stringify(attempt.sources);
     if(!afterResume.passed||!report.resume.artifactUnchanged){report.status='resume-artifact-changed';return report;}
     report.checks.push('same-thread-resumed-after-restart','prior-runtime-context-observed');
-    const cancelId=await connection.session.startTurn('Without tools, files, network or delegation, output integers from 1 to 5000 separated by spaces. This turn is intended for immediate interruption.',{effort});
+    await adapter.startAttempt({attemptId:'worktree-cancel',text:'Without tools, files, network or delegation, output integers from 1 to 5000 separated by spaces. This turn is intended for immediate interruption.',effort});
+    const cancelId=[...connection.session.knownTurns].at(-1);
     report.cancellation=processStop?await observeOwnedProcessStop(connection.session,cancelId):await observeCancellation(connection.session,cancelId);
     if(!(processStop?report.cancellation.forcedConfirmed:report.cancellation.interruptedConfirmed)){report.status='cancellation-not-proven';return report;}
     const finalAttempt=await inspectAttempt(fixture);
@@ -177,9 +185,13 @@ export async function runWorktreeProbe({binary=process.platform==='win32'?'codex
   } finally {
     if(connection) {
       events.push(...connection.session.events);
-      try {const stopped=await connection.client.stop();report.processes.push(stopped);const forced=processStop&&report.cancellation?.forcedConfirmed;if(['passed','metadata-passed'].includes(report.status)&&(!stopped.parentExited||stopped.code!==(forced?137:0)||connection.client.failure||(windowsJob&&!cleanWindowsJobExit(stopped,forced?137:0))))report.status='runtime-exit-failed';}
+      let stopped;
+      try {stopped=await connection.client.stop();report.processes.push(stopped);const forced=processStop&&report.cancellation?.forcedConfirmed;if(['passed','metadata-passed'].includes(report.status)&&(!stopped.parentExited||stopped.code!==(forced?137:0)||connection.client.failure||(windowsJob&&!cleanWindowsJobExit(stopped,forced?137:0))))report.status='runtime-exit-failed';}
       catch {report.status='termination-unconfirmed';}
+      try{if(!finishAdapter(stopped))report.status='normalization-failed';}catch{report.status='normalization-failed';}
     }
+    if(adapter){adapter.dispose();adapter=null;}
+    if(normalized.length)report.normalized={groups:normalized};
     report.events=reportEvents(events).map((event,index)=>({...event,sequence:index+1}));
     if(fixture) {
       try {report.workspace.mainUnchanged=JSON.stringify(await trackedSnapshot(fixture.main))===JSON.stringify(fixture.baseline);if(!report.workspace.mainUnchanged)report.status='main-checkout-changed';}

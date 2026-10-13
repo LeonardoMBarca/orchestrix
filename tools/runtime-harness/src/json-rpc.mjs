@@ -85,7 +85,11 @@ export class JsonRpcProcess extends EventEmitter {
         if(!pending){this.emit('diagnostic',{kind:'late-or-unknown-response'});continue;}
         this.pending.delete(message.id);clearTimeout(pending.timer);
         if(Object.hasOwn(message,'error')) {
-          pending.reject(new HarnessError('rpc','Runtime rejected request',{method:pending.method,code:Number.isSafeInteger(message.error?.code)?message.error.code:null}));
+          // Optional bounded classification tag, never the provider message or
+          // arbitrary error data. Interpretation remains inside each adapter.
+          const tag=message.error?.data?.kind;
+          const dataTag=typeof tag==='string'&&/^[A-Za-z][A-Za-z0-9_-]{0,63}$/.test(tag)?tag:null;
+          pending.reject(new HarnessError('rpc','Runtime rejected request',{method:pending.method,code:Number.isSafeInteger(message.error?.code)?message.error.code:null,...(dataTag?{dataTag}:{})}));
         } else pending.resolve(message.result);
       }
       if(this.failure||this.closed)return;

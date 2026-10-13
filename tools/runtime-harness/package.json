@@ -14,6 +14,8 @@
     "probe:codex:worktree": "node worktree-probe.mjs",
     "probe:codex:worktree:live": "node worktree-probe.mjs --live",
     "probe:codex:exec": "node exec-probe.mjs",
+    "replay:codex": "node codex-replay.mjs",
+    "check:codex-contract": "node --check codex-replay.mjs && node --check src/codex-contract.mjs && node --check tests/codex-contract.test.mjs && node --check tests/codex-harness.test.mjs && node --check tests/codex-replay.test.mjs && node --check tests/model-discovery.test.mjs && node --check tests/runtime-contract-v11.test.mjs",
     "check": "node --check probe.mjs && node --check worktree-probe.mjs && node --check exec-probe.mjs && node --check src/json-rpc.mjs && node --check src/codex-session.mjs && node --check src/windows-job-process.mjs && node --check src/errors.mjs && node --check src/runtime-environment.mjs && node --check src/runtime-contract.mjs && node --check fixtures/fake-runtime.mjs && node --check tests/runtime-contract.test.mjs && node --check fixtures/fake-exec.mjs && node --check fixtures/job-app-server.mjs && node --check fixtures/fake-app-server.mjs && node --check fixtures/process-tree.mjs && node --check fixtures/write-backpressure.mjs && node --check fixtures/windows-job-tree.mjs && node --check tests/exec-probe.test.mjs && node --check tests/windows-transport.spec.mjs && node --check tests/process-stop.test.mjs && node --check tests/write-backpressure.test.mjs && node --check tests/session-resume.test.mjs && node --check tests/turn-start.test.mjs && node --check tests/worktree-probe.test.mjs && node --check tests/windows-job.spec.mjs"
   },
   "engines": {"node": ">=24"}

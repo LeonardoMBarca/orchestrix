@@ -8,6 +8,7 @@ import {mkdtemp,mkdir,writeFile,readdir,readFile} from 'node:fs/promises';
 import {createHash} from 'node:crypto';
 import {JsonRpcProcess,HarnessError} from './src/json-rpc.mjs';
 import {CodexSession} from './src/codex-session.mjs';
+import {CodexRuntimeAdapter,collectCodexObservation} from './src/codex-contract.mjs';
 import {runtimeEnvironment,fixtureGitEnvironment} from './src/runtime-environment.mjs';
 export {runtimeEnvironment,fixtureGitEnvironment} from './src/runtime-environment.mjs';
 
@@ -57,8 +58,9 @@ async function workspaceSnapshot(cwd) {
 export async function runProbe({mode='fake',scenario='success',binary=process.platform==='win32'?'codex.exe':'codex',live=false,requestTimeoutMs=15000,turnTimeoutMs=45000}={}) {
   const started=Date.now();
   const report={schemaVersion:1,date:new Date().toISOString(),experiment:'M0/runtime-contract',mode,scenario:mode==='fake'?safeLabel(scenario):null,transport:'stdio',liveRequested:live,liveStarted:false,subscriptionGate:false,status:'starting',checks:[],limits:['One existing auth store; independent accounts not tested','Parent process exit is observed; process tree termination is unknown','Requested/resolved settings are not execution telemetry','Read-only policy is not a Windows sandbox certification'],events:[]};
-  let client,session,cwd,before;
+  let client,session,adapter,cwd,before;
   try {
+    if(!['fake','codex'].includes(mode)||typeof live!=='boolean')throw new HarnessError('arguments','An explicit supported mode and boolean live opt-in are required');
     cwd=await mkdtemp(join(tmpdir(),'orchestrix-runtime-'));
     await execute('git',['init','--quiet'],{cwd,env:fixtureGitEnvironment(),windowsHide:true,timeout:10000});
     await writeFile(join(cwd,'AGENTS.md'),'This is an isolated Orchestrix protocol probe. Do not use tools, read files, write files, run commands, use plugins, or delegate. Answer the prompt only.\n');
@@ -68,7 +70,7 @@ export async function runProbe({mode='fake',scenario='success',binary=process.pl
     const env=runtimeEnvironment();
     let command,args;
     if(mode==='fake') {
-      command=process.execPath;args=[join(root,'fixtures/fake-app-server.mjs'),'--scenario',scenario];report.runtimeVersion='synthetic-fixture/1';
+      command=process.execPath;args=[join(root,'fixtures/fake-app-server.mjs'),'--scenario',scenario];report.runtimeVersion='synthetic-fixture-1';
     } else {
       command=binary;
       const version=await execute(command,['--version'],{cwd,env,windowsHide:true,timeout:10000});
@@ -111,21 +113,24 @@ export async function runProbe({mode='fake',scenario='success',binary=process.pl
     const configuration=await session.startThread({cwd,model:model.model,effort});
     if(configuration.resolvedConfiguration.model!==model.model)throw new HarnessError('policy','Requested model was not resolved');
     report.configuration=reportConfiguration(configuration);report.checks.push('thread-boundaries-resolved');
+    adapter=new CodexRuntimeAdapter({session,discovery,runtimeVersion:report.runtimeVersion,connectionId:'probe-connection',connectionRevision:1,sessionId:'probe-session',evidenceSource:mode==='fake'?'synthetic':'configuration'});
     report.liveStarted=mode==='codex';
-    const id=await session.startTurn(`Reply exactly ${EXPECTED}. Do not use tools, read or modify files, execute commands, access network, use plugins, or delegate.`,{effort});
+    await adapter.startAttempt({attemptId:'probe-reply',text:`Reply exactly ${EXPECTED}. Do not use tools, read or modify files, execute commands, access network, use plugins, or delegate.`,effort});
+    const id=[...session.knownTurns].at(-1);
     if(mode==='fake'&&['hang','slow'].includes(scenario)) {
-      const cancellation=await session.interrupt(id);
-      report.cancellation={requestAcknowledged:true,terminalStatus:cancellation.status,interruptedConfirmed:cancellation.status==='interrupted'};
-      report.status=cancellation.status==='interrupted'?'passed':'cancellation-not-proven';return report;
+      const cancellation=await adapter.interrupt('probe-reply');
+      report.cancellation={requestAcknowledged:cancellation.interrupt.acknowledged,terminalStatus:cancellation.outcome,interruptedConfirmed:cancellation.outcome==='interrupted'};
+      report.status=cancellation.outcome==='interrupted'?'passed':'cancellation-not-proven';return report;
     }
-    const outcome=await session.waitForTurn(id);
+    await adapter.waitForAttempt('probe-reply');const outcome=session.turns.get(id);
     report.firstTurn={status:outcome.status,errorKind:outcome.errorKind,expectedTextMatched:(session.deltaText.get(id)||'').trim()===EXPECTED};
     if(outcome.status!=='completed') {report.status='turn-failed';return report;}
     if(mode==='codex'&&!report.firstTurn.expectedTextMatched) {report.status='unexpected-response';return report;}
     report.checks.push('turn-terminal-observed');
     // A second, bounded turn tests interruption. No tool/command is requested.
     if(mode==='codex') {
-      const cancelledId=await session.startTurn('Without tools, files, network, or delegation, output integers from 1 to 5000 separated by spaces. This is a cancellation probe.',{effort});
+      await adapter.startAttempt({attemptId:'probe-interrupt',text:'Without tools, files, network, or delegation, output integers from 1 to 5000 separated by spaces. This is a cancellation probe.',effort});
+      const cancelledId=[...session.knownTurns].at(-1);
       report.cancellation=await observeCancellation(session,cancelledId);
       if(!report.cancellation.interruptedConfirmed){report.status='cancellation-not-proven';return report;}
       report.checks.push('interrupt-terminal-observed');
@@ -144,6 +149,7 @@ export async function runProbe({mode='fake',scenario='success',binary=process.pl
       }catch{report.process={parentExited:false,treeTermination:'unknown'};report.status='termination-unconfirmed';}
       report.transportMetrics={messages:client.messages,stderrBytesDrained:client.stderrBytes};
     }
+    if(adapter){try{report.normalized=collectCodexObservation(adapter,report.process);report.normalized.version=report.normalized.descriptor.version;if(report.normalized.normalizationError)report.status='normalization-failed';}catch{report.status='normalization-failed';}}
     if(cwd&&before) {
       try{report.workspace.filesUnchanged=before===await workspaceSnapshot(cwd);}catch{report.workspace.filesUnchanged=null;report.status='workspace-observation-failed';}
       if(report.workspace.filesUnchanged===false)report.status='workspace-changed';

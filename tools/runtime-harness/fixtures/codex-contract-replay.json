@@ -1,0 +1,134 @@
+{
+  "schemaVersion": 1,
+  "validationKind": "offline-replay-fixture",
+  "cases": [
+    {
+      "name": "recorded-owned-job-stop",
+      "source": { "kind": "reference", "reference": "job-live" },
+      "expected": {
+        "sessionCount": 1,
+        "attemptCount": 3,
+        "dispatches": 0,
+        "assignedProcessObservations": 0,
+        "unassignedProcessObservations": 4,
+        "attempts": [
+          { "sessionId": "session-1", "attemptId": "attempt-1", "turnId": "turn-1", "catalogCompleteness": "unknown", "reasoningLevels": null, "admissionObserved": false, "startObserved": true, "outcome": "completed", "terminalConfirmed": true, "runtimeExited": false, "treeTermination": "unknown" },
+          { "sessionId": "session-1", "attemptId": "attempt-2", "turnId": "turn-2", "catalogCompleteness": "unknown", "reasoningLevels": null, "admissionObserved": false, "startObserved": true, "outcome": "completed", "terminalConfirmed": true, "runtimeExited": false, "treeTermination": "unknown" },
+          { "sessionId": "session-1", "attemptId": "attempt-3", "turnId": "turn-3", "catalogCompleteness": "unknown", "reasoningLevels": null, "admissionObserved": false, "startObserved": true, "outcome": "unknown", "terminalConfirmed": false, "interrupt": { "requested": false, "acknowledged": false }, "runtimeExited": false, "treeTermination": "unknown" }
+        ]
+      }
+    },
+    {
+      "name": "recorded-cooperative-interrupt",
+      "source": { "kind": "reference", "reference": "mxc-live" },
+      "expected": {
+        "sessionCount": 1,
+        "attemptCount": 3,
+        "dispatches": 0,
+        "assignedProcessObservations": 0,
+        "unassignedProcessObservations": 2,
+        "attempts": [
+          { "sessionId": "session-1", "attemptId": "attempt-1", "turnId": "turn-1", "catalogCompleteness": "unknown", "reasoningLevels": null, "admissionObserved": false, "startObserved": true, "outcome": "completed", "terminalConfirmed": true, "runtimeExited": false, "treeTermination": "unknown" },
+          { "sessionId": "session-1", "attemptId": "attempt-2", "turnId": "turn-2", "catalogCompleteness": "unknown", "reasoningLevels": null, "admissionObserved": false, "startObserved": true, "outcome": "completed", "terminalConfirmed": true, "runtimeExited": false, "treeTermination": "unknown" },
+          { "sessionId": "session-1", "attemptId": "attempt-3", "turnId": "turn-3", "catalogCompleteness": "unknown", "reasoningLevels": null, "admissionObserved": false, "startObserved": true, "outcome": "interrupted", "terminalConfirmed": true, "interrupt": { "requested": false, "acknowledged": true }, "runtimeExited": false, "treeTermination": "unknown" }
+        ]
+      }
+    },
+    {
+      "name": "synthetic-explicit-stop-association",
+      "source": {
+        "kind": "synthetic",
+        "report": {
+          "runtimeVersion": "synthetic-replay",
+          "auth": { "type": "chatgpt", "authenticated": true, "subscriptionGate": true },
+          "availability": true,
+          "configuration": {
+            "requested": { "model": "SYNTHETIC_NATIVE_MODEL_DO_NOT_EXPORT", "effort": "low", "sandbox": "workspace-write", "networkAccess": false, "approval": "never" },
+            "resolvedConfiguration": { "model": "SYNTHETIC_NATIVE_MODEL_DO_NOT_EXPORT", "effort": "low", "sandbox": "workspaceWrite", "networkAccess": false, "approval": "never" }
+          },
+          "events": [
+            { "sequence": 1, "type": "session.started", "threadId": "threadId-1" },
+            { "sequence": 2, "type": "attempt.turn.accepted", "turnId": "turnId-2" },
+            { "sequence": 3, "type": "attempt.turn.started", "turnId": "turnId-2" },
+            { "sequence": 4, "type": "attempt.turn.ended", "turnId": "turnId-2", "status": "completed", "errorKind": null },
+            { "sequence": 5, "type": "attempt.turn.started", "turnId": "turnId-3" },
+            { "sequence": 6, "type": "response.delta", "turnId": "turnId-3", "bytes": 7 },
+            { "sequence": 7, "type": "attempt.observation.unknown", "turnId": "turnId-3", "reason": "transport-unavailable" }
+          ],
+          "processes": [
+            {
+              "parentExited": true,
+              "code": 137,
+              "signal": null,
+              "stdioClosed": true,
+              "ownershipConfirmed": true,
+              "treeTermination": "confirmed",
+              "activeCount": 0,
+              "helper": { "parentExited": true, "code": 0 },
+              "helperStreams": { "stdinClosed": true, "stdoutClosed": true, "stderrClosed": true, "faulted": false }
+            }
+          ]
+        }
+      },
+      "processAssignments": [ { "attemptId": "attempt-2", "processIndex": 0 } ],
+      "expected": {
+        "sessionCount": 1,
+        "attemptCount": 2,
+        "dispatches": 0,
+        "assignedProcessObservations": 1,
+        "unassignedProcessObservations": 0,
+        "attempts": [
+          { "sessionId": "session-1", "attemptId": "attempt-1", "turnId": "turn-1", "catalogCompleteness": "unknown", "reasoningLevels": null, "admissionObserved": true, "startObserved": true, "outcome": "completed", "terminalConfirmed": true, "runtimeExited": false, "treeTermination": "unknown" },
+          { "sessionId": "session-1", "attemptId": "attempt-2", "turnId": "turn-2", "catalogCompleteness": "unknown", "reasoningLevels": null, "admissionObserved": false, "startObserved": true, "outcome": "unknown", "terminalConfirmed": false, "runtimeExited": true, "runtimeCode": 137, "helperExited": true, "helperCode": 0, "treeTermination": "confirmed", "activeCount": 0 }
+        ]
+      }
+    },
+    {
+      "name": "synthetic-ack-without-sent-record",
+      "source": {
+        "kind": "synthetic",
+        "report": {
+          "runtimeVersion": "synthetic-replay",
+          "events": [
+            { "sequence": 1, "type": "session.started", "threadId": "threadId-1" },
+            { "sequence": 2, "type": "attempt.turn.started", "turnId": "turnId-2" },
+            { "sequence": 3, "type": "attempt.interrupt.requested", "turnId": "turnId-2" },
+            { "sequence": 4, "type": "attempt.turn.ended", "turnId": "turnId-2", "status": "interrupted" }
+          ],
+          "processes": []
+        }
+      },
+      "expected": {
+        "sessionCount": 1,
+        "attemptCount": 1,
+        "dispatches": 0,
+        "unassignedProcessObservations": 0,
+        "attempts": [
+          { "admissionObserved": false, "startObserved": true, "outcome": "interrupted", "terminalConfirmed": true, "interrupt": { "requested": false, "acknowledged": true }, "modelState": "unknown", "reasoningState": "unknown", "runtimeExited": false, "treeTermination": "unknown" }
+        ]
+      }
+    },
+    {
+      "name": "synthetic-terminal-without-start-or-config",
+      "source": {
+        "kind": "synthetic",
+        "report": {
+          "runtimeVersion": "synthetic-replay",
+          "events": [
+            { "sequence": 1, "type": "session.started", "threadId": "threadId-1" },
+            { "sequence": 2, "type": "attempt.turn.ended", "turnId": "turnId-2", "status": "completed" }
+          ],
+          "processes": []
+        }
+      },
+      "expected": {
+        "sessionCount": 1,
+        "attemptCount": 1,
+        "dispatches": 0,
+        "attempts": [
+          { "catalogCompleteness": "unknown", "reasoningLevels": null, "admissionObserved": false, "startObserved": false, "outcome": "completed", "terminalConfirmed": true, "modelState": "unknown", "reasoningState": "unknown", "runtimeExited": false, "treeTermination": "unknown" }
+        ]
+      }
+    }
+  ]
+}
