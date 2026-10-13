@@ -1,0 +1,13 @@
+[workspace]
+members = ["crates/orchestrix-core"]
+resolver = "3"
+
+[workspace.package]
+edition = "2024"
+license = "MIT"
+publish = false
+
+[workspace.dependencies]
+serde_json = "1.0"
+serde_core = "1.0"
+chrono = { version = "0.4", default-features = false, features = ["std"] }

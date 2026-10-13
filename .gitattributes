@@ -8,3 +8,9 @@ prototypes/desktop/locales/*.js text eol=lf
 prototypes/desktop/assets/**/*.svg text eol=lf
 # Research patches record exact byte counts and SHA-256 values.
 docs/research/evidence/*.patch text eol=lf
+# Portable Core sources and generated conformance bytes must survive Windows checkout.
+Cargo.toml text eol=lf
+Cargo.lock text eol=lf
+crates/**/*.toml text eol=lf
+crates/**/*.rs text eol=lf
+crates/**/tests/fixtures/*.json text eol=lf

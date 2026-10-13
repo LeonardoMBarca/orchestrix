@@ -26,6 +26,8 @@ A atualização de capacidades altera elegibilidade **para novas decisões** e p
 
 ## Continuidade técnica
 
+**Continuação posterior autorizada:** o responsável aprovou a instalação de Rust; a [entrega técnica Rust](../research/rust-runtime-contract-increment.md) removeu o impedimento abaixo e implementou o consumidor/conformance. O restante desta seção conserva a evidência de preparação do commit documental `31f15ad`; não representa um bloqueio atual de instalação.
+
 O próximo incremento continua sendo consumo/conformidade do contrato 1.1 no Core Rust, reaproveitando [contrato, fixtures e resultados](../research/codex-contract-integration.md). Cargo, rustc e rustup foram procurados no PATH e em `%USERPROFILE%\.cargo\bin` nesta rodada e não foram encontrados. Não houve instalação, novo live ou início de OX-004/SQLite/scheduler. A disponibilidade da toolchain é a preparação necessária para compilar e validar o consumidor Rust; depende da autorização de instalação ou de um caminho de instalação existente fornecido pelo responsável.
 
 `vswhere` encontrou Visual Studio Build Tools completo com o componente C++ x64/x86; a leitura de arquivos encontrou linker x64 MSVC **14.50.35717** e bibliotecas x64 Windows SDK **10.0.26100.0**. Não se presumiu que `cl.exe` precisasse estar no PATH da sessão comum. A preparação proposta é Rust stable x64/MSVC via [rustup oficial](https://rust-lang.org/tools/install/), para o usuário atual, sem instalar outros componentes automaticamente. A disponibilidade efetiva do linker/SDK será validada pela compilação, conforme os [pré-requisitos oficiais](https://rust-lang.github.io/rustup/installation/windows-msvc.html); arquivos/componentes instalados não equivalem a build Rust aprovado.

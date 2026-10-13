@@ -74,6 +74,8 @@ A revisão corrigiu roundtrip de `error:null`, propagação sanitizada de tags R
 
 ## Aceite de OX-003 e próximo passo
 
+**Continuação posterior à instalação autorizada, em base `31f15ad`:** o [Core Rust agora consome o contrato](rust-runtime-contract-increment.md), com corpus de 104 casos/309 operações e pipeline integrado offline. O bloqueio de toolchain foi removido. O checklist abaixo preserva o ponto de partida deste incremento JavaScript; o registro Rust identifica consumo entregue e paridade de timestamps legados ainda pendente, sem concluir OX-003/M0 ou repetir live.
+
 | Entregável/critério vigente | Situação verificável |
 | --- | --- |
 | Contrato, descritor, configuração, eventos, erros e término normalizados | Implementados no experimento 1.1, com suporte/ausência/unknown explícitos |
