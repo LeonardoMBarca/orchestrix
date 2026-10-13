@@ -1,4 +1,4 @@
-use orchestrix_core::runtime_contract::{assert_admission, capability_decision, normalize_descriptor, normalize_effective, normalize_request, ContractError, EventOrigin, Limits, RuntimeObserver};
+use orchestrix_core::runtime_contract::{assert_admission, capability_decision, normalize_descriptor, normalize_effective, normalize_request, ContractError, EventOrigin, Limits, RuntimeObserver, INPUT_PROFILE_ID, INPUT_PROFILE_REVISION};
 use serde_json::{json, Value};
 
 fn outcome(result: Result<Value, ContractError>) -> Value {
@@ -45,7 +45,8 @@ fn shared_wire_corpus_matches_every_js_checkpoint() {
     let corpus: Value = serde_json::from_str(include_str!("fixtures/runtime-conformance-v1.json")).unwrap();
     assert_eq!(corpus["schemaVersion"], 1); assert_eq!(corpus["contractVersion"], json!({"major": 1, "minor": 1}));
     assert_eq!(corpus["validationKind"], "offline-conformance");
-    assert_eq!(corpus["cases"].as_array().unwrap().len(), 104);
+    assert_eq!(corpus["cases"].as_array().unwrap().len(), 245);
+    assert_eq!(corpus["inputProfile"], json!({"id": INPUT_PROFILE_ID, "revision": INPUT_PROFILE_REVISION}));
     let mut names = std::collections::HashSet::new();
     for case in corpus["cases"].as_array().unwrap() { assert!(names.insert(case["name"].as_str().unwrap())); execute_case(&corpus, case); }
 }

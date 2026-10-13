@@ -4,7 +4,7 @@ import {readFile,writeFile,mkdir} from 'node:fs/promises';
 import {createHash} from 'node:crypto';
 import {dirname,join,resolve} from 'node:path';
 import {fileURLToPath,pathToFileURL} from 'node:url';
-import {RUNTIME_CONTRACT_VERSION,RuntimeContractObserver,normalizeRuntimeDescriptor,normalizeRuntimeRequest,normalizeEffectiveConfiguration,capabilityDecision,assertRuntimeAdmission} from './src/runtime-contract.mjs';
+import {RUNTIME_CONTRACT_VERSION,RUNTIME_INPUT_PROFILE,RuntimeContractObserver,normalizeRuntimeDescriptor,normalizeRuntimeRequest,normalizeEffectiveConfiguration,capabilityDecision,assertRuntimeAdmission} from './src/runtime-contract.mjs';
 import {createFakeRuntime,fakeRuntimeRequest} from './fixtures/fake-runtime.mjs';
 import {replayCodexFixture} from './codex-replay.mjs';
 
@@ -121,7 +121,23 @@ export async function buildConformanceCorpus({lineEndings='as-is'}={}) {
   const brokenDeep=JSON.stringify({...requests.base,sequence:1,type:'future.event',payload:deep}).slice(0,-1);
   add('deep-malformed-unknown-field',{actions:[{op:'accept',origin:'runtime',frame:brokenDeep},processExit,tree]});
   add('timestamp-leap-second-invalid',{actions:[{op:'effective',value:{reasoning:{state:'known',value:'low',evidence:{...proof,observedAt:'2026-10-13T00:00:60Z'}}}}]});
-  return {schemaVersion:1,contractVersion:RUNTIME_CONTRACT_VERSION,validationKind:'offline-conformance',hashMode:'lf-normalized-input-bytes',sourceHashes,descriptors,requests,cases};
+  const profileBytes=await readInput(join(root,'fixtures/portable-input-v1.json')),vectors=JSON.parse(profileBytes.toString('utf8'));
+  sourceHashes.push({reference:'portable-input-vectors',sha256:createHash('sha256').update(profileBytes).digest('hex')});
+  for(const {name,input} of vectors.timestamps)for(const minor of [0,1,9]) {
+    const effective={reasoning:{state:'known',value:'low',evidence:{...proof,observedAt:input}}};
+    add(`input-timestamp-${name}-minor-${minor}`,{actions:[{op:'effective',value:effective},{type:minor===0?'configuration.observed':'configuration.observation-recorded',version:{major:1,minor},fields:{effective}},processExit,tree,terminal()]});
+  }
+  for(const vector of vectors.frames) {
+    const header={...requests.base,version:RUNTIME_CONTRACT_VERSION,sequence:1,type:vector.type};
+    add(`input-json-${vector.name}`,{actions:[{op:'accept',origin:'runtime',frame:JSON.stringify(header).slice(0,-1)+vector.tail+'}'},processExit,tree]});
+  }
+  for(const field of ['adapterId','runtimeVersion'])add(`input-token-newline-${field}`,{descriptor:{...copy(descriptors.base),[field]:'valid\n'}});
+  add('input-local-id-newline-request',{request:{...requests.base,sessionId:'session-1\n'}});
+  const invalidDescriptor=copy(descriptors.base);invalidDescriptor.connection.authentication='invalid';invalidDescriptor.models[0].id='!';
+  add('input-error-priority-descriptor',{descriptor:invalidDescriptor});
+  add('input-error-priority-request',{request:{...requests.base,connectionRevision:0,version:{major:2,minor:0}}});
+  for(const scope of ['attempt','invalid'])add(`input-error-priority-evidence-${scope}`,{actions:[{op:'effective',value:{reasoning:{state:'known',value:'low',evidence:{...proof,scope,reference:'!',observedAt:'invalid'}}}}]});
+  return {schemaVersion:1,contractVersion:RUNTIME_CONTRACT_VERSION,inputProfile:RUNTIME_INPUT_PROFILE,validationKind:'offline-conformance',hashMode:'lf-normalized-input-bytes',sourceHashes,descriptors,requests,cases};
 }
 
 export function serializeConformanceCorpus(corpus) {

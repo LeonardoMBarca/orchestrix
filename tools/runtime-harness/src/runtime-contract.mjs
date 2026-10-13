@@ -1,4 +1,6 @@
 // OX-003 initial portable contract. No provider SDK, processes, filesystem or timers.
+import {RUNTIME_INPUT_PROFILE,isPortableJson,portableTimestamp} from './runtime-input.mjs';
+export {RUNTIME_INPUT_PROFILE} from './runtime-input.mjs';
 export const RUNTIME_CONTRACT_VERSION=Object.freeze({major:1,minor:1});
 export const CAPABILITY_NAMES=Object.freeze(['modelSelection','reasoning','resume','quota','tools','webSearch','streaming','sandbox','approvals','nativeDelegation','contextManagement']);
 const supportValues=['supported','unsupported','unknown','runtime-managed'];
@@ -20,15 +22,15 @@ export class RuntimeContractError extends Error {
   constructor(code){super(`Runtime contract rejected: ${errorCodes.includes(code)?code:'protocol'}`);this.name='RuntimeContractError';this.code=errorCodes.includes(code)?code:'protocol';}
 }
 const reject=code=>{throw new RuntimeContractError(code);};
-function token(value){if(typeof value!=='string'||!/^[-A-Za-z0-9_.:]{1,100}$/.test(value))reject('protocol');return value;}
-function localId(value){if(typeof value!=='string'||!/^[-A-Za-z0-9_]{1,80}$/.test(value))reject('ownership');return value;}
+function token(value){if(typeof value!=='string'||value.length<1||value.length>100||/[^-A-Za-z0-9_.:]/.test(value))reject('protocol');return value;}
+function localId(value){if(typeof value!=='string'||value.length<1||value.length>80||/[^-A-Za-z0-9_]/.test(value))reject('ownership');return value;}
 function oneOf(value,values){if(!values.includes(value))reject('protocol');return value;}
 function version(value){if(!isRecord(value)||!integer(value.major)||!integer(value.minor))reject('version');if(value.major!==1)reject('version');return {major:1,minor:value.minor};}
 function scope(value){if(!isRecord(value))reject('ownership');return {...Object.fromEntries(ids.map(key=>[key,localId(value[key])])),turnId:value.turnId==null?null:localId(value.turnId)};}
 function evidence(value={}) {
   if(!isRecord(value))reject('protocol');
   const source=oneOf(value.source??'none',evidenceSources),result={source,scope:oneOf(value.scope??'connection',['connection','model','attempt']),reference:value.reference==null?null:localId(value.reference),observedAt:null};
-  if(value.observedAt!=null){if(typeof value.observedAt!=='string'||!/^\d{4}-\d{2}-\d{2}T/.test(value.observedAt)||!Number.isFinite(Date.parse(value.observedAt)))reject('protocol');result.observedAt=new Date(value.observedAt).toISOString();}
+  if(value.observedAt!=null){result.observedAt=portableTimestamp(value.observedAt);if(result.observedAt===null)reject('protocol');}
   if(source==='none'&&(result.reference!==null||result.observedAt!==null))reject('protocol');return result;
 }
 function capability(value={}) {
@@ -142,7 +144,8 @@ function processState(){return {exited:false,code:null,signal:'unknown',streams:
 
 /** One locally owned attempt. Frames are JSON strings; transport framing stays in adapters. */
 export class RuntimeContractObserver {
-  constructor({descriptor,request,maxFrameBytes=65536,maxEvents=256,maxTotalBytes=1048576}={}) {
+  constructor({descriptor,request,inputProfile=RUNTIME_INPUT_PROFILE,maxFrameBytes=65536,maxEvents=256,maxTotalBytes=1048576}={}) {
+    if(!isRecord(inputProfile)||inputProfile.id!==RUNTIME_INPUT_PROFILE.id||inputProfile.revision!==RUNTIME_INPUT_PROFILE.revision)reject('version');
     if(!integer(maxFrameBytes,1,1048576)||!integer(maxEvents,1,4096)||!integer(maxTotalBytes,1,16777216))reject('budget');
     this.descriptor=normalizeRuntimeDescriptor(descriptor);this.request=normalizeRuntimeRequest(request);
     if(this.descriptor.connection.id!==this.request.connectionId||this.descriptor.connection.revision!==this.request.connectionRevision)reject('ownership');
@@ -159,6 +162,7 @@ export class RuntimeContractObserver {
       if(this.fatal&&origin!=='supervisor')reject(this.fault.code);
       if(typeof frame!=='string')reject('protocol');if(frame.length>this.maxFrameBytes)reject('budget');const bytes=encoder.encode(frame).byteLength;
       if(bytes>this.maxFrameBytes||this.bytes+bytes>this.maxTotalBytes||this.events.length>=this.maxEvents)reject('budget');
+      if(!isPortableJson(frame))reject('protocol');
       let input;try{input=JSON.parse(frame);}catch{reject('protocol');}
       if(!isRecord(input))reject('protocol');const wireVersion=version(input.version),owner=scope(input);
       if([...ids,'turnId'].some(key=>owner[key]!==this.request[key]))reject('ownership');

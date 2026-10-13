@@ -6,6 +6,8 @@ Foi uma antecipação técnica. Em **12/10/2026**, o reteste humano de D1 libero
 
 ## OX-003 — contrato inicial portátil
 
+**Estado atual — 13/10:** OX-003 concluído no recorte local single-account, com [consumidor Rust](../../crates/orchestrix-core/README.md), [perfil de entrada revision 1](../../docs/contracts/runtime-input-profile.md) e [aceite/conformance](../../docs/research/portable-runtime-input-increment.md) de 245 casos/935 operações. O perfil substitui explicitamente o decoder experimental não portátil; wire/lifecycle permanece 1.1 e os 104 casos anteriores continuam idênticos. Dados antigos ambíguos são recusados sem adivinhar fuso. OX-004 é o próximo incremento; M0/OX-001/OX-002 e worker de produção conservam suas pendências. Os registros de entregas anteriores abaixo são históricos.
+
 O primeiro runtime foi aprovado no recorte local descrito abaixo. O [contrato 1.x](../../docs/contracts/runtime-contract-v1.md), o [observador](src/runtime-contract.mjs) e o [fake provider-neutral](fixtures/fake-runtime.mjs) iniciam OX-003, reutilizando as distinções de lifecycle verificadas em OX-001. O consumidor experimental recebe frames normalizados, sem importar eventos do Codex. São validação e fixture em memória, sem processo, rede, auth store ou inferência.
 
 ```powershell
@@ -125,7 +127,7 @@ O [resultado registrado](../../docs/research/runtime-harness-results.md) disting
 
 ### Fronteira Codex → contrato provider-neutral (OX-003)
 
-A [continuação Rust](../../crates/orchestrix-core/README.md) implementa o consumidor no Core sem dependência de Node/SDK/OS, com [104 casos portáteis](../../crates/orchestrix-core/tests/fixtures/runtime-conformance-v1.json) e pipeline offline. Após `cargo build --workspace --examples --locked` na raiz, `npm.cmd run test:rust-core` testa adapter/fake → consumidor compilado; essa suíte separada requer Rust e não roda automaticamente no `npm test` existente. `check:conformance` confere reprodução dos dados sem sobrescrever; `export:conformance` regenera explicitamente e exige revisão do diff. [Resultados e diferença de timestamps ainda aberta](../../docs/research/rust-runtime-contract-increment.md).
+A [continuação Rust](../../crates/orchestrix-core/README.md) implementa o consumidor no Core sem dependência de Node/SDK/OS, com [245 casos portáteis](../../crates/orchestrix-core/tests/fixtures/runtime-conformance-v1.json) e pipeline offline. Após `cargo build --workspace --examples --locked` na raiz, `npm.cmd run test:rust-core` testa adapter/fake → consumidor compilado; essa suíte separada requer Rust e não roda automaticamente no `npm test` existente. `check:conformance` confere reprodução dos dados sem sobrescrever; `export:conformance` regenera explicitamente e exige revisão do diff. [Perfil e aceite atual](../../docs/research/portable-runtime-input-increment.md); a bridge exige inputProfile explícito do host e não aceita downgrade.
 
 [codex-contract.mjs](src/codex-contract.mjs) conecta `CodexSession` ao [contrato 1.1](../../docs/contracts/runtime-contract-v1.md) e ao mesmo observador usado pelo fake provider-neutral. `probe.mjs` e `worktree-probe.mjs` agora produzem `normalized`, com IDs locais, configuração solicitada/observada, lifecycle, erros e evidência de processo independente. Mapas nativos ficam privados e sobrevivem ao reinício/resume em memória; não são recuperação durável. O percurso worktree com essa nova instrumentação não foi executado live.
 

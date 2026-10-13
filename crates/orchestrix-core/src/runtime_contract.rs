@@ -1,9 +1,12 @@
 //! Contract 1.1 observation/validation, separate from execution authorization.
-use chrono::{DateTime, SecondsFormat, Utc};
 use serde_json::{json, Map, Value};
 use serde_core::de::{DeserializeSeed, IgnoredAny, MapAccess, SeqAccess, Visitor};
 use std::collections::HashSet;
 use std::fmt;
+
+#[path = "runtime_input.rs"]
+mod input;
+pub use input::{INPUT_PROFILE_ID, INPUT_PROFILE_REVISION};
 
 const SAFE_INTEGER: f64 = 9_007_199_254_740_991.0;
 pub const CAPABILITIES: [&str; 11] = ["modelSelection", "reasoning", "resume", "quota", "tools", "webSearch", "streaming", "sandbox", "approvals", "nativeDelegation", "contextManagement"];
@@ -57,18 +60,15 @@ fn scope(value: &Value) -> Result<Value> {
 fn evidence(value: Option<&Value>) -> Result<Value> {
     let empty = json!({}); let input = value.unwrap_or(&empty); object(input)?;
     let source = default_enum(&input["source"], "none", &["none", "declared", "catalog", "configuration", "execution", "synthetic"])?;
+    let scope = default_enum(&input["scope"], "connection", &["connection", "model", "attempt"])?;
+    let reference = optional_id(&input["reference"])?;
     let mut observed = Value::Null;
     if !input["observedAt"].is_null() {
         let text = input["observedAt"].as_str().ok_or_else(|| error("protocol"))?;
-        let prefix = text.as_bytes();
-        ensure(prefix.len() >= 11 && prefix[..4].iter().all(u8::is_ascii_digit) && prefix[4] == b'-' && prefix[5..7].iter().all(u8::is_ascii_digit) && prefix[7] == b'-' && prefix[8..10].iter().all(u8::is_ascii_digit) && prefix[10] == b'T', "protocol")?;
-        let date = DateTime::parse_from_rfc3339(text).map_err(|_| error("protocol"))?;
-        ensure(date.timestamp_subsec_nanos() < 1_000_000_000, "protocol")?;
-        observed = json!(date.with_timezone(&Utc).to_rfc3339_opts(SecondsFormat::Millis, true));
+        observed = json!(input::normalize_timestamp(text)?);
     }
-    let reference = optional_id(&input["reference"])?;
     ensure(source != "none" || (reference.is_null() && observed.is_null()), "protocol")?;
-    Ok(json!({"source": source, "scope": default_enum(&input["scope"], "connection", &["connection", "model", "attempt"])?, "reference": reference, "observedAt": observed}))
+    Ok(json!({"source": source, "scope": scope, "reference": reference, "observedAt": observed}))
 }
 fn capability(value: Option<&Value>) -> Result<Value> {
     let empty = json!({}); let input = value.unwrap_or(&empty); object(input)?;
@@ -93,6 +93,12 @@ pub fn normalize_descriptor(value: &Value) -> Result<RuntimeDescriptor> {
     object(value)?; object(&value["connection"])?;
     let input = value["models"].as_array().ok_or_else(|| error("protocol"))?;
     ensure(input.len() <= 64, "protocol")?;
+    let connection = &value["connection"];
+    let connection_id = local_id(&connection["id"])?;
+    let authentication = enum_value(&connection["authentication"], &["authenticated", "unauthenticated", "unknown"])?;
+    let billing = enum_value(&connection["billing"], &["subscription", "api", "unknown"])?;
+    let availability = default_enum(&connection["availability"], "unknown", &["available", "unavailable", "unknown"])?;
+    let revision = int(&connection["revision"], 1.0, SAFE_INTEGER, "ownership")?;
     let mut ids = HashSet::new(); let mut models = Vec::new();
     for row in input {
         object(row)?; let id = local_id(&row["id"])?;
@@ -106,9 +112,7 @@ pub fn normalize_descriptor(value: &Value) -> Result<RuntimeDescriptor> {
         }
         models.push(json!({"id": id, "availability": default_enum(&row["availability"], "unknown", &["available", "unavailable", "unknown"])?, "reasoningLevels": levels, "capabilities": capabilities(row.get("capabilities"))?}));
     }
-    let connection = &value["connection"];
-    let revision = int(&connection["revision"], 1.0, SAFE_INTEGER, "ownership")?;
-    Ok(RuntimeDescriptor(json!({"version": version(&value["version"])?, "adapterId": token(&value["adapterId"])?, "runtimeVersion": token(&value["runtimeVersion"])?, "connection": {"id": local_id(&connection["id"])?, "revision": revision, "authentication": enum_value(&connection["authentication"], &["authenticated", "unauthenticated", "unknown"])?, "billing": enum_value(&connection["billing"], &["subscription", "api", "unknown"])?, "availability": default_enum(&connection["availability"], "unknown", &["available", "unavailable", "unknown"])?}, "catalog": {"completeness": default_enum(&value["catalog"]["completeness"], "unknown", &["complete", "partial", "unknown"])?}, "capabilities": capabilities(value.get("capabilities"))?, "models": models, "contextOwnership": context_ownership()})))
+    Ok(RuntimeDescriptor(json!({"version": version(&value["version"])?, "adapterId": token(&value["adapterId"])?, "runtimeVersion": token(&value["runtimeVersion"])?, "connection": {"id": connection_id, "revision": revision, "authentication": authentication, "billing": billing, "availability": availability}, "catalog": {"completeness": default_enum(&value["catalog"]["completeness"], "unknown", &["complete", "partial", "unknown"])?}, "capabilities": capabilities(value.get("capabilities"))?, "models": models, "contextOwnership": context_ownership()})))
 }
 pub fn normalize_request(value: &Value) -> Result<RuntimeRequest> {
     object(value)?; object(&value["requested"])?; let mut owner = scope(value)?;
@@ -120,8 +124,9 @@ pub fn normalize_request(value: &Value) -> Result<RuntimeRequest> {
     ensure(value.get("paidFallback").is_none() || value["paidFallback"] == "forbidden", "policy")?;
     let consent = optional_id(&value["billingAuthorizationRef"])?;
     ensure(billing != "explicit-api" || !consent.is_null(), "policy")?;
+    let revision = int(&value["connectionRevision"], 1.0, SAFE_INTEGER, "ownership")?;
     owner["version"] = version(&value["version"])?;
-    owner["connectionRevision"] = json!(int(&value["connectionRevision"], 1.0, SAFE_INTEGER, "ownership")?);
+    owner["connectionRevision"] = json!(revision);
     owner["billingMode"] = billing; owner["paidFallback"] = json!("forbidden"); owner["billingAuthorizationRef"] = consent;
     owner["contextPackRef"] = optional_id(&value["contextPackRef"])?;
     owner["requested"] = json!({"strategy": default_enum(&raw["strategy"], "balanced", &["efficiency", "performance", "balanced", "custom"])?, "presetRef": optional_id(&raw["presetRef"])?, "modelPolicy": model_policy, "modelId": model_id, "reasoning": default_enum(&raw["reasoning"], "auto", &REASONING)?, "sandbox": default_enum(&raw["sandbox"], "read-only", &["read-only", "workspace-write"])?, "network": default_enum(&raw["network"], "disabled", &["enabled", "disabled"])?, "approval": default_enum(&raw["approval"], "never", &["never", "ask", "runtime-managed"])?});
@@ -242,6 +247,7 @@ impl<'de> Visitor<'de> for Projection {
     }
 }
 fn parse_event(frame: &str) -> Result<Value> {
+    input::validate_frame(frame)?;
     let mut decoder = serde_json::Deserializer::from_str(frame);
     let input = Projection::Event.deserialize(&mut decoder).map_err(|_| error("protocol"))?;
     decoder.end().map_err(|_| error("protocol"))?;

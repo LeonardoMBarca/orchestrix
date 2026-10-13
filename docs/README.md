@@ -4,9 +4,13 @@ This directory contains the evolving design and engineering documentation for Or
 
 ## Core documents
 
+### [Portable Runtime Input — OX-003 Acceptance](./research/portable-runtime-input-increment.md)
+
+Records the shared [input profile revision 1](./contracts/runtime-input-profile.md), strict timestamps/portable JSON, 245-case/935-operation conformance and scoped OX-003 acceptance. Six Rust tests, eleven adapter → Rust checks and 320 JavaScript regressions passed; the preceding 104 corpus cases remain identical. OX-004 is the next permitted increment; M0/provider/production gates remain open.
+
 ### [Rust Runtime Contract Increment — OX-003](./research/rust-runtime-contract-increment.md)
 
-Records the authorized Rust/Cargo setup, initial portable Core module, deterministic 104-case/309-operation corpus and offline adapter → Rust pipeline. Three Rust tests, nine bridge checks and 255 JavaScript regressions passed. A demonstrated timezone-free legacy timestamp difference keeps full OX-003 acceptance open; no live provider call or production worker was started.
+Preserves the authorized Rust/Cargo setup, initial portable Core module, 104-case/309-operation corpus and preceding offline adapter → Rust results. The timestamp difference found in that increment was resolved by the subsequent portable input acceptance above; these original numbers/limitations remain historical.
 
 ### [Product Alignment — 2026-10-13](./design/product-alignment-2026-10-13.md)
 

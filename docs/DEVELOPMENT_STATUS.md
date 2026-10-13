@@ -4,7 +4,15 @@ Atualizado em **13 de outubro de 2026**. Este registro acompanha entregas e evid
 
 **D0 concluído como pesquisa; gate piloto D1 liberado e M0 retomado em OX-001.** A [conclusão D0](research/d0-conclusion.md) registra decisões, evidências e a revisão explícita do critério metodológico de OX-D01: quinze jornadas completas não foram demonstradas integralmente e não contam como teste aprovado. Em 12/10, após o retorno geral favorável e a correção dos painéis, o responsável confirmou: “Passei pelo reteste e funcionou”. O [registro humano e decisão de passagem](design/d1-pilot.md#piloto-reportado-pelo-responsável--1210) encerram a falha reportada de docking e preservam os casos P0 indisponíveis e a avaliação externa em OX-017. A sequência continua D0 → D1/piloto → M0 → M1 → M2; M0 e os gates técnicos posteriores permanecem abertos.
 
-## Incremento atual de M0 — contrato 1.1 consumido pelo Core Rust
+## Incremento atual — OX-003 concluído no recorte portátil single-account
+
+**Continuação após `58cdf6b` — 13/10:** o [perfil de entrada revision 1](contracts/runtime-input-profile.md) fecha as diferenças de timestamps/JSON entre os consumidores JavaScript e Rust. Gramática de calendário/offset explícita, Unicode válido e números finitos são verificados também em campos ignorados/sobrescritos; arredondamento e prioridades de validação foram reconciliados. Wire/lifecycle permanece 1.1. O perfil substitui o decoder experimental permissivo e não promete importar toda entrada antiga de `Date.parse` nem inventa timezone. A bridge recusa perfil ausente/incompatível antes de criar a tentativa.
+
+O corpus passa **245 casos/935 operações**, mantendo idênticos os 104 casos, descritores, pedidos e três hashes anteriores. Vetores independentes têm **37 timestamps/23 frames** com resultados explícitos. **6/6 testes Rust**, **11/11 da bridge**, **320/320 regressões JavaScript**, check, build e reprodução conformance passaram. [Execuções e confronto com critérios](research/portable-runtime-input-increment.md). Os sete cenários fake, o adapter → Core, fields desconhecidos compatíveis e erros/quarentena estão cobertos; nenhum provider foi chamado.
+
+**Aceite:** OX-003 concluído para o primeiro runtime local single-account, com domínio de decoding/compatibilidade definido; não é afirmação de equivalência com todo input JavaScript ou de adapter/supervisor Rust de produção. M0/OX-001/OX-002 continuam abertos para seus diagnósticos/OAuth/contas/provedores/gates existentes. Nenhuma interface, refresh, SQLite, scheduler ou worker foi implementado. Próximo incremento permitido: **OX-004 domínio/estados**, sem nova intervenção humana para iniciar o trabalho puro; não foi iniciado nesta rodada.
+
+## Histórico — contrato 1.1 inicialmente consumido pelo Core Rust
 
 **Continuação técnica após `31f15ad` — 13/10:** a instalação explicitamente autorizada concluiu Rust/Cargo **1.99.0**, x64/MSVC, perfil minimal e PATH do usuário. MSVC/linker e SDK existentes foram reutilizados; nenhum outro componente de sistema/provider foi instalado. O [workspace Cargo e módulo inicial](../crates/orchestrix-core/README.md) consomem o contrato sem Node, SDK/mensagens Codex, Windows/Tauri, banco ou scheduler. [Implementação, verificação e confronto com o aceite](research/rust-runtime-contract-increment.md).
 

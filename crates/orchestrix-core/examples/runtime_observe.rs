@@ -1,9 +1,12 @@
 //! Offline host-bundle consumer used to verify the adapter → Core boundary.
-use orchestrix_core::runtime_contract::{normalize_descriptor, normalize_request, EventOrigin, Limits, RuntimeObserver};
+use orchestrix_core::runtime_contract::{normalize_descriptor, normalize_request, EventOrigin, Limits, RuntimeObserver, INPUT_PROFILE_ID, INPUT_PROFILE_REVISION};
 use serde_json::{json, Value};
 use std::io::{self, Read};
 
 fn observe(input: Value) -> Result<Value, &'static str> {
+    // Host negotiation is mandatory; semantic wire minors cannot downgrade it.
+    let profile = json!({"id": INPUT_PROFILE_ID, "revision": INPUT_PROFILE_REVISION});
+    if input["inputProfile"]["id"] != profile["id"] || input["inputProfile"]["revision"].as_f64() != Some(f64::from(INPUT_PROFILE_REVISION)) { return Err("version"); }
     let descriptor = normalize_descriptor(&input["descriptor"]).map_err(|e| e.code())?;
     let request = normalize_request(&input["request"]).map_err(|e| e.code())?;
     let mut observer = RuntimeObserver::new(descriptor, request, Limits::default()).map_err(|e| e.code())?;
@@ -22,7 +25,7 @@ fn observe(input: Value) -> Result<Value, &'static str> {
             return Ok(json!({"status": "rejected", "code": error.code(), "snapshot": observer.snapshot()}));
         }
     }
-    Ok(json!({"status": "observed", "descriptor": observer.descriptor().as_json(), "request": observer.request().as_json(), "snapshot": observer.snapshot()}))
+    Ok(json!({"status": "observed", "inputProfile": profile, "descriptor": observer.descriptor().as_json(), "request": observer.request().as_json(), "snapshot": observer.snapshot()}))
 }
 
 fn main() {

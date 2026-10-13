@@ -1,5 +1,7 @@
 # OX-003 — consumo do contrato no Core Rust
 
+**Continuação posterior:** o [incremento de compatibilidade portátil](portable-runtime-input-increment.md) resolveu o limite descrito ao final e concluiu OX-003 no recorte local single-account. Este documento conserva os resultados e o bloqueio encontrados em `58cdf6b`, sem apresentá-los como status atual. A wire permanece 1.1; o perfil explícito substitui o decoder preproduction ambíguo sem alegar compatibilidade com toda entrada JavaScript antiga.
+
 Data: **13/10/2026**. Base: `31f15ad`, branch `docs/development-plan`, árvore limpa na entrada. O alinhamento de produto permanece no commit documental separado. Esta rodada executa a instalação autorizada e a passagem técnica do contrato 1.1 ao Rust; não inicia OX-004, SQLite, scheduler ou outra interface.
 
 ## Ambiente preparado e compilação real

@@ -14,3 +14,4 @@ Cargo.lock text eol=lf
 crates/**/*.toml text eol=lf
 crates/**/*.rs text eol=lf
 crates/**/tests/fixtures/*.json text eol=lf
+tools/runtime-harness/fixtures/portable-input-v1.json text eol=lf
