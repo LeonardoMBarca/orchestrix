@@ -4,7 +4,7 @@ version = "0.1.0"
 edition.workspace = true
 license.workspace = true
 publish.workspace = true
-description = "Initial portable runtime contract consumer; not the production worker"
+description = "Portable runtime contract and in-memory orchestration domain; not a production worker"
 
 [dependencies]
 serde_json.workspace = true

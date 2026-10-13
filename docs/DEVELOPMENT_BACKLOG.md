@@ -33,7 +33,7 @@ Os critérios de aceite devem ser demonstrados antes de considerar uma tarefa co
 | OX-016 | Control Center básico | M2 | OX-008, OX-012 |
 | OX-017 | Demonstração de uso real e instalação alpha | M2 | OX-011, OX-015, OX-016; avaliação ampliada e iterações de OX-D05 |
 
-OX-D01 e OX-D02 entregaram a pesquisa consolidada. OX-D03/OX-D04 têm protótipo e verificação técnica disponíveis; o piloto/reteste de OX-D05 liberaram M0. O primeiro runtime Codex foi aprovado no recorte local e [OX-003 está concluído](./research/portable-runtime-input-increment.md), com contrato/fake/adapter e consumo/conformance Rust sob perfil de entrada explícito. **OX-004 domínio/estados é o próximo incremento permitido**, conforme a dependência da tabela; ainda não foi iniciado. OX-001/diagnóstico completo/OAuth e OX-002 mantêm seus aceites, sem exigir todos os provedores antes do primeiro worker ou declarar M0 concluído. Após OX-004, persistência, Git e política/contexto podem avançar em paralelo. A integração final do worker depende da convergência desses contratos. Protótipos de design podem usar dados simulados; avaliação externa de OX-D05 continua antes da conclusão do alpha. Os resultados orientam os ADRs propostos no plano.
+OX-D01 e OX-D02 entregaram a pesquisa consolidada. OX-D03/OX-D04 têm protótipo e verificação técnica disponíveis; o piloto/reteste de OX-D05 liberaram M0. O primeiro runtime Codex foi aprovado no recorte local e [OX-003 está concluído](./research/portable-runtime-input-increment.md), com contrato/fake/adapter e consumo/conformance Rust sob perfil de entrada explícito. [OX-004 foi concluído em memória](./research/ox-004-domain-increment.md). **OX-005 persistência/eventos/idempotência é o próximo incremento permitido**, conforme a dependência da tabela. OX-001/diagnóstico completo/OAuth e OX-002 mantêm seus aceites, sem exigir todos os provedores antes do primeiro worker ou declarar M0 concluído. Após OX-004, persistência, Git e política/contexto podem avançar em paralelo. A integração final do worker depende da convergência desses contratos. Protótipos de design podem usar dados simulados; avaliação externa de OX-D05 continua antes da conclusão do alpha. Os resultados orientam os ADRs propostos no plano.
 
 ## Pesquisa e design antes do aplicativo
 
@@ -134,6 +134,8 @@ Preservar conformance portátil sem tipos de OS/Tauri ou mensagens nativas no co
 ## 3 Tickets para o worker confiável
 
 ### OX-004 Domínio e estados
+
+**Concluído em memória — 13/10:** [módulos do Core](../crates/orchestrix-core/src/domain/mod.rs) implementam entidades/IDs, conversas/referências de sessão/trabalho, snapshots de modos/perfis/contexto e comandos validados. [Contrato e regras](./contracts/domain-and-states.md); [aceite/evidências](./research/ox-004-domain-increment.md): **29 testes de domínio**, mais seis regressões OX-003, check/build, formatação afetada e Clippy estrito passaram. Completed do runtime não conclui Task; código exige integração validada no Run, análise aceita artefato revisado; aplicação final/entrega e conflitos têm evidência/base próprias. Tentativas antigas, rejeições, correção e snapshots são preservados; IDs/estados não são atribuíveis por fora. Não é persistência/execução real ou conclusão de M0. **Próximo: OX-005**, sem iniciar SQLite nesta rodada.
 
 Implementar Project, Repository, Connection, CapacityGroup, Run, Task, TaskAttempt e referências de sessão. Separar conclusão de tentativa, aceitação de artefato e integração. Definir transições e condições de dependência antes de ligar o scheduler.
 

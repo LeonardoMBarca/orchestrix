@@ -1,6 +1,8 @@
-# Orchestrix Core — runtime contract increment
+# Orchestrix Core — runtime contract and domain
 
-OX-003 now has a Rust consumer of the portable runtime contract 1.1. This crate contains only validation, admission checks and observation of one owned attempt. It has no Node dependency, provider SDK/messages, OS process handles, Tauri, SQLite, scheduler, worker or daemon.
+OX-003 now has a Rust consumer of the portable runtime contract 1.1. Its runtime module contains validation, admission checks and observation of one owned attempt. The crate has no Node dependency, provider SDK/messages, OS process handles, Tauri, SQLite, scheduler, worker or daemon.
+
+OX-004 adds the [pure in-memory domain](src/domain/mod.rs): typed identities, projects/repositories, connections/shared capacity, conversations/session references, versioned modes/profiles, attempts, tasks and Runs. It consumes the same runtime observer and keeps execution outcome, output production, artifact acceptance, internal integration and final application separate. [Domain contract/API rules](../../docs/contracts/domain-and-states.md) and [acceptance evidence](../../docs/research/ox-004-domain-increment.md) describe guarded operations and the 29 new domain tests. SQLite and actual process/Git/check services are not implemented by this module; OX-005 is the next increment.
 
 OX-003 is accepted for the first local single-account runtime under [portable input profile revision 1](../../docs/contracts/runtime-input-profile.md). This explicitly replaces the previous permissive experimental decoder; normalized v1.0/v1.1 data remains compatible, while ambiguous/nonportable inputs are rejected without timezone inference. Semantic wire version and codec revision are separate. [Acceptance and verification](../../docs/research/portable-runtime-input-increment.md) do not close M0 or production/provider gates.
 

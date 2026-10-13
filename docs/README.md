@@ -39,6 +39,7 @@ Current status takes precedence over older reports' “next” or “pending” 
 | --- | --- |
 | [Runtime Contract v1](./contracts/runtime-contract-v1.md) | Provider-neutral wire/lifecycle 1.x, capabilities, configuration, identity, budgets, errors and separate runtime/supervisor facts. JS reference and Rust consumption are implemented in scoped OX-003 acceptance; this is not a production supervisor. |
 | [Runtime Input Profile](./contracts/runtime-input-profile.md) | Revision 1 portable decoding, timestamp/Unicode/number grammar and compatibility. Codec revision is distinct from semantic wire version. |
+| [Domain and States](./contracts/domain-and-states.md) | Implemented OX-004 identities, conversations, versioned snapshots, guarded task/Run completion and exact application evidence; in-memory domain, not persistence or execution infrastructure. [Acceptance evidence](./research/ox-004-domain-increment.md). |
 | [API Connection Contract](./design/api-connection-contract.md) | Two-stage subscription/API connection flow, provider-specific credentials and host boundary. |
 | [Connection Diagnostics](./design/connection-diagnostics.md) | Available/unavailable/unknown evidence, scoped checks and recheck. Periodic/event-driven refresh is specified future work; active probes/production authentication retain their gates. |
 
