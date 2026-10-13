@@ -33,6 +33,17 @@ function confirmed(state,{code,termination}={}) {
   if(termination)assert.equal(state.termination,termination);
 }
 
+test('native launch preserves the Windows platform drive without forwarding secrets or hooks',options,async t=>{
+  const env=runtimeEnvironment();const drive=Object.entries(env).find(([key])=>key.toUpperCase()==='SYSTEMDRIVE')?.[1];
+  assert.ok(drive,'Windows SystemDrive is required for this integration regression');
+  const code="console.log(JSON.stringify({drive:process.env.SystemDrive,api:!!process.env.OPENAI_API_KEY,hook:!!process.env.NODE_OPTIONS,other:!!process.env.UNRELATED_SECRET}))";
+  const child=new WindowsJobProcess({command:process.execPath,args:['-e',code],cwd:root,env:{...env,OPENAI_API_KEY:'SYNTHETIC_SECRET',NODE_OPTIONS:'--require nonexistent-injection',UNRELATED_SECRET:'SYNTHETIC_SECRET'},lifetimeMs:10000});
+  t.after(()=>child.stop(100));let output='';child.stdout.on('data',chunk=>{output+=chunk.toString();});child.stderr.resume();
+  await child.ready;child.stdin.end();await child.finished.promise;
+  const state=await child.stop(100);confirmed(state,{code:0,termination:'graceful'});assert.equal(state.stdioClosed,true);
+  assert.deepEqual(JSON.parse(output),{drive,api:false,hook:false,other:false});
+});
+
 test('raw UTF-8, JSON-RPC correlation and helper control remain separate',options,async t=>{
   const c=client(t,{scenario:'split-utf8'});const s=await session(c);
   const results=await Promise.all([c.request('account/read'),c.request('model/list'),c.request('account/read')]);

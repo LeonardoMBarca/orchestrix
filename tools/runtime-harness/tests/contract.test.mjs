@@ -161,6 +161,6 @@ test('endpoint/resource discovery does not accept falsy or malformed config as a
   config.mcp_servers={example:{enabled:false}};result=await session.inspectEndpoints(root);assert.equal(result.resources.mcpDisabled,true);
 });
 test('API credentials, endpoint overrides and executable hooks are absent from the child env',()=>{
-  const env=runtimeEnvironment({Path:'os-path',SystemRoot:'os-root',CODEX_HOME:'auth-location',OPENAI_API_KEY:'SYNTHETIC_SECRET',CODEX_API_KEY:'SYNTHETIC_SECRET',CODEX_REFRESH_TOKEN_URL_OVERRIDE:'https://synthetic.invalid',NODE_OPTIONS:'--require injection',UNRELATED_SECRET:'SYNTHETIC_SECRET'});
-  assert.deepEqual(env,{Path:'os-path',SystemRoot:'os-root',CODEX_HOME:'auth-location'});assert.ok(!JSON.stringify(env).includes('SYNTHETIC_SECRET'));
+  const env=runtimeEnvironment({Path:'os-path',SystemRoot:'os-root',SystemDrive:'C:',CODEX_HOME:'auth-location',OPENAI_API_KEY:'SYNTHETIC_SECRET',CODEX_API_KEY:'SYNTHETIC_SECRET',CODEX_REFRESH_TOKEN_URL_OVERRIDE:'https://synthetic.invalid',NODE_OPTIONS:'--require injection',UNRELATED_SECRET:'SYNTHETIC_SECRET'});
+  assert.deepEqual(env,{Path:'os-path',SystemRoot:'os-root',SystemDrive:'C:',CODEX_HOME:'auth-location'});assert.ok(!JSON.stringify(env).includes('SYNTHETIC_SECRET'));
 });

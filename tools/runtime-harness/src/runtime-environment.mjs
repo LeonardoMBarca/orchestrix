@@ -1,6 +1,8 @@
 /** OS/auth-location variables only; never API keys, endpoint overrides or NODE_OPTIONS. */
 export function runtimeEnvironment(source=process.env) {
-  const allowed=new Set(['PATH','PATHEXT','SYSTEMROOT','WINDIR','COMSPEC','TEMP','TMP','TMPDIR','USERPROFILE','HOME','HOMEDRIVE','HOMEPATH','APPDATA','LOCALAPPDATA','PROGRAMDATA','PROGRAMFILES','PROGRAMFILES(X86)','COMMONPROGRAMFILES','PROCESSOR_ARCHITECTURE','NUMBER_OF_PROCESSORS','CODEX_HOME','LANG','LC_ALL']);
+  // Native CreateProcess does not receive libuv's required-variable injection.
+  // MXC needs SystemDrive to locate its Windows platform directory.
+  const allowed=new Set(['PATH','PATHEXT','SYSTEMROOT','WINDIR','SYSTEMDRIVE','COMSPEC','TEMP','TMP','TMPDIR','USERPROFILE','HOME','HOMEDRIVE','HOMEPATH','APPDATA','LOCALAPPDATA','PROGRAMDATA','PROGRAMFILES','PROGRAMFILES(X86)','COMMONPROGRAMFILES','PROCESSOR_ARCHITECTURE','NUMBER_OF_PROCESSORS','CODEX_HOME','LANG','LC_ALL']);
   return Object.fromEntries(Object.entries(source).filter(([key,value])=>allowed.has(key.toUpperCase())&&typeof value==='string'));
 }
 export function fixtureGitEnvironment(source=process.env) {

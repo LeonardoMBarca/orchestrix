@@ -222,7 +222,7 @@ namespace Orchestrix.WindowsSpike
             return variables;
         }
 
-        static IntPtr EnvironmentBlock(IDictionary<string, string> source, bool raw)
+        static IntPtr EnvironmentBlock(IDictionary<string, string> source)
         {
             if (source == null || source.Count > 64) throw new ProbeException("environment", 0);
             string[] allow = { "PATH", "PATHEXT", "SYSTEMROOT", "WINDIR", "SYSTEMDRIVE", "COMSPEC", "TEMP", "TMP", "TMPDIR", "USERPROFILE", "HOME", "HOMEDRIVE", "HOMEPATH", "APPDATA", "LOCALAPPDATA", "PROGRAMDATA", "PROGRAMFILES", "PROGRAMFILES(X86)", "COMMONPROGRAMFILES", "PROCESSOR_ARCHITECTURE", "NUMBER_OF_PROCESSORS", "CODEX_HOME", "LANG", "LC_ALL" };
@@ -230,7 +230,7 @@ namespace Orchestrix.WindowsSpike
             SortedDictionary<string, string> variables = new SortedDictionary<string, string>(StringComparer.OrdinalIgnoreCase);
             foreach (KeyValuePair<string, string> entry in source)
             {
-                if (entry.Key == null || !names.Contains(entry.Key) || (raw && entry.Key.Equals("SYSTEMDRIVE", StringComparison.OrdinalIgnoreCase)) || entry.Value == null || entry.Value.Length > 32767 || entry.Value.IndexOf('\0') >= 0 || variables.ContainsKey(entry.Key)) throw new ProbeException("environment", 0);
+                if (entry.Key == null || !names.Contains(entry.Key) || entry.Value == null || entry.Value.Length > 32767 || entry.Value.IndexOf('\0') >= 0 || variables.ContainsKey(entry.Key)) throw new ProbeException("environment", 0);
                 variables.Add(entry.Key, entry.Value);
             }
             StringBuilder block = new StringBuilder();
@@ -294,7 +294,7 @@ namespace Orchestrix.WindowsSpike
                 StringBuilder command = new StringBuilder(QuoteArgument(executable));
                 foreach (string argument in arguments) command.Append(' ').Append(QuoteArgument(argument));
                 if (command.Length >= 32767) throw new ProbeException("arguments", 0);
-                environment = EnvironmentBlock(suppliedEnvironment, raw);
+                environment = EnvironmentBlock(suppliedEnvironment);
                 PROCESS_INFORMATION info;
                 Require(CreateProcessW(executable, command, IntPtr.Zero, IntPtr.Zero, true,
                     CREATE_SUSPENDED | CREATE_NO_WINDOW | CREATE_UNICODE_ENVIRONMENT | EXTENDED_STARTUPINFO_PRESENT,
