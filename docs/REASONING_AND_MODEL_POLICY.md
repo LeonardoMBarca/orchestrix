@@ -66,6 +66,8 @@ RUNTIME_MANAGED
 
 The UI and scheduler must distinguish these states rather than assuming every provider has equivalent controls.
 
+The executable experimental wire specification is [runtime contract 1.x](./contracts/runtime-contract-v1.md); the example above remains conceptual. Support, availability, configuration and evidence are distinct and model-scoped. The planned [periodic/event-driven observation policy](./design/connection-diagnostics.md#atualização-periódica-e-orientada-a-eventos--requisito-planejado) governs freshness before new decisions, reusing valid metadata and revalidating/blocking expired mandatory facts. Neither catalog membership, stale cache nor a selected preset grants access. Refresh does not silently change active-attempt snapshots or invoke paid probes.
+
 ---
 
 ## Normalized reasoning profiles

@@ -61,6 +61,8 @@ Files, Studio e Connections compartilham **um único Navigation/Workspace**. Dep
 
 ## Arquivos e edição leve
 
+O [alinhamento de 13/10](../docs/design/product-alignment-2026-10-13.md) e [ADR-0005](../docs/adr/0005-desktop-product-scope-and-platform-boundaries.md) confirmam o editor auxiliar como requisito, sem direção futura de IDE. O [contrato Desktop de editor e aceite](../docs/DESKTOP_APP_AND_PROJECT_WORKSPACE.md#7-supporting-editor-and-diff-viewer) centraliza realce por linguagem, save/undo/alterações não salvas e proteção de versão contra writes dos agentes. As regras abaixo continuam orientando o shell aprovado; este alinhamento não redesenha nem implementa outra interface.
+
 Files apresenta somente conteúdo de uma pasta concedida pelo usuário ou de arquivos importados. Um path salvo no projeto não concede leitura/escrita. Quando o navegador oferece handles de diretório e permissão de escrita, salvar pode alterar o arquivo autorizado; sem essa integração, importar permite ler e editar uma cópia, com **Save a copy** em vez de fingir gravação na origem. Cancelamento, permissão negada e pasta ausente conservam os rascunhos.
 
 A entrada permite **Open file** para selecionar um arquivo avulso, sem obrigar a abrir uma pasta. **New file** pede nome com extensão e destino: a pasta autorizada atual ou uma subpasta elegível; sem pasta aberta, a pessoa precisa selecionar a pasta de destino antes de criar no disco. A criação exige uma ação explícita e não sobrescreve um arquivo existente. O navegador deve diferenciar criação efetiva com acesso de escrita de um rascunho/cópia quando essa integração não estiver disponível. Um buffer vazio ou editado em memória não é prova de que um arquivo foi gravado.
@@ -109,6 +111,8 @@ O refinamento de proporções de 11/10 reduz barras, espaçamento lateral, títu
 Na entrada desktop, o composer termina 16px acima do fim da área central. Os três cartões ficam mais acima, separados das sugestões por `clamp(28px,5vh,48px)`; em mobile, a separação é de 24px. As sugestões permanecem junto ao campo. A marca e o título ocupam o espaço restante com layout flexível, sem sobrepor controles. Mobile mantém fluxo natural; texto ampliado pode exigir rolagem. Conversas em andamento conservam seu layout.
 
 ## Descoberta ao cadastrar
+
+A [política de atualização periódica/event-driven](../docs/design/connection-diagnostics.md#atualização-periódica-e-orientada-a-eventos--requisito-planejado) é requisito novo planejado, além do cadastro/Recheck. Settings futuramente mostra intervalo/validade, último dado observado e falhas temporárias sem promover cache histórico a atual. Não implementar timers ou novas telas neste estudo por essa especificação; a migração pertence aos tickets de produção.
 
 Salvar uma API inicia discovery de catálogo pelo host, com feedback em Settings → Accounts e acesso a View resources. O resumo diferencia loading, complete/partial, erro e falta de permissão. Detalhes por modelo mostram recursos com provenance e unknown explícito, sem exigir configuração técnica. Usar controles nativos compartilhados e [o contrato de discovery](../docs/design/resource-discovery-increment.md). Lookup de catálogo não habilita execução ou quota automaticamente.
 

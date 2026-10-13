@@ -1,5 +1,7 @@
 # Plano de desenvolvimento do Orchestrix
 
+**Alinhamento de produto — 13/10:** [registro das definições explícitas](./design/product-alignment-2026-10-13.md), distinguindo requisitos existentes, esclarecimentos e a nova atualização periódica/event-driven de capacidades. A direção é Desktop open source, conversa com orquestrador selecionável e editor auxiliar, sem evolução presumida para IDE. Windows, macOS e Linux têm entrega/validação progressivas; [ADR-0005](./adr/0005-desktop-product-scope-and-platform-boundaries.md) esclarece escopo e preserva Desktop + Core. Este alinhamento não implementa funcionalidades nem altera os gates.
+
 **Incremento técnico atual de M0 — 13/10:** a [bridge Windows](./research/windows-process-containment.md#integração-do-transporte--1210) e a [comparação CLI](./research/cli-app-server-comparison.md) passaram a nova rodada explicitamente autorizada de **cinco turnos reais**, após a correção de `SYSTEMDRIVE`. App-server demonstrou edição/cinco checks, reinício/retomada e força do Job durante turno próprio; CLI demonstrou edição/checks e retomada exata. **App-server foi escolhido como primeiro adapter, aprovado no recorte local de uma assinatura autenticada**, liberando o início de OX-003. A rodada anterior de dois turnos bloqueados e a prova determinística permanecem preservadas. OX-001 conserva diagnóstico completo/OAuth próprio pendentes; OX-002, M0 e avaliação externa continuam abertos. Evidências e próximos entregáveis no [status](DEVELOPMENT_STATUS.md); os parágrafos seguintes conservam as entregas históricas.
 
 **Continuação atual de OX-003:** [contrato portátil 1.1](./contracts/runtime-contract-v1.md), fake e integração Codex → adapter/mapeamento privado → observador genérico estão implementados nos harnesses. [Fixtures/replay e evidências](./research/codex-contract-integration.md) preservam lacunas dos registros históricos; descoberta paginada e capacidades por modelo têm limites/unknown explícitos. O próximo recorte é consumo/conformance da mesma fronteira no Core Rust; Cargo/rustc continuam ausentes, sem instalação automática. O experimento JavaScript não muda a stack nem conclui OX-003/M0. Não é necessário esperar todos os provedores para consolidar esse contrato; diagnóstico completo e contas independentes conservam seus tickets.
@@ -20,9 +22,11 @@ A continuação usa os tickets existentes: OX-001/OX-002 validam leituras e futu
 
 ## 1 Objetivo de produto
 
-O usuário deve poder abrir um repositório, conectar uma ou mais contas próprias e pedir algo como: “implemente autenticação e faça uma revisão de segurança”. O Orchestrix prepara um plano, mostra suas escolhas, executa tarefas em ambientes separados, encaminha resultados entre agentes, roda verificações e apresenta a integração para aprovação conforme a política.
+O usuário deve poder abrir um repositório, conectar uma ou mais contas próprias e conversar com um agente orquestrador selecionável, pedindo algo como: “implemente autenticação e faça uma revisão de segurança”. O Orchestrix prepara um plano, mostra suas escolhas, executa tarefas em ambientes separados, encaminha resultados entre agentes, roda verificações e apresenta a integração para aprovação conforme a política do Core. Um padrão útil permite começar sem copiar instruções entre workers ou configurar todos os parâmetros.
 
 O Desktop é um workspace de desenvolvimento assistido: o usuário formula trabalho, fornece contexto, examina código/diffs e pede correções dentro do aplicativo. A qualidade visual e a adaptação da interface fazem parte do produto desde o primeiro alpha. A direção de 12/10 inclui árvore de arquivos, edição leve de texto e leitura de Markdown para ajustes como `.env` e documentação, sem assumir o escopo de IDE, debugger ou ambiente integrado de testes. Acesso e escrita exigem concessão explícita; editar uma cópia importada não equivale a salvar no projeto. As verificações executadas pelo Core continuam produzindo evidências para revisão.
+
+O [editor auxiliar](./DESKTOP_APP_AND_PROJECT_WORKSPACE.md#7-supporting-editor-and-diff-viewer) inclui realce por linguagem, prévia Markdown/diff, salvar/desfazer e alterações não salvas, com comparação de versão/base para preservar edições concorrentes e impedir aprovação de artefato antigo. IDE, debugger, test explorer, terminal interativo embutido, ambiente interativo de execução de projetos e ecossistema de extensões de IDE estão fora da direção atual, inclusive como evolução presumida. Abrir editor/terminal externo é facilidade opcional; iniciar/supervisionar agentes, operar Git e executar checks autorizados continua sendo função interna do Core.
 
 O refinamento de Files separa arquivos de sessões: o menu **File** contém **Open file, Open folder e New file**, sem criar sessão/projeto ou concentrar salvar/fechar. Abrir arquivo avulso não exige uma pasta. Criar arquivo de texto com nome/extensão requer escolher o destino na pasta autorizada ou, se nenhuma estiver aberta, conceder acesso à pasta de destino; a criação é explícita e não sobrescreve um arquivo existente. D1 demonstra essas entradas dentro dos limites do navegador, distinguindo arquivo criado de rascunho/cópia. O ciclo Desktop de alterações não salvas permanece em M2.
 
@@ -94,6 +98,8 @@ flowchart TD
 
 Manter a base proposta em [TECH_STACK.md](./TECH_STACK.md): Rust, Tokio, SQLite e Git CLI no Core; Tauri, React e TypeScript no Desktop. Confirmar a experiência de desenvolvimento e as dependências em um spike antes de registrar o compromisso em ADR. Escolher a biblioteca SQLite por um experimento pequeno com migração, transação e acesso concorrente.
 
+Windows, macOS e Linux são plataformas pretendidas de distribuição, com Windows primeiro permitido e sem lançamento simultâneo prometido. A [matriz de aceite por sistema](./TECH_STACK.md#platform-boundaries-and-progressive-delivery) governa suporte progressivo em OX-003/OX-007/OX-012/OX-015/OX-017 e M5. Processos, arquivos, credenciais e integrações específicos de OS ficam na infraestrutura/host/adapters; domínio e contrato de runtime permanecem portáveis. Uma prova Job Windows não certifica contenção nos outros sistemas.
+
 Começar com poucos pacotes: `orchestrix-core`, módulos de infraestrutura/adapters, `orchestrix-daemon` e `apps/desktop`. Políticas, domínio, contexto, scheduler e verificação são módulos com limites explícitos; não precisam nascer como serviços separados. Extrair crates quando houver benefício concreto de testes, dependências ou reutilização.
 
 O daemon será o proprietário dos processos e do banco. Desktop e CLI chamam comandos e consultas da mesma API de aplicação. Tipos do domínio não dependem de Tauri. Um transporte local versionado, com acesso restrito ao usuário, oferece comandos identificados, snapshots e eventos com cursor. Isso prepara a extensão VS Code sem implementá-la antecipadamente.
@@ -128,6 +134,8 @@ O registro de conexões e as referências de autenticação ficam no estado loca
 O primeiro router deve ser determinístico. Primeiro elimina candidatos incompatíveis com requisitos obrigatórios: autenticação, modo de cobrança, permissões, capacidades, exigência de revisão e capacidade de execução. Depois aplica preferências ordenadas e disponibilidade. Histórico de desempenho entra apenas quando houver dados suficientes.
 
 A seleção produz um registro com candidatos considerados, razões de exclusão, conexão escolhida, modelo solicitado e efetivo, reasoning solicitado e efetivo, service tier e fallback. Quando o runtime não confirma um parâmetro efetivo, o registro mostra `unknown` ou `runtime-managed`. Consultar capabilities e acesso no escopo e revisão corretos; uma união de capacidades no resumo do diagnóstico não concede todas elas a cada modelo.
+
+**Requisito novo de 13/10:** além do cadastro/Recheck, aplicar a [política de atualização periódica e orientada a eventos](./design/connection-diagnostics.md#atualização-periódica-e-orientada-a-eventos--requisito-planejado), com intervalo/validade configuráveis, reconexão e mudança de identidade/configuração/versão, revalidação dirigida por erros e consulta às capacidades necessárias antes de nova execução. Reutilizar cache válido, agrupar consultas e limitar frequência/concorrência com backoff; não fazer inventário completo por mensagem. Requisito obrigatório vencido exige revalidação ou bloqueio. Falha de consulta não comprova recurso ausente; mudanças confirmadas afetam novas escolhas com explicação, preservando snapshots ativos. Nenhuma inferência/ferramenta/probe potencialmente cobrado roda automaticamente para preencher lacunas.
 
 Para preferências, manter a precedência já proposta: sistema → usuário → projeto → perfil → categoria/risco → execução → tarefa. Restrições obrigatórias formam um conjunto de limites que overrides não podem ampliar sem autorização da política. Resolver conflitos explicitamente; uma preferência nunca remove uma obrigação.
 
@@ -298,7 +306,7 @@ A configuração simples com uma assinatura é obrigatória; múltiplas contas e
 
 Suportar um runtime continua obrigatório. O objetivo do MVP é incluir dois adapters validados e múltiplas Connections; um provedor que não ofereça isolamento de contas confirmado recebe suporte explícito mais limitado, sem simular duas identidades sobre um único login global.
 
-Ficam para depois: IDE completo, editor avançado, marketplace de plugins, agentes distribuídos, roteamento por aprendizado, consumo especulativo de patches e event sourcing integral. A prioridade é fechar o ciclo de trabalho e demonstrar confiabilidade.
+Ficam para depois: agentes distribuídos, roteamento por aprendizado, consumo especulativo de patches e event sourcing integral. Construir uma IDE, editor de IDE avançado ou marketplace de extensões de IDE não integra a direção atual. A prioridade é fechar o ciclo de trabalho e demonstrar confiabilidade, com editor auxiliar e clientes externos opcionais.
 
 ## 11 Testes e critérios de qualidade
 
@@ -311,6 +319,9 @@ CI usa runtime fake e fixtures, sem depender de assinatura ou chamadas pagas. Te
 - Uma conexão não herda sessão ou autenticação de outra.
 - Opção não suportada gera bloqueio ou fallback visível conforme a política.
 - Diagnóstico automático/recheck não executa prompts, altera permissões ou promove fixtures a autenticação; resposta atrasada respeita identidade e revisão.
+- Atualização periódica/event-driven verifica validade, coalescência, budgets/backoff, falha temporária e histórico; requisito crítico vencido bloqueia/revalida e não modifica tentativa ativa.
+- Cada sistema anunciado passa a matriz específica de processos/Git/arquivos/credenciais/instalação; conformance do domínio/contrato não depende de tipos Windows/Tauri.
+- Editor auxiliar preserva buffer após falha de save/Cancel e detecta escrita de agente entre abertura/gravação; versão antiga não autoriza sobrescrita ou aprovação de outro diff.
 - Reasoning, velocidade, multi-agent nativo e sandbox/aprovação conservam evidência independente; dados desconhecidos não viram recursos disponíveis.
 - Subscription Only impede execução API/fallback pago, e a restrição de delegação nativa do worker tem prova de aplicação distinta de sua política declarada.
 - Worktree, integração e intervenção manual preservam mudanças do usuário.

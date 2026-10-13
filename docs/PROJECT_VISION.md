@@ -2,9 +2,13 @@
 
 ## 1. Purpose
 
-Orchestrix is a **local-first, multi-model orchestration control plane for AI coding agents**.
+Orchestrix is an **open-source Desktop application for conversing with a selectable orchestrator of coding agents**, using the connections the user provides and policies enforced by its editor-agnostic Core.
 
-Its purpose is to transform multiple coding AIs from isolated interactive tools into a coordinated engineering system capable of planning work, assigning tasks, executing in parallel, reviewing results, adapting plans, preserving context, documenting decisions, and exposing the entire execution lifecycle to the developer.
+Its purpose is to coordinate agents, deterministic tools and evidence without requiring the user to copy instructions between workers or configure every parameter before starting. One account, one runtime and serial execution are useful first-class configurations; multiple accounts/models/providers and parallelism expand options when validated. Provider, account/connection, runtime, model and agent profile remain distinct.
+
+Windows, macOS and Linux are intended distribution platforms, with progressive validation/delivery and Windows permitted first. No simultaneous launch or three-platform support is demonstrated by the current experiments. [Platform boundaries and acceptance](./TECH_STACK.md#platform-boundaries-and-progressive-delivery) keep OS-specific processes/files/credentials in infrastructure and adapters, outside the domain/runtime contract.
+
+The product offers a [supporting editor](./DESKTOP_APP_AND_PROJECT_WORKSPACE.md#7-supporting-editor-and-diff-viewer) for files, lightweight text/code edits, highlighting, Markdown/diffs, save/undo and unsaved changes coordinated with agent writes. An IDE is outside the current direction, including as a presumed future evolution; [ADR-0005](./adr/0005-desktop-product-scope-and-platform-boundaries.md) preserves and clarifies the historical Desktop + Core decision. Internal agent/Git/authorized-check execution and visible logs/evidence remain Core responsibilities.
 
 The project begins as a personal engineering tool and portfolio project, but its architecture should remain open to broader open-source and commercial use.
 
@@ -150,6 +154,8 @@ At least initially, Orchestrix is **not** intended to:
 - give arbitrary agents unrestricted recursive control over other agents;
 - become a hosted multi-tenant SaaS before the local execution model is safe and mature.
 
+Independently of those staged non-goals, the current product direction excludes building an IDE, an interactive project-execution environment, debugger, test explorer, embedded interactive terminal or IDE extension ecosystem. External editor/system-terminal launch may be an optional convenience; this does not remove internal Core verification/execution.
+
 ---
 
 ## 6. Core principles
@@ -174,7 +180,7 @@ Local-first reduces infrastructure complexity and limits unnecessary exposure of
 
 The developer may already pay for consumer or professional subscriptions that include access to coding-agent runtimes.
 
-Where a provider officially supports this usage mode, Orchestrix should prefer the user's already-authenticated local runtime rather than requiring separate usage-billed API calls.
+Where a provider officially supports this usage mode through a validated integration, Orchestrix may use the user's authenticated subscription runtime. Login in another application is not automatic authorization for a programmatic surface. User-selected, explicitly authorized APIs remain a separate connection/billing mode; Gemini API and Antigravity do not automatically share authentication or capabilities.
 
 A planned **Subscription Only Mode** should ensure that child processes do not silently fall back to API billing.
 
@@ -524,6 +530,10 @@ retry history
 ```
 
 The initial implementation should not require machine learning.
+
+The [routing strategies](./design/routing-strategies.md) define Efficiency, Performance, Balanced and Custom alongside specialized presets/manual preferences; they are distinct from [Action Modes and Worker Profiles](./design/action-modes-and-worker-profiles.md). Selection considers task type, complexity, risk, importance, current capabilities and user settings. Mandatory verification is preserved, and mechanical facts use deterministic tools without unnecessary thinking. No optimality, percentage savings or unexposed quota is promised.
+
+**New planned requirement — 13 October 2026:** supplement registration/manual Recheck with configurable periodic and event-driven capability updates. The [diagnostic refresh policy](./design/connection-diagnostics.md#atualização-periódica-e-orientada-a-eventos--requisito-planejado) specifies validity, scoped metadata, coalescing/budgets/backoff, pre-execution checks and historical snapshots. Changes affect new routing decisions, without silently changing active attempts or automatically invoking inference/paid probes. This service is not implemented by the current catalog harness.
 
 ---
 

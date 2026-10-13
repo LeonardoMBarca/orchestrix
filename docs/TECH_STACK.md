@@ -42,9 +42,25 @@ Desktop IPC
 → Tauri commands/events initially
 ```
 
+## Platform boundaries and progressive delivery
+
+Windows, macOS and Linux are intended distribution platforms for the open-source Desktop application. Windows is the current development/runtime-validation environment, not a structural domain dependency. [ADR-0005](./adr/0005-desktop-product-scope-and-platform-boundaries.md) clarifies this scope without replacing Rust/Tauri or promising simultaneous launches.
+
+Domain and runtime wire types must not require Windows handles, Job Objects, OS paths, credentials or Tauri types. Process supervision/containment, path resolution, filesystem permissions/watchers/atomic writes, credential storage and external app integration belong in platform infrastructure, hosts or adapters. Each platform must report the guarantees it actually implements; unsupported/unknown containment cannot silently inherit a Windows proof.
+
+**Progressive gates using existing tickets:** OX-003 portable parser/state conformance; OX-007 OS-specific supervisor; OX-012/OX-015 file/editor/UX integration; OX-017 alpha and M5 packaging/update validation. Windows may be delivered first. macOS/Linux builds gain a support claim only after their own evidence; their absence does not prevent the Windows-first increment or require all providers everywhere.
+
+| Intended system | Required validation before claiming support | Current evidence |
+| --- | --- | --- |
+| Windows | Portable Core conformance; owned process/descendant cancellation/crash/timeout and stream drain; Git/worktree paths with spaces/Unicode; file permissions/concurrent edits; credential host; reproducible install/upgrade/uninstall and desktop keyboard/scale behavior. | Experimental Codex app-server/CLI and native Job tests only; no production Rust Core/Desktop/package validated. |
+| macOS | Same contract fixture expectations; owned process-group/descendant cleanup appropriate to the host; case-sensitive/insensitive paths and file permissions; authorized credential storage; editor/shortcuts; reproducible native package and required signing/install/update behavior. | Not yet validated. |
+| Linux | Same contract fixture expectations; owned process-group/descendant cleanup appropriate to the host; paths, permissions/symlinks/watchers; authorized credential storage including unavailable-secret-store behavior; desktop integration; reproducible package/install/update for the explicitly supported distributions. | Not yet validated. |
+
+Record tested OS/version/architecture and, for Linux, distribution; runtime/version/auth mode; build/dependencies; commands/results and known limitations. A compiling artifact alone is not runtime integration, filesystem safety or credential-store validation. No signing, credential backend or process-containment implementation is selected by this matrix. Offline CI runs shared conformance; live runtime tests remain separately opt-in per platform. This matrix defines future acceptance, not completed support.
+
 ## Why Tauri 2
 
-Orchestrix is a local-first desktop application whose core already benefits from being implemented in Rust. Tauri provides a natural bridge between a web-based frontend and a native Rust backend without forcing the product to become an Electron application.
+Orchestrix is a Desktop application whose proposed Core benefits from Rust's process/concurrency guarantees. A production Rust Core is not implemented yet. Tauri provides a natural bridge between a web-based frontend and a native Rust backend without forcing the product to become an Electron application.
 
 The intended architecture is:
 
@@ -244,30 +260,33 @@ Orchestrix Core / daemon
       ├── Desktop App
       ├── CLI
       ├── VSCode extension
-      └── future IDE / remote client
+      └── future remote client
 ```
 
 The UI must not become the source of truth for orchestration state.
 
-## Code viewer and diff viewer
+## Supporting editor and diff viewer
 
-Orchestrix needs code inspection but does not initially aim to become a full IDE.
+Orchestrix requires a supporting editor and code/diff inspection. Building an IDE is outside the product direction, including as a presumed future evolution. Internal Core execution of agents/Git/authorized checks remains separate from UI editing and execution evidence.
 
 A future implementation decision is required between technologies such as:
 
 - Monaco Editor;
 - CodeMirror;
-- specialized read-only syntax/highlight viewers.
+- specialized syntax/highlight viewers for inspection, with a separate lightweight edit surface if chosen.
 
 V1 requirements are primarily:
 
-- file viewing;
+- file/folder opening and tree navigation;
+- lightweight text/code editing;
 - syntax highlighting;
+- safe Markdown preview;
 - diff viewing;
+- save/undo, unsaved-change handling and coordination with agent writes;
 - navigation;
 - task/agent/change metadata.
 
-LSP, debugger, autocomplete, and full editor behavior are intentionally not required initially.
+The [workspace editor contract](./DESKTOP_APP_AND_PROJECT_WORKSPACE.md#7-supporting-editor-and-diff-viewer) defines version checks, conflict handling and stale approval invalidation. Choosing an editor component does not expand scope to a debugger, test explorer, embedded interactive terminal, project-execution environment or IDE extensions. Optional actions may open an external editor/system terminal. Logs/results from Core verification are evidence, not an interactive console.
 
 ## Frontend state management
 

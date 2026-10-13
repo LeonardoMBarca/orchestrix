@@ -10,13 +10,15 @@ Desktop App
 Editor-agnostic Core / Local Daemon
 ```
 
-It should not begin life as a VS Code extension and should not attempt to become a full IDE in the first version.
+Orchestrix is an open-source Desktop application with Windows, macOS and Linux as intended distribution platforms. Windows may lead development/validation; delivery is progressive under the [per-system criteria](./TECH_STACK.md#platform-boundaries-and-progressive-delivery). The product is not an IDE and does not presume evolving into one, as clarified by [ADR-0005](./adr/0005-desktop-product-scope-and-platform-boundaries.md).
 
 The Desktop App is the engineering cockpit. The Core is the product engine.
 
 The initial product should support comfortable assisted development inside Orchestrix: define work, supply context, inspect code and diffs, request corrections, review evidence, and apply approved results. Visual quality, clear structure, and adaptive interaction are initial product requirements. The [Product and UX Research](./PRODUCT_AND_UX_RESEARCH.md) defines discovery and design validation before Desktop implementation.
 
-A future VS Code extension, CLI, web client, or even a dedicated Code-OSS-based IDE may connect to the same Core without changing the orchestration model.
+The primary entry is a conversation with a selectable orchestrator agent using the connections provided by the user, subject to Core policies. A useful default lets the user start without configuring every parameter or copying instructions between workers. Provider, account/connection, runtime, model and worker profile remain distinct; the orchestrator's selection does not authorize a new integration or billing surface. One account/runtime and serial execution remain useful. Production conversational orchestration follows the existing milestones; the prototype selection control does not implement that engine.
+
+A future VS Code extension, CLI or web client may consume the same Core without owning orchestration state. The historical dedicated-IDE option in ADR-0003 is superseded for product scope by ADR-0005.
 
 ---
 
@@ -67,15 +69,15 @@ Conceptually:
 
 ---
 
-## 3. The Desktop App is not initially a full IDE
+## 3. Supporting editor and orchestration evidence
 
-The first Desktop App should provide enough code awareness to understand and supervise the project without reimplementing a complete development environment.
+The Desktop App provides project visibility and lightweight editing to converse, inspect and supervise work. Internal execution remains a Core responsibility; it is distinct from an interactive development environment.
 
 V1 should include:
 
 - project/repository explorer;
 - file tree;
-- read-only or lightweight code viewer;
+- lightweight text/code editor;
 - syntax highlighting;
 - diff viewer;
 - Git state;
@@ -83,17 +85,19 @@ V1 should include:
 - agent-to-file attribution;
 - timeline/events;
 - test/build output;
-- terminal/log views where useful;
+- read-only execution logs/results/evidence;
 - links/actions to open files in an external editor.
 
-The normal assisted workflow should be completable in the app. Lightweight manual editing, including indentation, save, and undo, may be added based on discovery findings. External-editor actions remain optional integrations. Test/build output is evidence from the Core's verification pipeline; the initial product does not require a debugger, test explorer, or an integrated testing environment.
+The normal assisted workflow should be completable in the app. Lightweight editing, Markdown preview, save, undo and unsaved-change handling are supporting-editor requirements. External editor/system-terminal actions remain optional conveniences. The Core can supervise agents, operate Git and run authorized checks with environment tools; the UI may display their logs/results without exposing an interactive console.
 
-V1 does not need to include:
+The product scope excludes:
 
 - full LSP integration;
 - production-grade autocomplete;
 - debugger implementation;
-- extension ecosystem;
+- test explorer and an interactive project-execution environment;
+- embedded interactive terminal;
+- IDE extension ecosystem;
 - full IDE keybinding compatibility;
 - advanced refactoring tooling;
 - integrated language-specific development features already provided by existing IDEs.
@@ -260,13 +264,17 @@ Orchestrix:
 
 ---
 
-## 7. File viewer and diff viewer
+## 7. Supporting editor and diff viewer
 
 The user should be able to inspect agent-produced code without leaving Orchestrix.
 
 V1 should support:
 
 - syntax-highlighted file viewing;
+- lightweight editing of text/code with highlighting appropriate to the language;
+- file/folder opening, tree navigation and file creation in an authorized destination;
+- Markdown preview without executing embedded scripts;
+- save, undo and explicit handling of unsaved changes;
 - side-by-side or unified diffs;
 - worktree vs base comparison;
 - task-specific diff filtering;
@@ -274,7 +282,11 @@ V1 should support:
 - links from an event to the relevant diff/file;
 - links from a review finding to the relevant location.
 
-A complete code editor is optional and can be evaluated later. A bounded lightweight editor can be considered independently, with syntax highlighting, indentation, save/undo, and explicit coordination with active agent writes. Manual changes invalidate evaluations or approvals tied to an earlier artifact version.
+The supporting editor is required; a full IDE is outside the direction. A dirty marker identifies unsaved changes. Ctrl+S (or the platform-equivalent save shortcut) saves the active file; closing a modified file offers Save, Discard and Cancel. Failed/denied saves retain the open buffer and changes. Undo is scoped to the editor buffer and does not silently revert agent writes or Git integration.
+
+Before writing, compare the authorized file's current version/base with the version originally opened. Watchers may notify changes but are not sufficient protection against a race: the write must revalidate and refuse silent overwrite. Agent/manual changes on the same file produce a conflict/reload/compare action that preserves both the user's buffer and the observed disk version. Editing a file does not automatically send it to a provider. Any changed artifact invalidates dependent checks/review/approval on the old version; accepting one version never authorizes applying another.
+
+**Planned acceptance — OX-012/OX-015, with OX-013/OX-014:** open a file without a folder; create a named/extended file in a granted folder; edit/highlight text and code; preview Markdown; save and undo; cancel close without losing edits; retain edits on a failed save; detect an agent write between open/save without overwriting it; invalidate stale artifact approval and require new verification. These are Desktop criteria; browser import/handle demonstrations do not certify them. See the [shell contract](../design-system/workspace-shell.md) for existing controls and [platform criteria](./TECH_STACK.md#platform-boundaries-and-progressive-delivery) for OS-specific behavior.
 
 Inline comments and selected code/diff should support contextual correction requests inside Orchestrix. Navigating between a file, finding, diff, and check preserves the task and artifact version being inspected.
 
@@ -340,23 +352,9 @@ The editor extension should not own canonical scheduler, task, event, or project
 
 ---
 
-## 10. Dedicated Orchestrix IDE is future scope
+## 10. Product scope revision and history
 
-A future Orchestrix IDE based on Code - OSS or another editor foundation is technically possible.
-
-That decision should only be considered if deep IDE integration becomes a major product advantage that cannot be delivered effectively through the Desktop App plus editor extensions.
-
-It is intentionally excluded from initial development because maintaining an IDE introduces a large unrelated surface area:
-
-- editor engine;
-- debugging;
-- language integration;
-- terminal integration;
-- extension compatibility;
-- upstream synchronization;
-- workbench behavior.
-
-The Orchestrix Core should be reusable by such an IDE if this direction is pursued later.
+The 2026-09-10 decision considered a dedicated IDE as possible future scope. That discussion remains in [ADR-0003](./adr/0003-desktop-app-editor-agnostic-core.md) as history. The owner's explicit 2026-10-13 definition, recorded in [ADR-0005](./adr/0005-desktop-product-scope-and-platform-boundaries.md), supersedes those clauses: Orchestrix remains an orchestration app with a supporting editor, without an IDE roadmap. A future change would require another explicit product decision, not an inferred milestone.
 
 ---
 
@@ -387,7 +385,7 @@ Agents / Runtime state
         ↓
 Timeline / Events
         ↓
-Tests / Logs / Terminal output
+Verification results / Logs / Evidence
         ↓
 Orchestration Control Center
 ```

@@ -3,6 +3,8 @@
 - **Status:** Accepted
 - **Date:** 2026-09-10
 
+**Scope revision — 2026-10-13:** [ADR-0005](0005-desktop-product-scope-and-platform-boundaries.md) supersedes the IDE/editor scope clauses below. Desktop + editor-agnostic Core remains accepted. The following text preserves the original decision and alternatives as historical context; references to a future Orchestrix IDE are no longer product direction. The current scope requires a supporting editor and excludes an IDE, including as a presumed future evolution.
+
 ## Context
 
 Orchestrix must supervise coding agents, repositories, Git worktrees, task execution, verification, event streams, context management, retries, and long-running workflows.

@@ -148,6 +148,8 @@ Responsible for external interactions:
 - build/test/lint commands;
 - optional sandbox providers.
 
+Windows, macOS and Linux are intended targets with progressive support. OS-specific process ownership/containment, signals/handles, filesystem/path behavior, credential stores and integration services belong here or in the host/adapter. Domain and runtime wire types remain OS-independent; one platform's evidence does not certify another. [ADR-0005](./adr/0005-desktop-product-scope-and-platform-boundaries.md) and the [platform acceptance matrix](./TECH_STACK.md#platform-boundaries-and-progressive-delivery) define that boundary.
+
 ---
 
 ## 4. Control plane
@@ -176,6 +178,8 @@ No runtime adapter should make these decisions independently.
 ## 5. Runtime adapter boundary
 
 All provider-specific behavior is isolated behind a normalized runtime interface.
+
+Capability observation freshness is a planned application/infrastructure responsibility, not an OS/provider rule embedded in the consumer. The [diagnostic policy](./design/connection-diagnostics.md#atualização-periódica-e-orientada-a-eventos--requisito-planejado) defines scoped periodic/event-driven metadata refresh, budgets/backoff and pre-admission checks; routing consumes versioned valid evidence and preserves active-attempt snapshots. The existing wire 1.1 does not implement this service.
 
 Conceptual Rust-like contract:
 

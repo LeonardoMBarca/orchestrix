@@ -2,6 +2,8 @@
 
 Contrato de **10 de outubro de 2026** para o diagnóstico automático no cadastro de uma conexão e sua repetição em Settings. Complementa o [contrato de conexão](api-connection-contract.md) e a [descoberta de recursos](resource-discovery-increment.md). A interface deve explicar o resultado de várias verificações, específicas para a modalidade e o provedor, sem exigir que a pessoa conheça o protocolo do runtime.
 
+**Alinhamento de 13/10:** a atualização periódica e orientada a eventos abaixo é um **requisito novo planejado**, além do cadastro e Recheck já previstos. Não está implementada no protótipo ou no harness; não muda o contrato wire 1.1 nem autoriza probes. Esta seção é a especificação central de validade/atualização, consumida pelos tickets existentes.
+
 O incremento usa uma lógica de diagnóstico separada da execução. A bridge de desenvolvimento pode ler catálogos API; o relatório reúne essas respostas, configuração e observações autorizadas de adapters. O cadastro de um runtime sem adapter autenticado produz verificações bloqueadas ou desconhecidas, em vez de simular login. Não há inferência, execução de ferramentas ou alteração de permissões durante esse diagnóstico. Autenticação de produção, cofre, worker confiável e gates existentes continuam pendentes.
 
 ## Fluxo automático e nova verificação
@@ -19,6 +21,41 @@ A sequência é:
 **Recheck** repete o diagnóstico no mesmo escopo. Não troca conta, região, endpoint, origem de cobrança ou permissões para obter um resultado melhor. Se a credencial transitória já não está disponível, a interface informa que a leitura depende de fornecê-la novamente; isso não revoga a conexão no provedor. Edição de identidade, desconexão ou remoção invalida a revisão em andamento. Uma resposta tardia não pode preencher outra conexão nem restaurar um recurso removido.
 
 O relatório anterior pode ser mantido como evidência histórica, com sua data e alcance. Falha no recheck não transforma informação antiga em observação atual. Cancelamento encerra a rodada sem declarar que a capacidade foi reprovada. Limites de concorrência, duração, páginas e tamanho de resposta continuam sob responsabilidade do host/adapter.
+
+## Atualização periódica e orientada a eventos — requisito planejado
+
+A política deve definir um intervalo automático configurável e prazo de validade por classe de observação/adapter. Suporte relativamente estável, configuração, identidade e disponibilidade transitória podem exigir validades distintas; um TTL global não certifica todos os campos. Registrar os valores efetivos, unidades, origem e limites, junto dos budgets de duração/páginas/bytes/frequência/concorrência e espera progressiva. Defaults numéricos serão definidos/validados em OX-007/OX-008 conforme as leituras disponíveis, sem assumir a mesma frequência para todos os provedores.
+
+O objetivo é manter o que as interfaces oficiais permitem observar naquele escopo, sem prometer uma matriz perfeita de todas as funções do fornecedor. Recurso não exposto permanece desconhecido, mesmo após uma rodada concluída.
+
+| Gatilho | Comportamento planejado |
+| --- | --- |
+| Cadastro/Recheck manual | Manter a rodada no escopo/revisão selecionados; Recheck não ignora rate limit, autorização ou budgets. |
+| Intervalo periódico | Atualizar observações elegíveis para a conexão habilitada/autorizada, reutilizando dados válidos. Sem credencial disponível, manter bloqueio/ação de login explícita, sem prompt ou login automático inventado. |
+| Reconexão | Revalidar identidade/configuração/versão e capacidades necessárias antes da próxima execução; dados válidos só são reutilizáveis se esse escopo continuar confirmado. |
+| Mudança de identidade, endpoint/região/deployment, configuração ou versão | Invalidar as observações afetadas; descartar resultados tardios da revisão antiga, sem apagar o histórico. Mudança de conta não retoma uma sessão de outra identidade. |
+| Erro indicativo de recurso indisponível | Agendar revalidação direcionada do modelo/recurso/escopo envolvido, com código/fonte e próxima tentativa permitida. Não declarar modelo descontinuado a partir de timeout, catálogo parcial ou rate limit. |
+| Nova decisão/admissão de execução | Consultar validade das capacidades **necessárias**. Usar cache válido; revalidar somente dados críticos vencidos/ausentes ou bloqueá-los. Não fazer inventário completo por mensagem. |
+
+Agrupar leituras quando uma resposta satisfizer várias verificações. Usar uma rodada em voo por chave de escopo/revisão, agrupar pedidos simultâneos e limitar concorrência por conexão/provedor e globalmente; requests coalescidos não disparam mais chamadas. Priorizar a revalidação necessária à admissão, dentro dos mesmos limites, sem executar loops de consulta ou retries de inferência. Falhas repetidas aplicam espera progressiva limitada e respeitam `Retry-After` ou equivalente quando exposto. Ausência de rede/autorização gera estado e próxima ação, não tentativas imediatas contínuas. Cancelamento/desconexão encerra rodadas próprias e rejeita respostas antigas.
+
+Cada observação mantém conexão/revisão, modelo e backend/versão aplicáveis, fonte, escopo, instante da última leitura bem-sucedida, validade e completude. Não inventar data para evidência não datada. Renovar a validade exige outra observação bem-sucedida pertinente; uma falha de recheck não altera a data original. O planejamento de validade/eventos deve ser versionado na camada diagnóstica futura de OX-003/OX-005, sem tratar o `observedAt` opcional do wire atual como um TTL já implementado.
+
+| Condição exibida/consumida | Significado |
+| --- | --- |
+| Atual | Observação datada ainda válida, no escopo/revisão/versão confirmados. Completeness e o eixo de suporte/disponibilidade continuam visíveis. |
+| Desatualizada | Última observação conhecida está vencida ou seu escopo deixou de ser válido. Pode ser mostrada como histórica, com data; não como confirmação atual. |
+| Desconhecida | Não há evidência suficiente ou a fonte não expõe o recurso. Uma leitura bem-sucedida pode legitimamente manter `unknown`. |
+| Indisponibilidade confirmada | Evidência específica do acesso/modelo naquele escopo, com fonte/data/validade. Não significa necessariamente suporte negado ou descontinuação. |
+| Falha temporária de consulta | Timeout/transporte/rate limit da leitura, com código e espera/ação indicada. Mantém a evidência histórica, sem convertê-la em ausência do recurso. |
+
+Validade, estado da leitura, completude, suporte, configuração e disponibilidade são eixos separados, não um novo enum que substitui os existentes. Catálogo parcial não invalida fatos positivos efetivamente observados, mas impede inferir ausência dos itens não cobertos. Cache vencido de uma restrição obrigatória (cobrança, identidade, permissão ou capacidade exigida) requer revalidação ou bloqueio explicado; não admite execução usando esse cache. Para dados não críticos, a política conservadora pode exibir o último valor datado, mas o routing trata-o como desconhecido para ampliar elegibilidade ou garante apenas uma alternativa com evidência válida. Não afirmar novo acesso/capacidade com base em informação antiga.
+
+Consultas automáticas usam somente metadata/configuração autorizadas expostas pelo adapter, sem alterar permissões, aceitar acordos, iniciar inferência, executar ferramentas ou preencher lacunas com probes potencialmente cobrados. Uma API explicitamente cadastrada pode ter leituras autorizadas; isso não libera execução API sob Subscription Only. Provas ativas continuam separadas, com objetivo, efeitos, custo/limites e autorização.
+
+Mudanças confirmadas geram nova versão de observação e explicação visível do efeito na elegibilidade para **novas decisões**. Guardar a evidência usada por cada decisão/tentativa; não trocar modelo, thinking, configuração ou conexão de trabalho ativo silenciosamente. Erro na tentativa ativa segue supervisão/reconciliação e comandos explícitos, sem ser resolvido por redispatch ou mutação do snapshot.
+
+**Aceite planejado:** usando relógio/respostas controlados, verificar reutilização antes do vencimento, revalidação/bloqueio de requisito crítico vencido, reconexão/versão/identidade, resultados tardios, consulta direcionada após erro, coalescência e concorrência, budgets/backoff, datas históricas intactas após timeout, catálogo parcial sem remoção inventada, explicação das mudanças e tentativa ativa inalterada. Recheck manual e gatilhos automáticos não iniciam inferência nem fallback pago. Integração e persistência pertencem a OX-003/OX-005/OX-007/OX-008; configuração/apresentação a OX-012/OX-016. O serviço de atualização não é pré-requisito novo para terminar a conformance do primeiro contrato single-account.
 
 ## Três informações que a interface conserva separadas
 

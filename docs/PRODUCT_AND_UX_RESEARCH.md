@@ -133,7 +133,7 @@ Avaliar o protótipo com o responsável pelo produto e desenvolvedores represent
 
 Modernidade visual deve aparecer em tipografia, ritmo de espaçamento, alinhamento, densidade, superfícies, iconografia e transições consistentes. Definir paleta e identidade após explorar as direções; cores de status devem manter significado entre temas. Movimento precisa respeitar redução de animações e não atrapalhar leitura de logs ou revisão.
 
-O Orchestrix deve permitir desenvolver pelo fluxo assistido dentro do aplicativo. Edição leve de código é uma capacidade delimitada, a ser priorizada conforme pesquisa, incluindo aviso de escrita concorrente e invalidação de verificações após alteração manual. IDE completo, debugger, LSP e ambiente integrado de testes não são requisitos iniciais. A verificação determinística do Core continua necessária; sua interface mostra evidência e ações relacionadas ao trabalho.
+O Orchestrix deve permitir desenvolver pelo fluxo assistido dentro do aplicativo. O [alinhamento de 13/10](./design/product-alignment-2026-10-13.md) confirma o [editor auxiliar e seu aceite](./DESKTOP_APP_AND_PROJECT_WORKSPACE.md#7-supporting-editor-and-diff-viewer): árvore/abertura, edição leve com realce, Markdown/diff, salvar/desfazer e alterações não salvas coordenadas com writes dos agentes e versões de artefato. A direção vigente exclui IDE completo, debugger, test explorer, LSP de IDE, terminal interativo embutido e ambiente interativo de execução de projetos, sem evolução presumida para IDE. A verificação determinística do Core continua necessária; sua interface mostra evidência e ações relacionadas ao trabalho. Essa clarificação não reabre D0 nem transforma critérios planejados em resultados de usabilidade.
 
 ## 8 Critérios de aceite de experiência
 

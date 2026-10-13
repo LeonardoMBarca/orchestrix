@@ -17,6 +17,8 @@ Exemplo: a pessoa mantém `Development`, mas configura o implementador para segu
 
 A **Routing Strategy** define como distribuir recursos entre modelos e esforço de raciocínio: `Efficiency`, `Performance`, `Balanced` ou `Custom`. Não substitui o modo nem o perfil. Os [presets especializados e regras de escolha](./routing-strategies.md) seguem a política existente: um modo `Research`, por exemplo, pode usar o preset `Scientific Research` e perfis de análise, com ferramentas e capacidades elegíveis.
 
+**Esclarecimento de 13/10:** a conversa principal é com um agente orquestrador selecionável, dentro das políticas do Core. Escolher esse agente não o confunde com Action Mode ou Worker Profile, nem altera identidade/cobrança das conexões. Modos (finalidade), perfis (comportamento/especialidade), estratégia (prioridade de recursos), presets especializados e preferências manuais são combináveis; um padrão útil não obriga configurar tudo antes de começar. Capacidades atuais/validades seguem os [diagnósticos](connection-diagnostics.md#atualização-periódica-e-orientada-a-eventos--requisito-planejado), sem mudar o snapshot de trabalho ativo.
+
 ## Catálogo nativo da versão inicial
 
 Os nomes abaixo são propostos em inglês; descrições e conteúdos podem seguir o idioma da interface e a preferência do usuário.

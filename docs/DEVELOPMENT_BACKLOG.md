@@ -1,5 +1,7 @@
 # Backlog inicial de desenvolvimento do Orchestrix
 
+**Alinhamento documental — 13/10:** [definições existentes/esclarecidas e requisito novo](./design/product-alignment-2026-10-13.md). [ADR-0005](./adr/0005-desktop-product-scope-and-platform-boundaries.md) conserva Desktop + Core, confirma editor auxiliar e distribuição progressiva Windows/macOS/Linux, sem direção futura de IDE. Atualização periódica/event-driven de capacidades entra nos tickets abaixo; não foi implementada e não vira novo gate para a conformance OX-003 em andamento.
+
 Este backlog começa por D0/D1, pesquisa e design, implementa M0 a M2 do [plano de desenvolvimento](./DEVELOPMENT_PLAN.md) e prepara M3 e M4. A [execução do plano](./DEVELOPMENT_STATUS.md) entrega pesquisa, protótipo e primeiro spike real Codex; os tickets de produção ainda não foram implementados. O objetivo é fundamentar a solução e sua experiência antes de fechar um ciclo confiável de implementação, verificação, revisão e integração no aplicativo.
 
 Os critérios de aceite devem ser demonstrados antes de considerar uma tarefa concluída. A sequência principal é D0 → D1 → M0 → M1 → M2. Dependências permitem paralelizar tarefas independentes dentro do marco. **D0 está concluído pelo critério de pesquisa consolidado em 08/10/2026; D1 tem [estudo implementado e verificado](./design/d1-delivery.md), piloto reportado e reteste humano favorável em 12/10. D1-FB-01 está resolvido e o gate piloto foi liberado para M0; P0 indisponíveis e avaliação externa continuam pendentes conforme o registro.** A [conclusão](./research/d0-conclusion.md) registra a alteração de método e os limites; os experimentos antecipados não fecham D1/M0.
@@ -123,6 +125,8 @@ O [incremento de diagnósticos](./design/connection-diagnostics.md) acrescenta u
 
 Definir `RuntimeDescriptor`, capabilities por conexão/modelo, configuração solicitada/efetiva, eventos, erros e término. Operações opcionais, como retomada e telemetria de cota, precisam expressar ausência de suporte.
 
+Preservar conformance portátil sem tipos de OS/Tauri ou mensagens nativas no consumidor. Para a futura atualização de capacidades, preparar evolução versionada das observações com escopo, fonte, data, runtime/configuração e completude, sem confundir validade, falha de consulta e suporte. A [política central](./design/connection-diagnostics.md#atualização-periódica-e-orientada-a-eventos--requisito-planejado) é planejada; o contrato 1.1 não implementa TTL/serviço de refresh. Não exigir esse serviço ou todos os sistemas/provedores antes de portar o primeiro consumidor Rust.
+
 **Preparação:** 11 cenários do fake app-server e **58 testes do contrato experimental** estão no harness preparatório, incluindo [admissão/interrupção, observação de descendente e limites de saída/fila](./research/offline-lifecycle-validation.md). A rodada de 10/10 aprovou os 48 testes anteriores e dez novos com uma fixture própria que pode deixar de ler stdin. Limites padrão de 1 MiB por frame e 2 MiB na fila Writable não certificam memória global. O watchdog do helper tem prova sintética separada em nove casos nativos; a integração ao transporte/runtime continua pendente. Não são o contrato Rust final nem dispensam a dependência do primeiro runtime aprovado ou o gate humano D1. Eventos de perda de sinal não viram sucesso/falha terminal inventados.
 
 **Aceite:** fixtures e fake runtime reproduzem sucesso, evento inválido, autenticação inválida, rate limit, interrupção, timeout e crash. O Core recebe o mesmo contrato sem importar eventos específicos de cada provedor. Campos desconhecidos compatíveis não derrubam o parser; incompatibilidades são diagnosticadas.
@@ -145,6 +149,8 @@ Escolher acesso SQLite com spike pequeno. Criar migrações, estado atual, event
 
 Persistir modos locais, perfis personalizados e suas versões. Os snapshots das tentativas identificam modo, perfil e política efetiva; edição e restauração de padrões conservam a proveniência do trabalho anterior.
 
+Persistir observações diagnósticas versionadas e histórico/fonte/validade, com referências da evidência usada por decisão/tentativa. Falha de atualização não renova a data do último sucesso nem reescreve snapshots antigos; respostas de outra revisão são recusadas, conforme a política de diagnósticos. Esta extensão pertence à implementação futura de OX-005, sem antecipar SQLite em M0.
+
 Persistir projetos, suas conversas salvas, conversas avulsas, pedidos/orientações e referências com idempotência, sem duplicar transcripts internos dos providers. Recuperar histórico, rascunhos das sessões existentes e relação com tentativas, com reabertura manual: iniciar/recarregar/reabrir a UI apresenta HOME e não restaura automaticamente a última sessão ativa. Projetos podem existir sem conversas; composer antes do primeiro envio não vazio é temporário e não uma sessão persistida. Associar uma conversa a um projeto não duplica mensagens nem recria seus Runs. O estudo D1 recupera sessões salvas/rascunhos no armazenamento do navegador com limites; não demonstra a persistência de produção, idempotência ou reconexão de runtimes.
 
 **Aceite:** reinício recarrega dados; reaplicar comando não duplica tentativa; falha de transação não deixa estado sem evento; migração é validada sobre banco existente de teste. Eventos têm sequência e versão de schema. Outputs são sanitizados antes de persistir; fixtures com segredos fictícios conhecidos comprovam redaction nos caminhos suportados.
@@ -163,6 +169,8 @@ Integrar leituras de diagnóstico sem iniciar trabalho de modelo, hooks ou ferra
 
 **Aceite:** saída extensa não bloqueia leitura; crash, auth failure e rate limit têm classificações distintas; cancelamento gracioso escala para encerramento; nenhuma opção de API é ativada como fallback silencioso. Execução incerta permanece identificável para reconciliação.
 
+Implementar a atualização periódica/event-driven das leituras autorizadas conforme [diagnósticos](./design/connection-diagnostics.md#atualização-periódica-e-orientada-a-eventos--requisito-planejado): rodadas coalescidas por escopo/revisão, frequência/concorrência/budgets limitados, backoff e revalidação direcionada por erro/reconexão. Sem inferência/tools/probes cobrados automáticos. **Aceite adicional planejado:** relógio/fixtures comprovam coalescência, espera progressiva, cancelamento e descarte tardio; supervisão/processos satisfazem a [matriz do sistema anunciado](./TECH_STACK.md#platform-boundaries-and-progressive-delivery), sem inferir macOS/Linux da prova Windows.
+
 ### OX-008 Política e contexto
 
 Implementar schema inicial versionado, precedência, limites obrigatórios e snapshot efetivo. Construir Context Pack por seleção explícita, com critérios de aceite, instruções pertinentes, fontes e manifesto. Começar com elegibilidade e preferências ordenadas.
@@ -172,6 +180,8 @@ Resolver requisitos e padrões de modo/perfil sem criar precedência implícita.
 Consumir os diagnósticos atuais do escopo correto, mantendo reasoning, service tier, ferramentas, permissões e native multi-agent como decisões independentes. Registrar solicitado/efetivo e a evidência usada; cache ou capacidade agregada não libera todos os modelos. Uma futura opção de delegação nativa exige benefício, escopo e budgets de tokens/tempo/concorrência, além de cancelamento e responsabilidade definidos; permanece desativada por padrão, sem substituir o scheduler.
 
 **Aceite:** mesmas entradas produzem a mesma resolução; override não viola restrição obrigatória; setting não suportado gera bloqueio ou fallback explícito. O pacote enviado é inspecionável, tem origem/versão e indica omissões. Modelos disponíveis dependem da conexão e versão observadas.
+
+**Aceite de validade planejado:** antes de nova execução, cache válido das capacidades necessárias é reutilizado; evidência crítica vencida/ausente revalida ou bloqueia; dados não críticos antigos ficam históricos e não ampliam elegibilidade. Mudança confirmada tem explicação e afeta novas escolhas, mantendo o snapshot ativo. Testes controlados distinguem partial/timeout de indisponibilidade confirmada e não fazem inventário a cada mensagem. OX-008 resolve valores de intervalo/TTL e defaults conforme a política central, sem remover verificações obrigatórias sob Efficiency.
 
 ### OX-009 Verificação e execução completa
 
@@ -197,11 +207,15 @@ Reconciliar tentativas, worktrees, artefatos, locks e identidade de processos an
 
 Criar shell Tauri/React, seleção de repositório Git, recentes, conexão ao daemon e estados de disponibilidade. Oferecer entrada por projeto/fluxo guiado e por conversa avulsa, várias conversas por projeto e associação posterior preservando histórico. Adicionar cadastro de Connection, seleção de autenticação pelo fluxo oficial, verificação de identidade/disponibilidade e desconexão. Exibir suporte do runtime sem exigir criação de um projeto novo.
 
+A conversa principal oferece orquestrador selecionável e padrão útil dentro das políticas do Core, sem exigir repasse manual de instruções ou configuração completa. O motor de planejamento conserva seu marco; a seleção não o declara implementado. Levar o [editor auxiliar e seus critérios](./DESKTOP_APP_AND_PROJECT_WORKSPACE.md#7-supporting-editor-and-diff-viewer) ao Desktop: árvore/abertura avulsa/criação, edição leve com realce, Markdown/diff, save/undo e alterações não salvas. Não incorporar IDE, terminal interativo, debugger ou test explorer.
+
 Portar o diagnóstico automático de cadastro e o recheck de Settings, com progresso, verificações por tipo/provedor, detalhe por modelo e próxima ação para falhas/bloqueios reais. Cancelar ou editar/desconectar invalida a rodada correspondente; reabrir não promove um resultado histórico a observação atual. Nenhum botão de diagnóstico concede Full access ou autoriza execução API. Avaliar essa compreensão no piloto de experiência.
 
 Portar os tokens, assets, componentes, navegação e estados de OX-D04/OX-D05, consultando a [pasta de padronização](../design-system/README.md), para Tauri/React/TypeScript. A interface inicial usa Studio navy/índigo, logo transparente e chat como entrada, com detalhes técnicos progressivos e painéis adaptativos. Preservar os sete temas alternativos e levar a preferência global de idioma ao armazenamento do Desktop: English por padrão, Português e Español disponíveis, sem alterar conteúdo ou estado do trabalho. O estudo isolado em HTML/CSS/JavaScript permanece referência; não muda a stack nem autoriza antecipar o gate de D1.
 
 **Aceite:** abrir projeto existente não altera seu conteúdo; usuário registra e verifica uma conexão sem expor credenciais; janela reconecta ao mesmo run; erro de Git/runtime tem ação clara; fechar segue a preferência de continuar execução ou suspender novas admissões pelo daemon, preservando tentativas ativas, e reabrir reconecta ao estado existente. Comparação com protótipo, teclado, temas e layout compacto/amplo passam pelo aceite de experiência. O build Windows é reproduzível.
+
+**Aceite adicional de editor/plataforma:** save negado e Cancel preservam o buffer; salvar revalida a versão/base e detecta write concorrente sem sobrescrever; desfazer não reverte mudanças externas silenciosamente. Por sistema anunciado, testar arquivos/credenciais/atalhos/layout e build segundo a matriz da stack. Windows primeiro permanece permitido; não alegar três plataformas pela existência de HTML/Tauri.
 
 ### OX-013 Revisão e correção
 
@@ -221,6 +235,8 @@ Entregar criação/edição de tarefa manual com objetivo, critérios, risco, co
 
 Manter o chat como fluxo inicial e revelar inspeção/Studio conforme a necessidade, usando os [padrões aprovados](../design-system/README.md). Detalhes técnicos e estados de atenção precisam ser acessíveis sem obrigar toda pessoa a começar por eles; superfícies de trabalho não recebem as montanhas ou partículas do site.
 
+Mostrar mudanças de arquivo e de capacidades com fonte/versão, distinguindo histórico, dado atual e falha temporária. Editar/compare/reload deve preservar o buffer e a versão em revisão; mutação manual ou de agente invalida checks/aceites dependentes de outra versão, em integração com OX-013/OX-014. Logs/results de execução interna são evidências e não oferecem console interativo.
+
 **Aceite:** usuário entende o bloqueio atual, configuração efetiva e resultado do trabalho sem abrir o banco ou ler transcript completo; pode interromper execução; UI reconectada não perde eventos nem duplica comandos. Atualizações preservam seleção/foco e versão em revisão; painéis não escondem a ação principal em janela compacta. Pedidos de correção sobre código/diff funcionam dentro do app.
 
 ### OX-016 Control Center inicial
@@ -228,6 +244,8 @@ Manter o chat como fluxo inicial e revelar inspeção/Studio conforme a necessid
 Editar presets e preferências de conexão, modelo, reasoning, revisão, contexto e limites. Mostrar configuração solicitada/efetiva, validação e mudança de versão. Sem telemetria real, cota aparece como desconhecida.
 
 Conservar os [diagnósticos de conexão](./design/connection-diagnostics.md), suas datas/origens e recheck em Accounts, com distinção entre suporte, disponibilidade, configuração e execução observada. Exibir Ultra/reasoning, velocidade, multi-agent nativo e permissões separadamente; não classificar dados desconhecidos como falha de uma conta. Leituras administrativas de uso/crédito e futuros probes ativos seguem autorizações/limites específicos, sem fallback cobrado sob Subscription Only.
+
+Expor a política configurável de intervalo/validade e o próximo refresh permitido/ação, dentro dos limites do adapter/Core. **Aceite planejado:** cache vencido mostra data histórica; falha temporária/backoff difere de indisponibilidade confirmada; Recheck não contorna limites e alterações não modificam tentativa ativa. Não apresentar quotas/capacidades perfeitas quando a fonte não as expõe.
 
 Oferecer as quatro estratégias, presets especializados, catálogo dos seis modos nativos, criação de modos especializados locais e edição dos campos autorizados dos perfis executores. Edição parcial dos modos nativos conserva sua finalidade e contratos obrigatórios. Seleção simples fica próxima do chat; regras por escopo, overrides, explicações e restauração de padrões permanecem inspecionáveis sob demanda.
 
@@ -240,6 +258,8 @@ Preservar a galeria de oito temas e a escolha persistente de idioma como configu
 ### OX-017 Alpha de uso real
 
 Usar o Desktop para uma alteração pequena no próprio Orchestrix, documentar o fluxo e produzir instruções de instalação local. Manter CI com fake/fixtures e testes live opt-in.
+
+Aplicar a [matriz multiplataforma](./TECH_STACK.md#platform-boundaries-and-progressive-delivery) a cada sistema que receber afirmação de suporte, registrando OS/versão/arquitetura, runtime/dependências, resultados e limites. Windows pode ser o primeiro alpha; macOS/Linux seguem entrega progressiva em M5, sem promessa simultânea. Compilar não basta para provar runtime, arquivos, credenciais ou instalação/upgrade. Demonstrar também o editor auxiliar e a validade/explicação de capacidades em integração, sem considerar esses requisitos implementados por texto/fixtures isoladas.
 
 Demonstrar também uso serial com uma conta, escolha de recursos justificável para tarefas simples e complexas, parâmetros não suportados com fallback/bloqueio explícito e uma consulta de status Git sem chamada de modelo. Registrar um fluxo real representativo por modo nativo, incluindo fontes em Research, arquivo exportado/revisado em Presentations e sugestões sem aplicação automática em Improvement Review. Catálogo no site não constitui entrega desses fluxos.
 

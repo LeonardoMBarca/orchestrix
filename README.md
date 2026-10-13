@@ -2,11 +2,13 @@
 
 > **Make your coding agents work as a team.**
 
-Orchestrix is a **local-first, multi-model orchestration control plane for AI coding agents**.
+Orchestrix is an **open-source Desktop app for conversing with a selectable orchestrator of coding agents**, using the connections you provide and policies enforced by its editor-agnostic Core.
 
 Instead of manually moving tasks, reviews, context, and feedback between tools such as Codex, Claude Code, and Antigravity, Orchestrix aims to coordinate them as specialized workers inside a single observable and controllable engineering system.
 
 The project is designed first as a personal engineering tool and portfolio project, with an open-source direction from the beginning.
+
+One account, one runtime and serial execution remain useful; multiple accounts/providers expand validated options. Windows, macOS and Linux are intended distribution platforms with progressive validation, not a simultaneous release promise. The app includes a supporting file/text/code editor; an IDE, embedded interactive terminal, debugger and test explorer are outside the product direction. The Core still supervises agents, operates Git and runs authorized checks, exposing logs and evidence. [Product alignment and platform/editor boundaries](./docs/design/product-alignment-2026-10-13.md).
 
 > **Status:** early architecture and design phase. No stable release exists yet.
 
@@ -14,7 +16,7 @@ The [development work](./docs/DEVELOPMENT_STATUS.md) includes sourced product/UX
 
 The approved [style reference](./design-system/README.md) now guides the website and future Desktop implementation: shared navy/indigo identity, transparent logo variants, a calm Studio workspace and chat-first progressive controls. The public site is in English; the app defaults to English and also supports Portuguese and Spanish through a persistent UI preference. The folder links the existing token sources, assets, component patterns, motion rules and visual evidence so new screens can follow the same direction.
 
-The [workspace revision](./docs/design/d1-shell-revision.md) introduces a session/project tree, movable panels with tabs, modeless Settings and external illustrated help. A fresh visit starts without sample projects, accounts or tasks. English is the default; Portuguese and Spanish live in Settings → General, with appearance under Themes. The [pilot](./docs/design/d1-pilot.md) is postponed at the owner’s request until the interface is satisfactory. Open the [app HTML](./prototypes/desktop/index.html) directly or use the optional preview server. The current [build manifest](./docs/design/d1-build-manifest.json) and [development status](./docs/DEVELOPMENT_STATUS.md) record verification; the earlier 77/77 interface run remains historical. Browser persistence does not replace production storage, and provider login, runtime execution or live quota/credit telemetry is not claimed. The development host supports read-only API catalogs and [automatic connection diagnostics](./docs/design/connection-diagnostics-increment.md), with scoped observations and recheck. Runtime gates remain open.
+The [workspace revision](./docs/design/d1-shell-revision.md) introduces a session/project tree, movable panels with tabs, modeless Settings and external illustrated help. A fresh visit starts without sample projects, accounts or tasks. English is the default; Portuguese and Spanish live in Settings → General, with appearance under Themes. The [human pilot and docking retest](./docs/design/d1-pilot.md) released the D1 gate; external evaluation and production integration remain pending. Open the [app HTML](./prototypes/desktop/index.html) directly or use the optional preview server. The current [build manifest](./docs/design/d1-build-manifest.json) and [development status](./docs/DEVELOPMENT_STATUS.md) record verification; the earlier 77/77 interface run remains historical. Browser persistence does not replace production storage, and provider login, runtime execution or live quota/credit telemetry is not claimed by the prototype. The development host supports read-only API catalogs and [automatic registration diagnostics](./docs/design/connection-diagnostics-increment.md), with scoped observations and Recheck. [Periodic/event-driven capability refresh](./docs/design/connection-diagnostics.md#atualização-periódica-e-orientada-a-eventos--requisito-planejado) is a new planned requirement, not implemented by these diagnostics. OX-003 has an integrated experimental Codex contract; Rust/production gates remain open.
 
 ## Why Orchestrix?
 

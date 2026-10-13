@@ -4,6 +4,10 @@ This directory contains the evolving design and engineering documentation for Or
 
 ## Core documents
 
+### [Product Alignment — 2026-10-13](./design/product-alignment-2026-10-13.md)
+
+Explicit owner definitions distinguish existing requirements, clarified non-IDE/editor/platform scope and the new planned periodic/event-driven capability refresh. Canonical criteria stay in workspace, technology stack and connection diagnostics, linked to existing tickets. ADR-0005 supersedes only ADR-0003's IDE/editor scope; no interface redesign or new milestone. Rust conformance remains next, with the missing toolchain requiring preparation.
+
 ### [Codex Contract Integration — OX-003](./research/codex-contract-integration.md)
 
 Connects the experimental app-server adapter to the portable 1.1 observer and harnesses, with private native mappings, bounded per-model discovery and offline replay of historical/synthetic evidence. Records 255 passing harness checks and the reexecuted 21 transport/9 helper Windows checks. Missing ACK/catalog/process associations remain unknown. OX-003 stays open for Rust consumption/conformance; toolchains were not installed and no new provider inference ran.
@@ -164,6 +168,7 @@ Current ADRs:
 - [`ADR-0002 — Model and Reasoning Controls Are First-Class Policy`](./adr/0002-model-and-reasoning-policy.md)
 - [`ADR-0003 — Desktop App with an Editor-Agnostic Core`](./adr/0003-desktop-app-editor-agnostic-core.md)
 - [`ADR-0004 — Providers Own Conversational Context; Orchestrix Owns Durable Project Context`](./adr/0004-context-ownership.md)
+- [`ADR-0005 — Desktop Product Scope and Platform Boundaries`](./adr/0005-desktop-product-scope-and-platform-boundaries.md) — accepted owner clarification; partially supersedes ADR-0003's IDE/editor scope while preserving Desktop + Core and its historical alternatives.
 
 ADRs should be used when a decision materially affects one or more of:
 
