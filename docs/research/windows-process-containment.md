@@ -159,4 +159,6 @@ Não foi incorporado código das referências. A leitura focada de Jackalope (`p
 
 O helper continua **experimental**, sem definir a dependência final Rust/Tauri. Processos delegados a serviços fora do Job, handles duplicados, todas as combinações de nesting e recuperação após crash não estão certificados. A autorização anterior terminou com **2/5 usados**, sem reaproveitamento automático do saldo; a nova autorização pós-correção terminou com **5/5 usados**. Não iniciar nova inferência com base em nenhuma delas.
 
+**Continuação OX-003:** o [contrato portátil e fake](../contracts/runtime-contract-v1.md) passaram check e **162/162 offline em 34,89 s**, incluindo os 131 anteriores e 31 novos casos. Essa continuação não alterou a bridge/helper; os resultados nativos 21/21 e 9/9 permanecem da revisão anterior, sem nova execução. A prova live acima conserva sua revisão de código e não é reclassificada pelo fake.
+
 OX-001 permanece aberto para diagnóstico completo/paginação do catálogo, service tiers/features nativas e a investigação de OAuth próprio **INT-10**. A escolha do primeiro runtime não encerra OX-002, multiaccount ou M0 por associação. O próximo trabalho liberado é o contrato/fake experimental de OX-003, preservando Subscription Only e a separação entre contexto interno do runtime e memória durável do Orchestrix.

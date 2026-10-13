@@ -14,7 +14,7 @@ Resumes OX-001 after the human D1 retest. The [live validation record](./researc
 
 ### [D1 Activity Rail and Files](./design/activity-shell-revision.md)
 
-Records the 2026-10-12 desktop direction: a fixed left activity rail, reorderable Chat/Files/Studio/Connections, utility actions at the bottom, activity navigation on the left and Sessions on the right. Covers resizable and collapsible side docks, File/Edit/View/Help menus, authorized file access, small text edits and Markdown preview. Direct folder saves and imported-file copies remain distinct. The [eight-step pilot](./design/d1-pilot.md#primeiro-percurso-atual--oito-passos-pelo-chat) includes this organization; human validation and runtime gates remain open.
+Records the 2026-10-12 desktop direction: a fixed left activity rail, reorderable Chat/Files/Studio/Connections, utility actions at the bottom, activity navigation on the left and Sessions on the right. Covers resizable and collapsible side docks, File/Edit/View/Help menus, authorized file access, small text edits and Markdown preview. Direct folder saves and imported-file copies remain distinct. The initial pilot and docking retest released the D1 gate; external evaluation and production integration remain open in their existing tickets.
 
 ### [Connection Diagnostics](./design/connection-diagnostics.md)
 
@@ -22,11 +22,11 @@ Defines automatic provider-specific checks when a connection is registered, thei
 
 ### [Development Status](./DEVELOPMENT_STATUS.md)
 
-Records completed D0 research, its explicit methodology revision, solution journeys, integration recommendations and visual benchmarking. Also tracks the [Desktop study](../prototypes/desktop/README.md) with Studio as default and the [runtime harness](../tools/runtime-harness/README.md) with a bounded Codex subscription probe. D1 pilot and runtime/production gates remain pending.
+Records completed D0 research, the released D1 pilot gate, the [Desktop study](../prototypes/desktop/README.md) with Studio as default, and current M0 evidence. The first local Codex app-server surface is approved after the five-turn subscription proof; OX-003 has an initial portable contract and fake. OX-001 diagnostic/authentication work, OX-002, M0 and production integration retain their gates.
 
 ### [D1 Prototype Delivery](./design/d1-delivery.md)
 
-Records the 2026-10-09 Studio prototype candidate with multiple conversations per project and standalone conversations, preserving guided onboarding, four-task Run, versioned context, account states and adaptive panels. Includes its historical 36 passing technical scenarios, visual captures, a reproducible build identifier and memory/simulation limits. Later visual and language revisions are recorded in the progressive experience and development status. The [pilot guide](./design/d1-pilot.md), [scenario matrix](./design/d1-scenario-matrix.md) and [visual system](./design/d1-design-system.md) keep human validation and runtime proofs separate. D1 remains open pending the initial pilot.
+Records the 2026-10-09 Studio prototype candidate with multiple conversations per project and standalone conversations, preserving guided onboarding, four-task Run, versioned context, account states and adaptive panels. Includes its historical 36 passing technical scenarios, visual captures, a reproducible build identifier and memory/simulation limits. Later revisions and the released pilot gate are recorded in the development status. The [pilot guide](./design/d1-pilot.md), [scenario matrix](./design/d1-scenario-matrix.md) and [visual system](./design/d1-design-system.md) keep human validation and runtime proofs separate; external evaluation remains pending.
 
 ### [D1 Build Manifest](./design/d1-build-manifest.json)
 
@@ -74,15 +74,19 @@ Adds Jackalope and Cobalt to the initial nine-family survey and records Superset
 
 ### [Runtime Harness Results](./research/runtime-harness-results.md)
 
-Records the local Codex app-server experiment, normalized offline fixtures, supported/unknown capabilities and sanitized live evidence. Confirms a trivial response and interrupted turn via existing ChatGPT authentication; leaves process-tree supervision, real resume, code execution and independent accounts pending. Includes a [version-specific protocol inspection](./research/codex-protocol-spike.md) and a [discovery handoff](./research/discovery-handoff.md).
+Records the initial Codex experiment and its later evidence. The current [app-server/CLI comparison](./research/cli-app-server-comparison.md) passed edit/checks and exact resume on both surfaces, plus forced owned-Job termination on app-server. The first adapter uses app-server in the local single-account scope; independent accounts, complete diagnostics and production remain pending. Historical protocol inspection and earlier failures remain linked separately.
+
+### [Runtime Contract v1](./contracts/runtime-contract-v1.md)
+
+Defines the initial provider-neutral OX-003 wire contract, portable validator/observer and serial in-memory fake. Covers connection/model capabilities, reasoning levels, requested/effective configuration, ownership, compatibility, budgets, errors and independently sourced supervisor observations. The 31 new cases are included in 162 passing offline tests. Codex normalization, full diagnostics and Rust Core consumption remain pending; the JavaScript reference is experimental.
 
 ### [Offline Lifecycle Validation](./research/offline-lifecycle-validation.md)
 
-Records the 09/10 preparation: active/uncertain turn admission, shared terminal observers, bounded process observation and a detached descendant surviving its parent on Windows. The 10/10 transport increment bounds outbound frames and the Writable queue, distinguishes local pre-write rejection from transport uncertainty, and passed 58/58 offline tests. Keeps parent exit, closed pipes and tree termination separate. A later native helper revision independently proves its watchdog under blocked stdout; integration with transport/runtime and total memory bounds remain pending. Offline evidence does not resume M0, validate provider capabilities or close the D1 pilot gate.
+Records the historical 09/10–10/10 preparation: active/uncertain turn admission, shared terminal observers, bounded process observation, detached descendants and outbound backpressure, with 58 offline tests at that revision. Keeps parent exit, closed pipes and tree termination separate. Later transport/runtime integration is recorded in Windows Process Containment; this earlier offline evidence alone did not release D1 or prove provider capabilities.
 
 ### [Windows Process Containment](./research/windows-process-containment.md)
 
-Records a final **9/9 native Windows Job Object suite**, including an independent watchdog under blocked stdout. The synthetic helper associates its root at creation, observes detached descendants and limits termination to its own Job and helper. In the pressure case, known members exited in 3733 ms and the helper in 4762 ms after the marker, before the fixture's 20-second safety timer, with no fabricated `stopped` response. Preserves the original eight-case run, an intermediate 8/9 attempt, setup/identity limits and the separate 58 offline contract tests. No coding-agent integration or D1/M0 completion is claimed.
+Records the original helper/watchdog suites, integrated byte transport, SystemDrive diagnosis and the passing five-turn Codex app-server/CLI proof. Distinguishes synthetic tests, real execution, cooperative interruption and forced owned-Job termination without a fabricated remote terminal. Preserves failures, deadlines, ownership and unknown limits. The first local runtime is approved; complete diagnostics, account isolation, Rust supervision and M0 remain open.
 
 ### [Development Plan](./DEVELOPMENT_PLAN.md)
 

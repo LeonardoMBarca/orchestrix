@@ -4,7 +4,23 @@ Experimento isolado de protocolo, executável com **Node 24+ e Git**, sem depend
 
 Foi uma antecipação técnica. Em **12/10/2026**, o reteste humano de D1 liberou o gate piloto e **M0 foi retomado em OX-001**. A avaliação externa e os critérios de integração continuam nos tickets existentes; nenhum experimento promove automaticamente o adapter a produção.
 
-## Incremento atual — worktree e retomada
+## OX-003 — contrato inicial portátil
+
+O primeiro runtime foi aprovado no recorte local descrito abaixo. O [contrato 1.x](../../docs/contracts/runtime-contract-v1.md), o [observador](src/runtime-contract.mjs) e o [fake provider-neutral](fixtures/fake-runtime.mjs) iniciam OX-003, reutilizando as distinções de lifecycle verificadas em OX-001. O consumidor experimental recebe frames normalizados, sem importar eventos do Codex. São validação e fixture em memória, sem processo, rede, auth store ou inferência.
+
+```powershell
+node --test tests/runtime-contract.test.mjs
+npm.cmd run check
+npm.cmd test
+```
+
+Capacidades por conexão/modelo, intenção/resultado de configuração, erros e observações de processo têm campos separados. Ausência de quota/resume não implica suporte; contexto de conversa pertence ao runtime e `contextPackRef` referencia contexto durável do Orchestrix. Estratégias e presets são intenção declarada, sem implementar seleção automática. Os testes não aprovam capabilities reais de nenhum provedor.
+
+**Entrega inicial, OX-003 aberto:** ainda falta integrar a normalização ao adapter Codex e ao futuro Core Rust, bem como consolidar o relatório completo de diagnósticos. A stack Rust/Tokio/SQLite permanece; Cargo/rustc não estão no ambiente verificado e não foram instalados. Este módulo JavaScript não é dependência definitiva do Core nem worker de produção.
+
+**Verificação de 13/10:** check passou e **162/162 testes offline em 34,89 s**, incluindo os 131 anteriores e **31 novos** do contrato. As suítes nativas 21/21 e 9/9 abaixo pertencem à revisão anterior; não foram repetidas nesta continuação, sem mudança no transporte/helper. A nova autorização live já foi consumida nos cinco turnos descritos abaixo; os testes do contrato são inteiramente offline.
+
+## Histórico — worktree e retomada
 
 O [registro de 12/10](../../docs/research/m0-resume-worktree-increment.md) acrescenta `worktree-probe.mjs` e `CodexSession.resumeThread`: **75/75 testes offline**, **9/9 Windows sintéticos** e check passaram. O preflight real **sem inferência** passou na versão `0.162.0-alpha.17.2`, após inspeção de schema e admissão explícita; a versão histórica `0.162.0-alpha.2` continua na allowlist, sem aceitar versões futuras silenciosamente. O [registro live posterior](../../docs/research/m0-live-validation-2026-10-12.md) preserva a primeira tentativa bloqueada em unelevated e registra a **segunda autorização de três turnos MXC aprovada** em 36,27 s: edição pelo modelo/cinco checks, retomada com mesma thread/conta observável/política de escrita e cancelamento do turno confirmados. O mesmo código passou **95/95 offline** e check na revisão anterior; a nova rodada não repetiu essas suítes. Árvore Windows permanece unknown.
 
