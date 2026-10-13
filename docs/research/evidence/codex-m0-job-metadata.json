@@ -1,0 +1,131 @@
+{
+  "schemaVersion": 1,
+  "date": "2026-10-12T22:09:01.862Z",
+  "experiment": "OX-001/worktree-resume",
+  "liveRequested": false,
+  "liveStarted": false,
+  "status": "metadata-passed",
+  "checks": [
+    "subscription-gates-confirmed",
+    "extensions-disabled",
+    "disposable-worktree",
+    "baseline-check-failed"
+  ],
+  "events": [
+    {
+      "schemaVersion": 1,
+      "sequence": 1,
+      "attemptId": "probe-attempt-1",
+      "type": "runtime.initialized"
+    },
+    {
+      "schemaVersion": 1,
+      "sequence": 2,
+      "attemptId": "probe-attempt-1",
+      "type": "connection.observed",
+      "authType": "chatgpt",
+      "authenticated": true
+    }
+  ],
+  "processes": [
+    {
+      "code": 0,
+      "signal": null,
+      "parentExited": true,
+      "treeTermination": "confirmed",
+      "stdioClosed": true,
+      "observationDetached": false,
+      "streams": {
+        "stdin": true,
+        "stdout": true,
+        "stderr": true
+      },
+      "helperStreams": {
+        "stdinClosed": true,
+        "stdoutClosed": true,
+        "stderrClosed": true,
+        "faulted": false
+      },
+      "helper": {
+        "code": 0,
+        "parentExited": true,
+        "stdioClosed": true
+      },
+      "termination": "graceful",
+      "activeCount": 0,
+      "ownershipConfirmed": true
+    },
+    {
+      "code": 0,
+      "signal": null,
+      "parentExited": true,
+      "treeTermination": "confirmed",
+      "stdioClosed": true,
+      "observationDetached": false,
+      "streams": {
+        "stdin": true,
+        "stdout": true,
+        "stderr": true
+      },
+      "helperStreams": {
+        "stdinClosed": true,
+        "stdoutClosed": true,
+        "stderrClosed": true,
+        "faulted": false
+      },
+      "helper": {
+        "code": 0,
+        "parentExited": true,
+        "stdioClosed": true
+      },
+      "termination": "graceful",
+      "activeCount": 0,
+      "ownershipConfirmed": true
+    }
+  ],
+  "limits": [
+    "Disposable fixture only; not the production worker or SQLite recovery",
+    "Runtime conversational persistence remains owned by Codex",
+    "Experimental owned Job containment; independent from filesystem/network sandbox and not a production supervisor",
+    "No CLI exec comparison or independent account/quota proof",
+    "Sandbox resolution is not a Windows filesystem/network enforcement certification"
+  ],
+  "requestedWindowsSandbox": "mxc",
+  "windowsJobRequested": true,
+  "processStopRequested": false,
+  "workspace": {
+    "disposable": true,
+    "retainedForInspection": true,
+    "base": "0246c099b2f88f451939e8d6c01b4786784cf790",
+    "baselineCheck": {
+      "passed": false,
+      "exitCode": 1,
+      "cases": 0,
+      "failureKind": "assertion-failed"
+    },
+    "mainUnchanged": true
+  },
+  "runtimeVersion": "0.162.0-alpha.17.2",
+  "auth": {
+    "type": "chatgpt",
+    "authenticated": true,
+    "requiresOpenaiAuth": true,
+    "subscriptionGate": true
+  },
+  "availability": true,
+  "endpoints": {
+    "providerOpenai": true,
+    "officialEndpointConfirmed": true,
+    "windowsSandbox": "mxc",
+    "resources": {
+      "hooksDisabled": true,
+      "pluginsDisabled": true,
+      "appsDisabled": true,
+      "nativeDelegationDisabled": true,
+      "notifyDisabled": true,
+      "mcpConfiguredCount": 1,
+      "mcpDisabled": true
+    }
+  },
+  "durationMs": 7236
+}

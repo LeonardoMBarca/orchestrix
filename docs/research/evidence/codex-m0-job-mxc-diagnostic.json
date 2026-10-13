@@ -1,0 +1,186 @@
+{
+  "schemaVersion": 1,
+  "experiment": "OX-001/MXC-direct-owned-Job-diagnostic",
+  "runtimeVersion": "0.162.0-alpha.17.2",
+  "newInference": false,
+  "setupStarted": false,
+  "policy": {
+    "networkAccess": false,
+    "writableRootsCount": 0,
+    "excludeTmpdirEnvVar": true,
+    "excludeSlashTmp": true
+  },
+  "historyInspection": {
+    "surface": "app-server thread/list + thread/read",
+    "scope": "exact cwd of each owned disposable fixture, sources appServer/exec",
+    "rawTranscriptStored": false,
+    "threads": [
+      {
+        "surface": "app-server",
+        "turns": 1,
+        "terminalStatus": "completed",
+        "failedCommandItems": 2,
+        "commandExitCode": 1
+      },
+      {
+        "surface": "exec-cli",
+        "turns": 1,
+        "terminalStatus": "completed",
+        "failedCommandItems": 2,
+        "commandExitCode": 1
+      }
+    ],
+    "platformDirectoryError": true,
+    "hresult": "0x80070003"
+  },
+  "before": {
+    "codeCommit": "363a78d",
+    "source": "Serial fixed-command diagnostic, no model; observations recorded before the correction",
+    "results": [
+      {
+        "surface": "direct",
+        "code": 0,
+        "platformDirectoryError": false,
+        "hresult": null,
+        "checks": {
+          "passed": true,
+          "exitCode": 0,
+          "cases": 5
+        }
+      },
+      {
+        "surface": "owned-job",
+        "code": 1,
+        "platformDirectoryError": true,
+        "hresult": "0x80070003",
+        "checks": {
+          "passed": false,
+          "exitCode": null,
+          "cases": 0,
+          "notRun": true
+        },
+        "treeTermination": "confirmed"
+      }
+    ]
+  },
+  "correction": {
+    "codeCommit": "b6015e3",
+    "change": "Preserve SYSTEMDRIVE in the existing OS environment allowlist and permit it in the explicit native environment block",
+    "jobChanged": false,
+    "sandboxChanged": false,
+    "pinsChanged": false,
+    "deadlinesChanged": false,
+    "fullEnvironmentEquivalenceProven": false
+  },
+  "after": {
+    "date": "2026-10-13T04:20:22.927Z",
+    "source": "Same fixed Node arithmetic write under MXC in fresh disposable worktrees; not a model-produced edit",
+    "results": [
+      {
+        "surface": "direct",
+        "code": 0,
+        "platformDirectoryError": false,
+        "hresult": null,
+        "attempt": {
+          "passed": true,
+          "mainUnchanged": true,
+          "baseMatched": true,
+          "expectedOnly": true,
+          "checksSameSnapshot": true,
+          "base": "5e1f2d2da6dc302634ce661e828b9b0e743d88c7",
+          "paths": [
+            "src/add.mjs"
+          ],
+          "diffSha256": "f1781046ad772d7ebe30fd29c15412664df36ee9fa0855581053b25894687023",
+          "checks": {
+            "passed": true,
+            "exitCode": 0,
+            "cases": 5
+          },
+          "sources": [
+            {
+              "path": "AGENTS.md",
+              "sha256": "e28da9d11e5063d57319c55b54491de5332039216434b5148d9d242cc66a2e8a"
+            },
+            {
+              "path": "checks/add-check.mjs",
+              "sha256": "4811a38205f4e8fe3636bc10346b8d0ab7977e18462e6cd9760c5bbb97bc38fd"
+            },
+            {
+              "path": "src/add.mjs",
+              "sha256": "76f26bd292166033d02e77bdb8fe6aec01e915ccb8cb3f93b8971f9dcd78250e"
+            }
+          ]
+        }
+      },
+      {
+        "surface": "owned-job",
+        "supervision": {
+          "code": 0,
+          "signal": null,
+          "parentExited": true,
+          "treeTermination": "confirmed",
+          "stdioClosed": true,
+          "streams": {
+            "stdin": true,
+            "stdout": true,
+            "stderr": true
+          },
+          "helperStreams": {
+            "stdinClosed": true,
+            "stdoutClosed": true,
+            "stderrClosed": true,
+            "faulted": false
+          },
+          "helper": {
+            "code": 0,
+            "parentExited": true,
+            "stdioClosed": true
+          },
+          "termination": "graceful",
+          "activeCount": 0,
+          "ownershipConfirmed": true
+        },
+        "code": 0,
+        "platformDirectoryError": false,
+        "hresult": null,
+        "attempt": {
+          "passed": true,
+          "mainUnchanged": true,
+          "baseMatched": true,
+          "expectedOnly": true,
+          "checksSameSnapshot": true,
+          "base": "4b639831634416766c92a14cbc913db3a8cd7d6b",
+          "paths": [
+            "src/add.mjs"
+          ],
+          "diffSha256": "f1781046ad772d7ebe30fd29c15412664df36ee9fa0855581053b25894687023",
+          "checks": {
+            "passed": true,
+            "exitCode": 0,
+            "cases": 5
+          },
+          "sources": [
+            {
+              "path": "AGENTS.md",
+              "sha256": "e28da9d11e5063d57319c55b54491de5332039216434b5148d9d242cc66a2e8a"
+            },
+            {
+              "path": "checks/add-check.mjs",
+              "sha256": "4811a38205f4e8fe3636bc10346b8d0ab7977e18462e6cd9760c5bbb97bc38fd"
+            },
+            {
+              "path": "src/add.mjs",
+              "sha256": "76f26bd292166033d02e77bdb8fe6aec01e915ccb8cb3f93b8971f9dcd78250e"
+            }
+          ]
+        }
+      }
+    ]
+  },
+  "limits": [
+    "No post-correction model inference or resume/forced-stop proof in this evidence",
+    "Fixed commands do not substitute for live runtime integration",
+    "Other libuv injected variables remain outside the native allowlist"
+  ]
+}

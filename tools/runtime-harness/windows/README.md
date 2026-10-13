@@ -1,4 +1,6 @@
-# Windows Job Object — spike sintético
+# Windows Job Object — harness experimental
+
+**Estado atual — 13/10/2026:** este diretório contém o helper sintético original e uma bridge nativa ligada ao `JsonRpcProcess`. O gate piloto D1 está liberado; OX-001/M0 continuam abertos. A [integração descrita abaixo](#bridge-de-transporte--1210) passou preflights reais sem inferência e regressões após o ajuste mínimo de `SYSTEMDRIVE`. Duas tentativas live anteriores à correção usaram **2/5 turnos**, sem produzir diff; live pós-correção está pendente. Os registros de 09/10 e 10/10 preservam o alcance histórico do helper original.
 
 Data: 09/10/2026. Experimento offline separado de `JsonRpcProcess`, do protocolo Codex e do Core Rust/Tauri. Não lança providers, inferência ou autenticação. D1 continua com piloto humano pendente.
 
@@ -83,3 +85,48 @@ Após o stop, o watchdog concede **1000ms** para o controlador emitir `stopped` 
 O caminho abrupto pode cortar o último frame; não executa cleanup/flush gerenciado nem garante uma mensagem final. O cliente precisa distinguir saída do helper, fechamento dos pipes e evidência externa dos membros. Os testes comuns mantêm parsing estrito; somente a prova de perda do stdout permite frame final parcial. O comando stop/EOF ainda é consumido pelo loop: sob stdout bloqueado, sua leitura pode esperar o deadline independente.
 
 O watchdog **não cobre Add-Type, setup, lançamento ou diagnósticos antes de ArmWatchdog**. Sua prova também não garante deadlines de tempo real sob suspensão do sistema/falta de agendamento, todos os erros de query/autoencerramento ou I/O de cleanup depois do cancelamento. A fixture conserva o safety timer de 20s, que não é aceito como sucesso de contenção. Veja o [registro atualizado](../../../docs/research/windows-process-containment.md#continuação-em-1010--watchdog-e-stdout-bloqueado).
+
+## Bridge de transporte — 12/10
+
+O [job-bridge.ps1](job-bridge.ps1), a classe [NativeJobBridge](NativeJobBridge.cs) e `NativeJobProbe.LaunchRaw` são a parte nativa do [adapter Node](../src/windows-job-process.mjs). A associação atômica ao Job, a lista explícita de handles e a verificação antes de `ResumeThread` são reutilizadas. `job-probe.ps1` mantém sua validação de fixture/hash, ambiente e limites próprios; seus testes continuam separados.
+
+O Node cria três named pipes locais com nonce de **24 bytes**, codificado em **48 caracteres hexadecimais**, e roles `stdin`, `stdout`, `stderr`. A bridge exige o mesmo nonce e roles distintos. Essas pipes transportam somente bytes do runtime, sem decodificação/transcrição pelo helper. Stdin/stdout do helper são um canal separado de controle JSONL; stdout/stderr do runtime nunca viram eventos de controle ou logs nativos.
+
+O primeiro frame de controle tem `type=launch`, executável/cwd absolutos, args, ambiente limitado, nomes das três pipes e `lifetimeMs`. O Node limita esse frame a **128 KiB** em UTF-8; o leitor nativo limita-o a **131072 caracteres**. Args são limitados a **256**; o ambiente admite no máximo **64 chaves** da allowlist do runtime, **32767 caracteres por valor** e **128 KiB** no bloco UTF-16. API keys, `NODE_OPTIONS` e overrides herdados não são aceitos. Após esse frame, o leitor continua usando o mesmo `Console.In`, preservando bytes já bufferizados.
+
+As três pipes são conectadas antes de lançar o filho. `ready` só é emitido após associação atômica, pertença ao Job conferida, resume e watchdog armado. O Job não é herdado, não permite breakaway e não é encontrado por nome/PID. Lançamento incompatível com Jobs ambientais falha; não há fallback sem contenção.
+
+| Controle após launch | Efeito |
+| --- | --- |
+| `{"type":"inspect","pid":123}` | Consulta apenas o Job próprio; outsider não é aberto. |
+| `{"type":"close-stdin"}` | Fecha somente stdin do runtime; não encerra o Job. |
+| `{"type":"stop"}` | Solicita encerramento do Job próprio. |
+| EOF do controle | Encerra o Job com motivo `control-eof`; não equivale a EOF de stdin do runtime. |
+
+Os eventos preservam `schemaVersion`, `sequence`, `ownerId` e campos limitados: `ready`; `inspect`; `root.exit` com código observado e contagem do Job; `streams.closed` com `stdinClosed`, `stdoutClosed`, `stderrClosed`, `faulted`; `error` somente com categoria/código nativo; `stopped` com motivo, contagem, raiz iniciada/encerrada, `termination=graceful|forced` e `treeTermination=confirmed|unknown`. Nenhum evento inclui paths, args, ambiente ou conteúdo do runtime.
+
+`graceful` exige Job vazio e raiz encerrada **antes** de solicitar `TerminateJobObject`. `confirmed` exige contagem zero e handle da raiz sinalizado, quando ela nasceu. Falha de query, timeout ou perda do helper conserva `unknown`; ausência de raiz não vira saída inventada. Streams incompletos mantêm suas flags e impedem sucesso de transporte, mesmo quando o Job foi confirmado vazio. Encerrar a árvore não cria um terminal de turno remoto.
+
+### I/O e orçamentos da bridge
+
+Cada bomba usa chunks fixos de **8192 bytes**, sem fila nativa ilimitada. Cancelamento de I/O síncrono usa o handle da thread própria; I/O overlapped usa `CancelIoEx` com lease do SafeHandle exato, conservada até a bomba reconhecer fechamento. Isso cobre a corrida entre verificar o pedido de fechamento e submeter uma nova escrita. Não há I/O ou Join sob o lock do Job, lookup destrutivo por PID ou morte de thread externa.
+
+O controle mantém frames de **8192 caracteres** e até **128 linhas** no C#; o Node aplica **8 KiB** por frame, **4096 registros** e **16 inspeções pendentes**. JSON-RPC mantém **1 MiB** por frame e **2 MiB** de fila Writable; os PassThrough usam `highWaterMark` de **64 KiB**. Essas medidas não certificam memória global, buffers do sistema operacional ou representações temporárias.
+
+`ArmBridgeWatchdog` aceita **1–300 s**; `ArmWatchdog` sintético conserva **1–30 s**. O adapter Node aplica startup de até **10 s**, antes de receber `ready`; não se afirma que o watchdog nativo já cobre Add-Type/setup/lançamento. Depois de armado, ele independe de controle/stdout e conserva **1 s** de graça antes do autoencerramento do helper quando necessário. A via abrupta pode cortar o frame final e não emitir `stopped`.
+
+O helper espera até **3 s** por término do Job e **1,5 s** por fechamento das bombas. O adapter comum concede **3 s** para EOF gracioso, espera até **4,5 s** após solicitar stop e, se necessário, encerra somente seu helper, esperando mais **1 s**. Drenagem Node após saída é limitada a **250 ms**; EOF da pipe e consumo completo do PassThrough são observações distintas. `JsonRpcProcess.terminateOwnedJob()` pula o EOF gracioso para provar força explícita; `--process-stop` seleciona esse percurso no worktree probe, sem afirmar `turn.interrupted`.
+
+### Evidência atual e próximo passo
+
+Na rodada anterior à correção de ambiente, **131 casos offline distintos** passaram em duas execuções: **124/124 em 37,72 s** e **7/7 em 0,40 s**. A integração bridge/fake passou **20/20 em 44,43 s**; os nove casos do helper original foram retestados com **9/9 em 31,86 s**. Esses resultados permanecem históricos. As falhas intermediárias de fixture `unref` e corrida de admissão/observação estão registradas no [relatório](../../../docs/research/windows-process-containment.md#integração-do-transporte--1210), sem reduzir o aceite ou ampliar deadlines.
+
+Dois preflights reais, **sem inferência**, passaram em Codex `0.162.0-alpha.17.2`/MXC: [worktree](../../../docs/research/evidence/codex-m0-job-metadata.json) e [preparação CLI](../../../docs/research/evidence/codex-m0-exec-metadata.json). Incluindo bootstrap de MCP, quatro app-servers tiveram saída zero da raiz/helper, stdio fechado/drenado e Job vazio. O preflight CLI consulta metadata via app-server; não executa CLI edit/resume.
+
+Foram usados **2/5 turnos autorizados**, um de [app-server](../../../docs/research/evidence/codex-m0-job-live-blocked.json) e um de [CLI](../../../docs/research/evidence/codex-m0-exec-live-blocked.json). Ambos tiveram terminal `completed`, diff vazio e checks `notRun`; não houve resume nem força. O diagnóstico ficou restrito às threads dos fixtures próprios, via cwd exato e `sourceKinds` `appServer`/`exec`, sem salvar transcript. Duas operações `commandExecution` por thread falharam com saída **1**, erro MXC `cannot locate required Windows platform directory` e HRESULT **`0x80070003`**.
+
+O [comando fixo sem inferência](../../../docs/research/evidence/codex-m0-job-mxc-diagnostic.json) passou direto com saída **0** e cinco checks, mas falhou via Job com saída **1** e o mesmo erro. A correção permite **somente `SYSTEMDRIVE`** no ambiente raw C# e na allowlist JavaScript. A implementação oficial do [libuv em Node 24.19.0](https://github.com/nodejs/node/blob/v24.19.0/deps/uv/src/win/process.c) complementa `SystemDrive` e outras variáveis essenciais em `required_vars`/`make_program_env`; `CreateProcessW` com bloco explícito precisa recebê-las no escopo validado. Não houve herança do ambiente integral ou alteração de Job, MXC, pins, permissões ou deadlines.
+
+A repetição fixa teve saída **0** e **cinco checks aprovados em cada caminho**, direto e Job; o Job ficou vazio com término `confirmed`/`graceful`. Na rodada final pós-correção, check passou; **131/131 offline em 39,67 s**, **21/21 de transporte em 40,75 s** e **9/9 do helper em 28,28 s**, sem falhas ou skips. Sob stdout de controle bloqueado, com deadline de **4 s**, membros conhecidos saíram em **3580 ms** e helper em **4599 ms**; observaram-se **19 frames**, **82837 bytes**, frame final parcial e nenhuma mensagem `stopped` inventada.
+
+Nenhuma prova live pós-correção foi executada; não há retry automático. Três turnos da autorização original não foram usados, sem iniciar nova sequência ou redistribuir o orçamento automaticamente. O próximo passo exige autorização específica para prova live, preservando execução serial, **90 s por turno**, **300 s por Job** e nenhum fallback pago. Edição/retomada/força integradas, supervisor Rust de produção, recuperação durável, isolamento de contas e processos delegados a serviços fora do Job permanecem pendentes. Job Object continua distinto de sandbox de arquivos/rede.
