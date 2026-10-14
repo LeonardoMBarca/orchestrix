@@ -148,12 +148,17 @@ name = "orchestrix-core"
 version = "0.1.0"
 dependencies = [
  "chrono",
+ "orchestrix-process",
  "rusqlite",
  "serde",
  "serde_core",
  "serde_json",
  "sha2",
 ]
+
+[[package]]
+name = "orchestrix-process"
+version = "0.1.0"
 
 [[package]]
 name = "pkg-config"
