@@ -11,6 +11,8 @@ docs/research/evidence/*.patch text eol=lf
 # This new metadata report has a recorded SHA-256 over its exact JSON bytes.
 docs/research/evidence/manual-worker-metadata-s2.json text eol=lf
 docs/research/evidence/manual-worker-live-reservation-blocked.json text eol=lf
+docs/research/evidence/manual-worker-live-protocol-blocked.json text eol=lf
+docs/research/evidence/manual-worker-live-protocol-inspection.json text eol=lf
 # Preserve the read-only inspection's original CRLF bytes and check real whitespace.
 docs/research/evidence/manual-worker-live-reservation-inspection.json -text whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol
 # Portable Core sources and generated conformance bytes must survive Windows checkout.

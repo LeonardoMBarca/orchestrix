@@ -1,0 +1,147 @@
+{
+  "schemaVersion": 4,
+  "sourceRevision": "93ddf2a736d55b004a9e4db0fdc59a057ef4224b",
+  "sourceSeal": "d7821a4774f5214085f0d006264b6985e2d1afcf7e4dd757d3c2b8b20d4ff93f",
+  "reportSha256": "66e968a21965cd553c1f3a61f758b2e021455fc5071e155420e8a7f394b2ee12",
+  "sentTurns": 1,
+  "confirmedStarts": 0,
+  "resumeTurnsSent": 0,
+  "cancellationTurnsSent": 0,
+  "remainingDependentTurnsNotUsed": 2,
+  "automaticRetries": 0,
+  "counts": {
+    "workers": 1,
+    "attempts": 1,
+    "worktrees": 1
+  },
+  "observations": [
+    {
+      "ordinal": 1,
+      "status": "dispatch-planned",
+      "synthetic": false
+    },
+    {
+      "ordinal": 2,
+      "status": "runtime-observed",
+      "dispatch": "sent",
+      "fault": "protocol",
+      "treeStopped": true,
+      "streamsClosed": true,
+      "synthetic": false
+    },
+    {
+      "ordinal": 3,
+      "status": "uncertain",
+      "reason": "runtime-outcome-not-confirmed",
+      "inspectionRequired": true,
+      "synthetic": false
+    }
+  ],
+  "observer": {
+    "phase": "accepted",
+    "fatal": true,
+    "fault": {
+      "code": "protocol"
+    },
+    "outcome": "unknown",
+    "startObserved": false,
+    "terminal": null,
+    "terminalConfirmed": false,
+    "observation": "uncertain",
+    "effective": {
+      "approval": {
+        "evidence": {
+          "observedAt": null,
+          "reference": "resolved-configuration",
+          "scope": "attempt",
+          "source": "configuration"
+        },
+        "state": "known",
+        "value": "never"
+      },
+      "model": {
+        "evidence": {
+          "observedAt": null,
+          "reference": "resolved-configuration",
+          "scope": "attempt",
+          "source": "configuration"
+        },
+        "state": "known",
+        "value": "model-dedfefd51120f28386c9dba78e46feb403523e23d67980cd"
+      },
+      "network": {
+        "evidence": {
+          "observedAt": null,
+          "reference": "resolved-configuration",
+          "scope": "attempt",
+          "source": "configuration"
+        },
+        "state": "known",
+        "value": "disabled"
+      },
+      "reasoning": {
+        "evidence": {
+          "observedAt": null,
+          "reference": "resolved-configuration",
+          "scope": "attempt",
+          "source": "configuration"
+        },
+        "state": "known",
+        "value": "maximum"
+      },
+      "sandbox": {
+        "evidence": {
+          "observedAt": null,
+          "reference": "resolved-configuration",
+          "scope": "attempt",
+          "source": "configuration"
+        },
+        "state": "known",
+        "value": "workspace-write"
+      }
+    },
+    "process": {
+      "helper": {
+        "code": null,
+        "exited": false,
+        "signal": "unknown",
+        "stdioClosed": false,
+        "streams": null
+      },
+      "runtime": {
+        "code": 0,
+        "exited": true,
+        "signal": "none",
+        "stdioClosed": true,
+        "streams": {
+          "faulted": false,
+          "stderr": true,
+          "stdin": true,
+          "stdout": true
+        }
+      },
+      "tree": {
+        "activeCount": 0,
+        "evidenceRef": "rust-owned-job",
+        "ownership": "confirmed",
+        "source": "owned-job",
+        "termination": "confirmed"
+      }
+    }
+  },
+  "eventTypes": [
+    "configuration.observation-recorded",
+    "attempt.admission-observed",
+    "runtime.error",
+    "process.exited",
+    "process.streams-observed",
+    "process.tree-observed"
+  ],
+  "arithmeticFile": {
+    "originalSourceSha256": "1d571e080871eaacf3291d9c0a79688a37183ef8f6ee148e10d6144d90a71226",
+    "worktreeSha256": "1d571e080871eaacf3291d9c0a79688a37183ef8f6ee148e10d6144d90a71226",
+    "changed": false
+  },
+  "taskState": "Blocked",
+  "verifiedChecks": 0
+}
