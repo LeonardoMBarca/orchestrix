@@ -374,23 +374,23 @@ impl CodexAdapter {
         let attempt_result =
             self.execute_inner(&execution, cancel, &mut observer, &mut binding, &mut sink);
         let mut fault = attempt_result.err();
-        if let Some(error) = &fault {
-            if observer.snapshot()["fatal"] != true {
-                let dispatch = if self.rpc.turn_submitted {
-                    error.dispatch
-                } else {
-                    "not-sent"
-                };
-                let emitted = emit(
-                    &mut observer,
-                    "runtime.error",
-                    json!({"error":{"code":error.code,"phase":if self.rpc.turn_submitted {"running"} else {"admission"},"dispatch":dispatch,"retryable":false},"fatal":(["protocol","ownership","sequence","version","budget"].contains(&error.code))}),
-                    EventOrigin::Runtime,
-                    &mut sink,
-                );
-                if emitted.is_err() {
-                    fault = Some(RuntimeError::new("transport-loss", "unknown"));
-                }
+        if let Some(error) = &fault
+            && observer.snapshot()["fatal"] != true
+        {
+            let dispatch = if self.rpc.turn_submitted {
+                error.dispatch
+            } else {
+                "not-sent"
+            };
+            let emitted = emit(
+                &mut observer,
+                "runtime.error",
+                json!({"error":{"code":error.code,"phase":if self.rpc.turn_submitted {"running"} else {"admission"},"dispatch":dispatch,"retryable":false},"fatal":(["protocol","ownership","sequence","version","budget"].contains(&error.code))}),
+                EventOrigin::Runtime,
+                &mut sink,
+            );
+            if emitted.is_err() {
+                fault = Some(RuntimeError::new("transport-loss", "unknown"));
             }
         }
         // Remote terminal, stream EOF, root exit and Job exhaustion are distinct evidence.
@@ -405,14 +405,15 @@ impl CodexAdapter {
         };
         let streams = self.rpc.process.wait_streams(Duration::from_secs(1));
         if let Some(tree) = tree {
-            if let Some(code) = tree.root_exit_code {
-                if emit(
+            if let Some(code) = tree.root_exit_code
+                && emit(
                     &mut observer,
                     "process.exited",
                     json!({"role":"runtime","code":code,"signal":if code == 137 {"killed"} else {"none"}}),
                     EventOrigin::Supervisor,
                     &mut sink,
-                ).is_err() { fault = Some(RuntimeError::new("transport-loss", "unknown")); }
+                ).is_err() {
+                    fault = Some(RuntimeError::new("transport-loss", "unknown"));
             }
             if emit(
                 &mut observer,
@@ -491,10 +492,10 @@ impl CodexAdapter {
                 .ok_or_else(|| RuntimeError::new("unsupported", "not-sent"))?,
             )
         };
-        if let (Some(model), Some(effort)) = (model, effort) {
-            if !model.efforts.iter().any(|native| native == effort) {
-                return Err(RuntimeError::new("unsupported", "not-sent"));
-            }
+        if let (Some(model), Some(effort)) = (model, effort)
+            && !model.efforts.iter().any(|native| native == effort)
+        {
+            return Err(RuntimeError::new("unsupported", "not-sent"));
         }
         let writable = selected["sandbox"] == "workspace-write";
         let mut params = json!({"cwd":self.launch.cwd,"modelProvider":"openai","approvalPolicy":"never","approvalsReviewer":"user","sandbox":if writable {"workspace-write"} else {"read-only"},"baseInstructions":execution.base_instructions,"developerInstructions":execution.developer_instructions,"config":{"web_search":"disabled","mcp_servers":{},"sandbox_workspace_write":{"network_access":false,"writable_roots":[],"exclude_tmpdir_env_var":true,"exclude_slash_tmp":true}}});
@@ -528,15 +529,15 @@ impl CodexAdapter {
             writable,
             execution.resume.as_ref(),
         )?;
-        if let Some(model) = model {
-            if configuration["model"] != model.name {
-                return Err(RuntimeError::new("policy", "not-sent"));
-            }
+        if let Some(model) = model
+            && configuration["model"] != model.name
+        {
+            return Err(RuntimeError::new("policy", "not-sent"));
         }
-        if let Some(effort) = effort {
-            if configuration["reasoningEffort"] != effort {
-                return Err(RuntimeError::new("policy", "not-sent"));
-            }
+        if let Some(effort) = effort
+            && configuration["reasoningEffort"] != effort
+        {
+            return Err(RuntimeError::new("policy", "not-sent"));
         }
         *binding = Some(SessionBinding {
             connection_id: request["connectionId"].as_str().unwrap().into(),
@@ -1257,10 +1258,10 @@ fn verify_binary_version(launch: &RuntimeLaunch, cancel: &CancellationToken) -> 
         if cancel.is_cancelled() {
             return Err(RuntimeError::new("timeout", "not-sent"));
         }
-        if let Some(event) = process.receive(Duration::from_millis(5))? {
-            if let orchestrix_process::ProcessEvent::Stdout(bytes) = event {
-                output.extend(bytes);
-            }
+        if let Some(orchestrix_process::ProcessEvent::Stdout(bytes)) =
+            process.receive(Duration::from_millis(5))?
+        {
+            output.extend(bytes);
         }
         let tree = process.tree()?;
         let streams = process.streams();

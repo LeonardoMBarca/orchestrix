@@ -175,10 +175,11 @@ impl<T: Clone> RefreshCache<T> {
                 .retain(|key, _| key.connection_id != scope.connection_id);
         }
         if let Some(entry) = state.entries.get_mut(&scope) {
-            if let Some((value, observed, valid_until)) = &entry.cached {
-                if now_ms >= *observed && now_ms < *valid_until {
-                    return RefreshAction::Cached(value.clone());
-                }
+            if let Some((value, observed, valid_until)) = &entry.cached
+                && now_ms >= *observed
+                && now_ms < *valid_until
+            {
+                return RefreshAction::Cached(value.clone());
             }
             if let Some(ticket) = &entry.flight {
                 if now_ms < ticket.deadline_ms {

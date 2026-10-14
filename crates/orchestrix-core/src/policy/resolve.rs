@@ -349,39 +349,37 @@ pub fn resolve(
                 .model_id
                 .as_ref()
                 .or(requirements.forced_model.as_ref())
-            {
-                if !d["models"]
+                && !d["models"]
                     .as_array()
                     .unwrap()
                     .iter()
                     .any(|m| m["id"] == requested.as_str())
+            {
+                let is_partial = d["catalog"]["completeness"] != "complete";
+                candidates.push(CandidateExplanation {
+                    connection_id: d["connection"]["id"].as_str().unwrap().into(),
+                    model_id: Some(requested.clone()),
+                    eligible: false,
+                    reasons: vec![
+                        if is_partial {
+                            "model-not-observed-in-partial-catalog"
+                        } else {
+                            "model-not-present-in-observed-catalog"
+                        }
+                        .into(),
+                    ],
+                    evidence_refs: vec![],
+                });
+                if is_partial
+                    || runtime
+                        .lease("catalog", None, now_ms, document.observation_ttls)
+                        .is_none()
                 {
-                    let is_partial = d["catalog"]["completeness"] != "complete";
-                    candidates.push(CandidateExplanation {
+                    refresh.insert(Revalidation {
                         connection_id: d["connection"]["id"].as_str().unwrap().into(),
-                        model_id: Some(requested.clone()),
-                        eligible: false,
-                        reasons: vec![
-                            if is_partial {
-                                "model-not-observed-in-partial-catalog"
-                            } else {
-                                "model-not-present-in-observed-catalog"
-                            }
-                            .into(),
-                        ],
-                        evidence_refs: vec![],
+                        model_id: None,
+                        fact: "catalog".into(),
                     });
-                    if is_partial
-                        || runtime
-                            .lease("catalog", None, now_ms, document.observation_ttls)
-                            .is_none()
-                    {
-                        refresh.insert(Revalidation {
-                            connection_id: d["connection"]["id"].as_str().unwrap().into(),
-                            model_id: None,
-                            fact: "catalog".into(),
-                        });
-                    }
                 }
             }
             for model in d["models"].as_array().unwrap() {

@@ -12,7 +12,11 @@ fn main() {
         return;
     }
     if args.first().map(String::as_str) == Some("--check-secret") {
-        println!("API_KEY={}{}", "sk-", "syntheticfixturecredential123456");
+        println!(concat!(
+            "API_KEY=",
+            "sk-",
+            "syntheticfixturecredential123456"
+        ));
         return;
     }
     if args.first().map(String::as_str) == Some("--check-fixture") {
@@ -88,9 +92,15 @@ fn main() {
             use std::os::windows::process::CommandExt;
             child_command.creation_flags(0x0800_0000);
         }
-        let child = child_command.spawn().unwrap();
+        let mut child = child_command.spawn().unwrap();
         println!("{}", child.id());
         std::io::stdout().flush().unwrap();
+        // Retain a normal wait path without joining it: parent-exit must end
+        // its root immediately while the real descendant remains in the host's
+        // Job. Process exit ends this waiter thread, not the owned descendant.
+        std::thread::spawn(move || {
+            let _ = child.wait();
+        });
         if scenario == "parent-exit" {
             return;
         }
@@ -253,20 +263,20 @@ fn main() {
                         json!({"method":"item/agentMessage/delta","params":{"threadId":"foreign-thread","turnId":turn_id,"delta":"Contradictory execution scope"}}),
                     );
                 }
-                if scenario == "success" || scenario == "check-failed" {
-                    if prompt.contains("fixture-edit") {
-                        let path = cwd.join("fixture.txt");
-                        if path.is_file() {
-                            std::fs::write(
-                                path,
-                                if scenario == "success" {
-                                    "after\n"
-                                } else {
-                                    "incorrect\n"
-                                },
-                            )
-                            .unwrap();
-                        }
+                if (scenario == "success" || scenario == "check-failed")
+                    && prompt.contains("fixture-edit")
+                {
+                    let path = cwd.join("fixture.txt");
+                    if path.is_file() {
+                        std::fs::write(
+                            path,
+                            if scenario == "success" {
+                                "after\n"
+                            } else {
+                                "incorrect\n"
+                            },
+                        )
+                        .unwrap();
                     }
                 }
                 send(
