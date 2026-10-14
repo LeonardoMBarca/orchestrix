@@ -8,8 +8,8 @@ use std::collections::{BTreeMap, BTreeSet};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Repository {
-    id: RepositoryId,
-    location: LocalRef,
+    pub(super) id: RepositoryId,
+    pub(super) location: LocalRef,
 }
 impl Repository {
     pub fn new(id: RepositoryId, location: LocalRef) -> Self {
@@ -26,8 +26,8 @@ impl Repository {
 /// The V1 relationship is one repository per project, with distinct identities.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Project {
-    id: ProjectId,
-    repository: Repository,
+    pub(super) id: ProjectId,
+    pub(super) repository: Repository,
 }
 impl Project {
     pub fn new(id: ProjectId, repository: Repository) -> Self {
@@ -44,10 +44,10 @@ impl Project {
 /// Connection identity comes from the validated portable descriptor, not secrets.
 #[derive(Clone, Debug)]
 pub struct Connection {
-    id: ConnectionId,
-    revision: u64,
-    adapter_id: String,
-    descriptor: RuntimeDescriptor,
+    pub(super) id: ConnectionId,
+    pub(super) revision: u64,
+    pub(super) adapter_id: String,
+    pub(super) descriptor: RuntimeDescriptor,
 }
 impl Connection {
     pub fn new(descriptor: RuntimeDescriptor) -> DomainResult<Self> {
@@ -88,9 +88,9 @@ impl Connection {
 /// Explicit host evidence using one consistent unit; never inferred per account.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct CapacityObservation {
-    limit: u64,
-    remaining: u64,
-    evidence: EvidenceId,
+    pub(super) limit: u64,
+    pub(super) remaining: u64,
+    pub(super) evidence: EvidenceId,
 }
 impl CapacityObservation {
     pub fn new(limit: u64, remaining: u64, evidence: EvidenceId) -> DomainResult<Self> {
@@ -122,9 +122,9 @@ pub enum SharedCapacity {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct CapacityGroup {
-    id: CapacityGroupId,
-    members: BTreeSet<ConnectionId>,
-    capacity: SharedCapacity,
+    pub(super) id: CapacityGroupId,
+    pub(super) members: BTreeSet<ConnectionId>,
+    pub(super) capacity: SharedCapacity,
 }
 impl CapacityGroup {
     pub fn new(id: CapacityGroupId, capacity: SharedCapacity) -> Self {
@@ -160,10 +160,10 @@ impl CapacityGroup {
 /// Local handle only: the adapter owns native sessions and provider transcripts.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct RuntimeSessionRef {
-    id: RuntimeSessionId,
-    connection_id: ConnectionId,
-    connection_revision: u64,
-    adapter_id: String,
+    pub(super) id: RuntimeSessionId,
+    pub(super) connection_id: ConnectionId,
+    pub(super) connection_revision: u64,
+    pub(super) adapter_id: String,
 }
 impl RuntimeSessionRef {
     pub fn new(id: RuntimeSessionId, connection: &Connection) -> Self {
@@ -190,7 +190,7 @@ impl RuntimeSessionRef {
 
 #[derive(Default, Debug)]
 pub struct SessionRegistry {
-    sessions: BTreeMap<RuntimeSessionId, RuntimeSessionRef>,
+    pub(super) sessions: BTreeMap<RuntimeSessionId, RuntimeSessionRef>,
 }
 impl SessionRegistry {
     pub fn new() -> Self {
@@ -221,10 +221,10 @@ pub enum MessageRole {
 /// Only UI content, with the project binding captured when it was appended.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ConversationMessage {
-    order: u64,
-    role: MessageRole,
-    content: String,
-    project_at_send: Option<ProjectId>,
+    pub(super) order: u64,
+    pub(super) role: MessageRole,
+    pub(super) content: String,
+    pub(super) project_at_send: Option<ProjectId>,
 }
 impl ConversationMessage {
     pub fn order(&self) -> u64 {
@@ -244,12 +244,12 @@ impl ConversationMessage {
 /// Captured local work/version references, not a provider transcript or status.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ConversationWorkRef {
-    run_id: RunId,
-    run_result_revision: RevisionId,
-    project_at_link: Option<ProjectId>,
-    task_id: Option<TaskId>,
-    attempt_id: Option<AttemptId>,
-    plan_revision: Option<RevisionId>,
+    pub(super) run_id: RunId,
+    pub(super) run_result_revision: RevisionId,
+    pub(super) project_at_link: Option<ProjectId>,
+    pub(super) task_id: Option<TaskId>,
+    pub(super) attempt_id: Option<AttemptId>,
+    pub(super) plan_revision: Option<RevisionId>,
 }
 impl ConversationWorkRef {
     pub fn run_id(&self) -> &RunId {
@@ -274,10 +274,10 @@ impl ConversationWorkRef {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Conversation {
-    id: ConversationId,
-    project_id: Option<ProjectId>,
-    messages: Vec<ConversationMessage>,
-    work_references: Vec<ConversationWorkRef>,
+    pub(super) id: ConversationId,
+    pub(super) project_id: Option<ProjectId>,
+    pub(super) messages: Vec<ConversationMessage>,
+    pub(super) work_references: Vec<ConversationWorkRef>,
 }
 impl Conversation {
     pub fn id(&self) -> &ConversationId {
@@ -311,9 +311,9 @@ impl Conversation {
 /// HOME/New session may hold a draft but owns no saved conversation initially.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct PendingComposer {
-    project_id: Option<ProjectId>,
-    draft: String,
-    conversation_id: Option<ConversationId>,
+    pub(super) project_id: Option<ProjectId>,
+    pub(super) draft: String,
+    pub(super) conversation_id: Option<ConversationId>,
 }
 impl PendingComposer {
     pub fn project_id(&self) -> Option<&ProjectId> {
@@ -332,8 +332,8 @@ impl PendingComposer {
 
 #[derive(Default, Debug)]
 pub struct ConversationStore {
-    projects: BTreeMap<ProjectId, Project>,
-    conversations: BTreeMap<ConversationId, Conversation>,
+    pub(super) projects: BTreeMap<ProjectId, Project>,
+    pub(super) conversations: BTreeMap<ConversationId, Conversation>,
 }
 impl ConversationStore {
     pub fn new() -> Self {
@@ -349,6 +349,9 @@ impl ConversationStore {
     }
     pub fn project(&self, id: &ProjectId) -> Option<&Project> {
         self.projects.get(id)
+    }
+    pub fn projects(&self) -> impl Iterator<Item = &Project> {
+        self.projects.values()
     }
     pub fn conversation(&self, id: &ConversationId) -> Option<&Conversation> {
         self.conversations.get(id)
@@ -422,6 +425,17 @@ impl ConversationStore {
             .get_mut(id)
             .ok_or(DomainError::UnknownEntity)?
             .append(MessageRole::Orchestrator, content.into())
+    }
+    pub fn append_message(
+        &mut self,
+        id: &ConversationId,
+        role: MessageRole,
+        content: impl Into<String>,
+    ) -> DomainResult<()> {
+        self.conversations
+            .get_mut(id)
+            .ok_or(DomainError::UnknownEntity)?
+            .append(role, content.into())
     }
     pub fn attach_project(
         &mut self,

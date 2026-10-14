@@ -1,10 +1,22 @@
 # Execução do plano — pesquisa, protótipo e primeiro spike
 
-Atualizado em **13 de outubro de 2026**. Este registro acompanha entregas e evidências do [plano](DEVELOPMENT_PLAN.md), sem transformar pesquisa ou protótipos em implementação de produção.
+Atualizado em **14 de outubro de 2026**. Este registro acompanha entregas e evidências do [plano](DEVELOPMENT_PLAN.md), sem transformar pesquisa ou protótipos em implementação de produção.
 
 **D0 concluído como pesquisa; gate piloto D1 liberado e M0 retomado em OX-001.** A [conclusão D0](research/d0-conclusion.md) registra decisões, evidências e a revisão explícita do critério metodológico de OX-D01: quinze jornadas completas não foram demonstradas integralmente e não contam como teste aprovado. Em 12/10, após o retorno geral favorável e a correção dos painéis, o responsável confirmou: “Passei pelo reteste e funcionou”. O [registro humano e decisão de passagem](design/d1-pilot.md#piloto-reportado-pelo-responsável--1210) encerram a falha reportada de docking e preservam os casos P0 indisponíveis e a avaliação externa em OX-017. A sequência continua D0 → D1/piloto → M0 → M1 → M2; M0 e os gates técnicos posteriores permanecem abertos.
 
-## Incremento atual — OX-004 concluído como domínio Rust em memória
+## Incremento atual — OX-005 concluído como persistência transacional do Core
+
+**Continuação após `d1a307a` — 14/10:** [persistência SQLite](../crates/orchestrix-core/src/persistence/mod.rs) integrada ao domínio OX-004, em arquivos reais, com caminho explícito, migrações 1 → 2, estado atual e eventos append-only, evidências/resultados atômicos, idempotência persistida e revisão global esperada. [ADR-0006](adr/0006-synchronous-sqlite-persistence.md) escolheu rusqlite **0.40.2** com SQLite embutido **3.53.2**, após comparação documental com SQLx e spike real. O download das dependências foi autorizado; MSVC/SDK/Rust existentes foram reutilizados. [Contrato](contracts/persistence.md) e [entrega/evidências](research/ox-005-persistence-increment.md).
+
+Comandos inválidos sem mudança, falhas observadas que geram bloqueio/evidência e erros técnicos de armazenamento têm tratamentos distintos. O estado é destacado até commit; rollback não publica sucesso aparente. Checkpoints privados/versionados revalidam histórico, cadeia de integração, artefato vigente, aprovações, orçamento original/quarentena/fechamento do observador e relações SQL. Sessão/conexão e reserva não resolvida são verificadas entre Runs. Capacidade compartilhada permanece observada/desconhecida, sem presumir cotas independentes.
+
+Conversas, rascunhos de conversas salvas, vínculos, modos/perfis/contexto/configuração e diagnósticos versionados também são duráveis. HOME sem primeiro envio continua temporário; associar projeto preserva histórico. Falha de rechecagem não renova o último sucesso; resposta de revisão antiga não substitui a atual. Sanitização ocorre antes de gravar, com provas por segredos sintéticos e ausência de frames rejeitados/transcripts internos.
+
+**Verificação:** **92 testes Rust passaram** na suíte workspace (mais dois auxiliares marcados como ignorados no runner principal, mas efetivamente executados pelos testes pais em outros processos). Check/build locked/offline, rustfmt dos arquivos pertinentes e Clippy all-targets `-D warnings` passaram; endurecimentos finais de restauração receberam reexecução dirigida. Conformance **245 casos/935 operações** reproduzida sem regeneração, **320/320 regressões JS** e **11/11 da bridge adapter → Rust** passaram. Testes em arquivo demonstram reabertura/continuação em outro processo, disputa entre duas conexões, espera finita, rollback entre gravações, resposta perdida após commit, migrações e recusa de versões/dados incompatíveis. Nenhuma inferência/login foi executada.
+
+**Aceite:** OX-005 concluído no recorte de persistência do domínio; fixtures não comprovam um worker de produção nem recuperação após queda de energia. Carregar dados não inicia/retoma runtime, autentica conta ou seleciona conversa. **Próximo incremento sequencial: OX-006 worktrees/proveniência**; OX-007/OX-008 conservam suas dependências. Supervisor/adapter Rust de produção, scheduler, daemon, Desktop e refresh permanecem pendentes, assim como M0/OX-001/OX-002 e demais gates. Nenhum novo bloqueio humano foi criado para continuar o trabalho técnico independente.
+
+## Histórico — OX-004 concluído como domínio Rust em memória
 
 **Continuação após `d5f587f` — 13/10:** a orientação solicitada foi entregue primeiro, em `1a9afae`: AGENTS.md curto e índice docs/README.md separando estado atual, especificações e evidências históricas, sem movimentações/status paralelo. Depois, [domain/](../crates/orchestrix-core/src/domain/mod.rs) implementou entidades/IDs, conversas/referências de trabalho, definições versionadas e transições conforme o [contrato de domínio](contracts/domain-and-states.md). [Entrega, testes e aceite](research/ox-004-domain-increment.md).
 

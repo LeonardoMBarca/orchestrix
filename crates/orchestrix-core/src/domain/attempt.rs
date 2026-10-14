@@ -51,13 +51,13 @@ pub enum AttemptResult {
 
 /// Owns the existing OX-003 observer, not a second runtime event parser.
 pub struct TaskAttempt {
-    id: AttemptId,
-    session: RuntimeSessionRef,
-    inputs: AttemptInputs,
-    observer: RuntimeObserver,
-    cancellation_requested: bool,
-    sealed: bool,
-    artifacts: Vec<ArtifactVersion>,
+    pub(super) id: AttemptId,
+    pub(super) session: RuntimeSessionRef,
+    pub(super) inputs: AttemptInputs,
+    pub(super) observer: RuntimeObserver,
+    pub(super) cancellation_requested: bool,
+    pub(super) sealed: bool,
+    pub(super) artifacts: Vec<ArtifactVersion>,
 }
 impl std::fmt::Debug for TaskAttempt {
     fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {

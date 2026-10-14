@@ -1,6 +1,7 @@
 //! In-memory product identities and guarded workflows. No external effects.
 mod artifact;
 mod attempt;
+mod checkpoint;
 mod ids;
 mod profiles;
 mod run;

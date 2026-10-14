@@ -3,10 +3,10 @@ use super::{DefinitionVersion, DomainError, DomainResult, LocalRef, ModeId, Prof
 /// Versioned work objective; selecting resources is a separate policy concern.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ActionMode {
-    id: ModeId,
-    version: DefinitionVersion,
-    name: String,
-    purpose: String,
+    pub(super) id: ModeId,
+    pub(super) version: DefinitionVersion,
+    pub(super) name: String,
+    pub(super) purpose: String,
 }
 
 impl ActionMode {
@@ -57,11 +57,11 @@ impl ActionMode {
 /// Executor behavior, stored independently of mode and resource strategy.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct AgentProfile {
-    id: ProfileId,
-    version: DefinitionVersion,
-    name: String,
-    role: String,
-    instructions: LocalRef,
+    pub(super) id: ProfileId,
+    pub(super) version: DefinitionVersion,
+    pub(super) name: String,
+    pub(super) role: String,
+    pub(super) instructions: LocalRef,
 }
 
 impl AgentProfile {

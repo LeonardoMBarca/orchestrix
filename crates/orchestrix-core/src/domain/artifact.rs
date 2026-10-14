@@ -3,9 +3,9 @@ use super::{ArtifactId, EvidenceId, RevisionId, RunId, TaskId};
 /// Exact content and producer base; approvals never refer to an ID alone.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ArtifactVersion {
-    id: ArtifactId,
-    revision: RevisionId,
-    base: RevisionId,
+    pub(super) id: ArtifactId,
+    pub(super) revision: RevisionId,
+    pub(super) base: RevisionId,
 }
 impl ArtifactVersion {
     pub fn new(id: ArtifactId, revision: RevisionId, base: RevisionId) -> Self {

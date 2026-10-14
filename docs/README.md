@@ -40,6 +40,7 @@ Current status takes precedence over older reports' “next” or “pending” 
 | [Runtime Contract v1](./contracts/runtime-contract-v1.md) | Provider-neutral wire/lifecycle 1.x, capabilities, configuration, identity, budgets, errors and separate runtime/supervisor facts. JS reference and Rust consumption are implemented in scoped OX-003 acceptance; this is not a production supervisor. |
 | [Runtime Input Profile](./contracts/runtime-input-profile.md) | Revision 1 portable decoding, timestamp/Unicode/number grammar and compatibility. Codec revision is distinct from semantic wire version. |
 | [Domain and States](./contracts/domain-and-states.md) | Implemented OX-004 identities, conversations, versioned snapshots, guarded task/Run completion and exact application evidence; in-memory domain, not persistence or execution infrastructure. [Acceptance evidence](./research/ox-004-domain-increment.md). |
+| [Persistence Boundary](./contracts/persistence.md) | OX-005 transaction, idempotency, restoration, schema and privacy contract; implementation validation remains separate from the specification. |
 | [API Connection Contract](./design/api-connection-contract.md) | Two-stage subscription/API connection flow, provider-specific credentials and host boundary. |
 | [Connection Diagnostics](./design/connection-diagnostics.md) | Available/unavailable/unknown evidence, scoped checks and recheck. Periodic/event-driven refresh is specified future work; active probes/production authentication retain their gates. |
 
@@ -67,6 +68,7 @@ Accepted ADRs govern architectural choices. Read supersession notices rather tha
 - [ADR-0003 — Desktop App and Editor-Agnostic Core](./adr/0003-desktop-app-editor-agnostic-core.md), with IDE/editor scope partially superseded by ADR-0005.
 - [ADR-0004 — Context Ownership](./adr/0004-context-ownership.md)
 - [ADR-0005 — Desktop Product Scope and Platform Boundaries](./adr/0005-desktop-product-scope-and-platform-boundaries.md)
+- [ADR-0006 — Synchronous SQLite Persistence](./adr/0006-synchronous-sqlite-persistence.md)
 
 ## Historical research and implementation evidence
 
@@ -76,6 +78,8 @@ Sources retain their original results, failures, dates and limits. Offline repla
 
 | Record | What it demonstrated at that revision / later update |
 | --- | --- |
+| [SQLite Persistence — OX-005 Acceptance](./research/ox-005-persistence-increment.md) | Real file-backed durable domain, migrations, idempotency, rollback/lost reply, concurrent callers and subprocess continuation. Synthetic runtime facts do not establish production execution. |
+| [Domain — OX-004 Acceptance](./research/ox-004-domain-increment.md) | Guarded identities/states and conversations in memory; OX-005 adds the separate persistence boundary without turning that older record into a storage proof. |
 | [Portable Runtime Input — OX-003 Acceptance](./research/portable-runtime-input-increment.md) | Profile revision 1 and scoped acceptance: 245 cases/935 operations, six Rust, eleven bridge and 320 JS checks. Totals belong to that increment; status identifies subsequent work. |
 | [Rust Runtime Contract Increment](./research/rust-runtime-contract-increment.md) | Authorized Rust setup and initial 104-case/309-operation conformance. The timestamp difference recorded there was resolved by subsequent portable input acceptance. |
 | [Codex Contract Integration](./research/codex-contract-integration.md) | Experimental normalization, private mappings, bounded discovery and historical/synthetic replay. Rust consumption was pending there; later Rust/input records supply acceptance. |

@@ -25,7 +25,7 @@ Local persistence
 → SQLite
 
 SQLite access
-→ SQLx or rusqlite (decision still open)
+→ rusqlite 0.40.2, bundled SQLite 3.53.2 (ADR-0006)
 
 Task graph / DAG representation
 → petgraph
@@ -145,7 +145,7 @@ The system should avoid unnecessary async complexity where synchronous code is s
 
 ## SQLite
 
-SQLite is the proposed local persistence engine.
+SQLite is the local persistence engine implemented in the Core's separate persistence module. This does not imply a production daemon/Desktop or automatic runtime recovery.
 
 It should store durable Orchestrix state such as:
 
@@ -176,27 +176,13 @@ Orchestrix owns durable project-level state.
 
 See `CONTEXT_OWNERSHIP.md` and ADR-0004 for the explicit context ownership model.
 
-## SQLx vs rusqlite
+## SQLite access decision
 
-This choice remains open.
+[ADR-0006](./adr/0006-synchronous-sqlite-persistence.md) accepts **rusqlite 0.40.2** with default features disabled and `bundled` enabled; the linked SQLite version verified in the file-backed tests is **3.53.2**. SQLx 0.9.0 was compared through official versioned documentation, without building a second implementation or making comparative performance claims.
 
-### SQLx advantages
+The existing synchronous Core uses a small direct SQLite boundary, explicit migrations and short atomic commands. Two connections, rollback and reopening populated files were tested. Domain entities remain independent of SQL/connection types. [Persistence contract](./contracts/persistence.md) defines WAL, FULL synchronization, finite busy waiting, idempotency and validated restoration.
 
-- async-friendly API;
-- migrations ecosystem;
-- compile-time query validation options;
-- natural integration with Tokio-heavy code.
-
-### rusqlite advantages
-
-- direct SQLite integration;
-- simpler mental model;
-- smaller abstraction layer;
-- mature and focused API.
-
-The decision should be based on actual persistence access patterns rather than aesthetic preference.
-
-A small technical spike should compare both before the schema becomes large.
+A future Tokio host must move the whole short synchronous operation off executor tasks through an owned worker or bounded blocking operation. Transactions must not cross `.await` or runtime execution. This choice does not add Tokio, a connection pool or a database actor now.
 
 ## petgraph
 
@@ -345,7 +331,6 @@ Vite
 Open decisions:
 
 ```text
-SQLx vs rusqlite
 frontend state management
 code/diff viewer implementation
 exact Core↔Desktop transport abstraction

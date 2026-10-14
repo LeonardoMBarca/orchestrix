@@ -41,17 +41,17 @@ pub struct TaskDependency {
 }
 
 pub struct Task {
-    id: TaskId,
-    objective: String,
-    kind: TaskKind,
-    acceptance_criteria: Vec<String>,
-    dependencies: Vec<TaskDependency>,
-    state: TaskState,
-    attempts: Vec<TaskAttempt>,
-    artifact: Option<ArtifactVersion>,
-    verifications: Vec<VerificationEvidence>,
-    reviews: Vec<ReviewEvidence>,
-    integrations: Vec<IntegrationEvidence>,
+    pub(super) id: TaskId,
+    pub(super) objective: String,
+    pub(super) kind: TaskKind,
+    pub(super) acceptance_criteria: Vec<String>,
+    pub(super) dependencies: Vec<TaskDependency>,
+    pub(super) state: TaskState,
+    pub(super) attempts: Vec<TaskAttempt>,
+    pub(super) artifact: Option<ArtifactVersion>,
+    pub(super) verifications: Vec<VerificationEvidence>,
+    pub(super) reviews: Vec<ReviewEvidence>,
+    pub(super) integrations: Vec<IntegrationEvidence>,
 }
 
 impl Task {

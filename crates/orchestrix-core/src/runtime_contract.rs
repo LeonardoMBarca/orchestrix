@@ -263,17 +263,61 @@ pub struct Limits { pub max_frame_bytes: u64, pub max_events: u64, pub max_total
 impl Default for Limits { fn default() -> Self { Self { max_frame_bytes: 65_536, max_events: 256, max_total_bytes: 1_048_576 } } }
 
 /// One owned attempt; no I/O, clock, retry, spawn or persistent side effects.
-pub struct RuntimeObserver { descriptor: RuntimeDescriptor, request: RuntimeRequest, state: Value, sequence: u64, bytes: u64, limits: Limits }
+pub struct RuntimeObserver { descriptor: RuntimeDescriptor, request: RuntimeRequest, state: Value, sequence: u64, bytes: u64, limits: Limits, checkpoint_history: Vec<Value> }
 impl RuntimeObserver {
     pub fn new(descriptor: RuntimeDescriptor, request: RuntimeRequest, limits: Limits) -> Result<Self> {
         ensure((1..=1_048_576).contains(&limits.max_frame_bytes) && (1..=4096).contains(&limits.max_events) && (1..=16_777_216).contains(&limits.max_total_bytes), "budget")?;
         ensure(descriptor.0["connection"]["id"] == request.0["connectionId"] && descriptor.0["connection"]["revision"] == request.0["connectionRevision"], "ownership")?;
         let mut owner = scope(&request.0)?; owner["connectionRevision"] = request.0["connectionRevision"].clone();
         let state = json!({"version": {"major": 1, "minor": 1}, "scope": owner, "phase": "created", "admissionObserved": false, "startObserved": false, "observation": "healthy", "fatal": false, "outcome": "unknown", "terminalConfirmed": false, "terminal": null, "requested": request.0["requested"], "effective": normalize_effective(None)?, "interrupt": {"requested": false, "acknowledged": false}, "output": {"assistant": 0, "tool": 0, "other": 0, "bytes": 0, "events": 0}, "process": {"runtime": process_state(), "helper": process_state(), "tree": {"ownership": "unknown", "source": "unknown", "termination": "unknown", "activeCount": null, "evidenceRef": null}}, "fault": null, "events": [], "contextOwnership": context_ownership()});
-        Ok(Self { descriptor, request, state, sequence: 0, bytes: 0, limits })
+        Ok(Self { descriptor, request, state, sequence: 0, bytes: 0, limits, checkpoint_history: Vec::new() })
     }
     pub fn descriptor(&self) -> &RuntimeDescriptor { &self.descriptor }
     pub fn request(&self) -> &RuntimeRequest { &self.request }
+    /// Local observation checkpoint; restoring never starts or resumes a runtime.
+    /// Frames retain only the contract projection, never raw/provider payloads.
+    pub fn checkpoint(&self) -> Value {
+        json!({"checkpointVersion": 1, "descriptor": self.descriptor.as_json(), "request": self.request.as_json(), "limits": {"maxFrameBytes": self.limits.max_frame_bytes, "maxEvents": self.limits.max_events, "maxTotalBytes": self.limits.max_total_bytes}, "history": self.checkpoint_history, "snapshot": self.snapshot()})
+    }
+    pub fn restore_checkpoint(checkpoint: &Value) -> Result<Self> {
+        ensure(checkpoint.as_object().is_some_and(|o| o.len() == 6 && ["checkpointVersion", "descriptor", "request", "limits", "history", "snapshot"].iter().all(|key| o.contains_key(*key))), "protocol")?;
+        ensure(checkpoint["checkpointVersion"] == 1, "version")?;
+        let descriptor = normalize_descriptor(&checkpoint["descriptor"])?;
+        let request = normalize_request(&checkpoint["request"])?;
+        ensure(descriptor.as_json() == &checkpoint["descriptor"] && request.as_json() == &checkpoint["request"], "protocol")?;
+        let limits = &checkpoint["limits"];
+        ensure(limits.as_object().is_some_and(|o| o.len() == 3 && ["maxFrameBytes", "maxEvents", "maxTotalBytes"].iter().all(|key| o.contains_key(*key))), "protocol")?;
+        let mut observer = Self::new(descriptor, request, Limits { max_frame_bytes: limits["maxFrameBytes"].as_u64().ok_or_else(|| error("budget"))?, max_events: limits["maxEvents"].as_u64().ok_or_else(|| error("budget"))?, max_total_bytes: limits["maxTotalBytes"].as_u64().ok_or_else(|| error("budget"))? })?;
+        let history = checkpoint["history"].as_array().ok_or_else(|| error("protocol"))?;
+        ensure(history.len() <= 20_000, "budget")?;
+        for step in history {
+            let fields = step.as_object().ok_or_else(|| error("protocol"))?;
+            match step["operation"].as_str() {
+                Some("event") => {
+                    ensure(fields.len() == 4 && fields.contains_key("event") && fields.contains_key("origin") && fields.contains_key("bytes"), "protocol")?;
+                    let origin = match step["origin"].as_str() { Some("runtime") => EventOrigin::Runtime, Some("supervisor") => EventOrigin::Supervisor, _ => return Err(error("ownership")) };
+                    let bytes = step["bytes"].as_u64().filter(|value| *value > 0).ok_or_else(|| error("budget"))?;
+                    let frame = step["event"].to_string();
+                    let event = observer.accept_inner_sized(&frame, origin, bytes)?;
+                    ensure(event == step["event"], "protocol")?;
+                }
+                Some("fault") => {
+                    ensure(fields.len() == 2 && fields.contains_key("code"), "protocol")?;
+                    let code = ERRORS.iter().copied().find(|code| step["code"] == *code).ok_or_else(|| error("protocol"))?;
+                    observer.faulted(code, true);
+                }
+                Some("transport-lost") => {
+                    ensure(fields.len() == 2 && fields.contains_key("reason"), "protocol")?;
+                    observer.transport_lost(step["reason"].as_str().ok_or_else(|| error("protocol"))?)?;
+                }
+                Some("close") => { ensure(fields.len() == 1, "protocol")?; observer.close(); }
+                _ => return Err(error("protocol")),
+            }
+        }
+        ensure(observer.snapshot() == checkpoint["snapshot"], "protocol")?;
+        observer.checkpoint_history = history.clone();
+        Ok(observer)
+    }
     pub fn snapshot(&self) -> Value {
         let mut result = self.state.clone(); result["budget"] = json!({"frames": self.sequence, "bytes": self.bytes, "maxEvents": self.limits.max_events, "maxFrameBytes": self.limits.max_frame_bytes, "maxTotalBytes": self.limits.max_total_bytes}); result
     }
@@ -284,19 +328,26 @@ impl RuntimeObserver {
     }
     pub fn transport_lost(&mut self, reason: &str) -> Result<Value> {
         let code = match reason { "timeout" => "timeout", "transport-loss" => "transport-loss", "crash" => "crash", _ => return Err(error("protocol")) };
-        self.faulted(code, false); Ok(self.snapshot())
+        let before = self.state.clone(); self.faulted(code, false);
+        if self.state != before { self.checkpoint_history.push(json!({"operation": "transport-lost", "reason": code})); }
+        Ok(self.snapshot())
     }
-    pub fn close(&mut self) -> Value { self.state["observation"] = json!("closed"); self.snapshot() }
+    pub fn close(&mut self) -> Value { if self.state["observation"] != "closed" { self.checkpoint_history.push(json!({"operation": "close"})); } self.state["observation"] = json!("closed"); self.snapshot() }
     pub fn accept(&mut self, frame: &str, origin: EventOrigin) -> Result<Value> {
         let result = self.accept_inner(frame, origin);
-        if let Err(ref fault) = result { self.faulted(fault.code, true); }
+        match &result {
+            Ok(event) => self.checkpoint_history.push(json!({"operation": "event", "event": event, "origin": origin.label(), "bytes": frame.len()})),
+            Err(fault) => { let before = self.state.clone(); self.faulted(fault.code, true); if self.state != before { self.checkpoint_history.push(json!({"operation": "fault", "code": fault.code})); } }
+        }
         result
     }
     fn latched_error(&self) -> ContractError { error(ERRORS.iter().copied().find(|code| self.state["fault"]["code"] == *code).unwrap_or("protocol")) }
     fn accept_inner(&mut self, frame: &str, origin: EventOrigin) -> Result<Value> {
+        self.accept_inner_sized(frame, origin, frame.len() as u64)
+    }
+    fn accept_inner_sized(&mut self, frame: &str, origin: EventOrigin, bytes: u64) -> Result<Value> {
         ensure(self.state["observation"] != "closed", "transport-loss")?;
         if self.state["fatal"] == true && origin != EventOrigin::Supervisor { return Err(self.latched_error()); }
-        let bytes = frame.len() as u64;
         ensure(bytes <= self.limits.max_frame_bytes && self.bytes + bytes <= self.limits.max_total_bytes && self.sequence < self.limits.max_events, "budget")?;
         let input = parse_event(frame)?; object(&input)?;
         let wire_version = version(&input["version"])?; let owner = scope(&input)?;

@@ -11,3 +11,6 @@ publish = false
 serde_json = { version = "1.0", features = ["float_roundtrip"] }
 serde_core = "1.0"
 chrono = { version = "0.4", default-features = false, features = ["std"] }
+rusqlite = { version = "=0.40.2", default-features = false, features = ["bundled"] }
+serde = { version = "1.0", features = ["derive"] }
+sha2 = "0.10"

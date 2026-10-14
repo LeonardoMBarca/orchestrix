@@ -26,12 +26,12 @@ pub enum RunState {
 /// An opaque candidate issued by this Run. Copying it does not approve it.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct DeliveryCandidate {
-    run: RunId,
-    repository: RepositoryId,
-    result: RevisionId,
-    target_base: RevisionId,
-    generation: u64,
-    artifacts: Vec<ArtifactVersion>,
+    pub(super) run: RunId,
+    pub(super) repository: RepositoryId,
+    pub(super) result: RevisionId,
+    pub(super) target_base: RevisionId,
+    pub(super) generation: u64,
+    pub(super) artifacts: Vec<ArtifactVersion>,
 }
 impl DeliveryCandidate {
     pub fn run(&self) -> &RunId {
@@ -66,8 +66,8 @@ pub struct ApplicationEvidence {
 /// A host-observed conflict retains the exact candidate without approving it.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ApplicationConflict {
-    candidate: DeliveryCandidate,
-    reference: EvidenceId,
+    pub(super) candidate: DeliveryCandidate,
+    pub(super) reference: EvidenceId,
 }
 impl ApplicationConflict {
     pub fn candidate(&self) -> &DeliveryCandidate {
@@ -79,19 +79,22 @@ impl ApplicationConflict {
 }
 
 pub struct Run {
-    id: RunId,
-    project: Option<ProjectId>,
-    repository: Option<RepositoryId>,
-    result_revision: RevisionId,
-    delivery: DeliveryRequirement,
-    state: RunState,
-    tasks: BTreeMap<TaskId, Task>,
-    generation: u64,
-    candidate: Option<DeliveryCandidate>,
-    approval: Option<EvidenceId>,
-    application: Option<ApplicationEvidence>,
-    conflicts: Vec<ApplicationConflict>,
-    cancellation_requested: bool,
+    pub(super) id: RunId,
+    pub(super) project: Option<ProjectId>,
+    pub(super) repository: Option<RepositoryId>,
+    pub(super) initial_revision: RevisionId,
+    pub(super) result_revision: RevisionId,
+    pub(super) delivery: DeliveryRequirement,
+    pub(super) state: RunState,
+    pub(super) tasks: BTreeMap<TaskId, Task>,
+    pub(super) generation: u64,
+    pub(super) candidate: Option<DeliveryCandidate>,
+    pub(super) approval: Option<EvidenceId>,
+    pub(super) application: Option<ApplicationEvidence>,
+    pub(super) application_failures: Vec<ApplicationEvidence>,
+    pub(super) integration_order: Vec<(TaskId, EvidenceId)>,
+    pub(super) conflicts: Vec<ApplicationConflict>,
+    pub(super) cancellation_requested: bool,
 }
 impl Run {
     pub fn new(
@@ -108,6 +111,7 @@ impl Run {
             id,
             project: project.map(|p| p.id().clone()),
             repository: project.map(|p| p.repository().id().clone()),
+            initial_revision: base.clone(),
             result_revision: base,
             delivery,
             state: RunState::Working,
@@ -116,6 +120,8 @@ impl Run {
             candidate: None,
             approval: None,
             application: None,
+            application_failures: Vec::new(),
+            integration_order: Vec::new(),
             conflicts: Vec::new(),
             cancellation_requested: false,
         })
@@ -150,6 +156,9 @@ impl Run {
     pub fn application(&self) -> Option<&ApplicationEvidence> {
         self.application.as_ref()
     }
+    pub fn application_failures(&self) -> &[ApplicationEvidence] {
+        &self.application_failures
+    }
     pub fn conflicts(&self) -> &[ApplicationConflict] {
         &self.conflicts
     }
@@ -157,6 +166,9 @@ impl Run {
         self.cancellation_requested
     }
     fn require_mutable(&self) -> DomainResult<()> {
+        // Restored counters must reject exhaustion instead of overflowing the
+        // next guarded transition's generation increment.
+        require(self.generation < u64::MAX, DomainError::InvalidVersion)?;
         require(
             !matches!(
                 self.state,
@@ -348,7 +360,9 @@ impl Run {
         let passed = evidence.validation == CheckResult::Passed;
         let revision = evidence.result_revision.clone();
         let id = evidence.task.clone();
+        let reference = evidence.reference.clone();
         self.task_mut(&id)?.integrate(evidence)?;
+        self.integration_order.push((id, reference));
         if passed {
             self.result_revision = revision;
             self.invalidate_delivery();
@@ -493,6 +507,7 @@ impl Run {
             DomainError::StaleEvidence,
         )?;
         if evidence.validation == CheckResult::Failed {
+            self.application_failures.push(evidence);
             self.candidate = None;
             self.approval = None;
             self.state = RunState::Blocked;
