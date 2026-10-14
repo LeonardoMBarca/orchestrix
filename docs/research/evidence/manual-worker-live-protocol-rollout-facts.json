@@ -1,0 +1,16 @@
+{
+  "schemaVersion": 1,
+  "source": "only-the-bound-live-thread-rollout",
+  "sourceSha256": "455d6ff265aa1981ec95a7a5d25de0bd65610b6a99ed5adf191aa05ec5775362",
+  "sizeBytes": 8398,
+  "recordCount": 6,
+  "nativeTaskStartedCount": 1,
+  "nativeTurnAbortedCount": 1,
+  "nativeItemCompletedCount": 1,
+  "wireMethodRecordCount": 0,
+  "wireCaptureAvailable": false,
+  "adapterStartObserved": false,
+  "rejectedWireFrameIdentified": false,
+  "newRuntimeLaunches": 0,
+  "newInferenceTurns": 0
+}

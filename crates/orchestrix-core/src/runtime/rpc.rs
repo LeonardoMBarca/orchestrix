@@ -1,8 +1,124 @@
 use super::{CancellationToken, RuntimeError, RuntimeResult};
 use orchestrix_process::{OwnedProcess, ProcessEvent};
 use serde_json::{Value, json};
+use sha2::{Digest, Sha256};
 use std::collections::VecDeque;
 use std::time::{Duration, Instant};
+
+/// Closed local routes/reasons: neither names nor content supplied by the
+/// provider can become diagnostic text. This stays outside normalized events.
+pub(super) enum DiagnosticStage {
+    Framing,
+    RpcResponse,
+    Configuration,
+    Admission,
+    Notification,
+    Observer,
+    Attempt,
+}
+pub(super) enum DiagnosticReason {
+    InvalidJson,
+    InvalidEnvelope,
+    FrameBudget,
+    PartialFrame,
+    ResponseIdMismatch,
+    MissingResult,
+    MissingMethod,
+    UnexpectedResponse,
+    UnsupportedGlobal,
+    ThreadScope,
+    TurnScope,
+    ThreadStartedScope,
+    GlobalScope,
+    WarningScope,
+    McpMetadataScope,
+    AuthenticationChanged,
+    DeltaType,
+    OutputBudget,
+    TerminalStatus,
+    InvalidTurnId,
+    ConfigurationRejected,
+    ObservationRejected,
+    OperationFailed,
+}
+pub(super) fn diagnosed(
+    error: RuntimeError,
+    stage: DiagnosticStage,
+    reason: DiagnosticReason,
+    message: Option<&Value>,
+) -> RuntimeError {
+    error.with_adapter_diagnostic(diagnostic(stage, reason, message))
+}
+pub(super) fn diagnostic(
+    stage: DiagnosticStage,
+    reason: DiagnosticReason,
+    message: Option<&Value>,
+) -> Value {
+    use DiagnosticReason as R;
+    use DiagnosticStage as S;
+    let stage = match stage {
+        S::Framing => "framing",
+        S::RpcResponse => "rpc-response",
+        S::Configuration => "configuration",
+        S::Admission => "admission",
+        S::Notification => "notification",
+        S::Observer => "observer",
+        S::Attempt => "attempt",
+    };
+    let reason = match reason {
+        R::InvalidJson => "invalid-json",
+        R::InvalidEnvelope => "invalid-envelope",
+        R::FrameBudget => "frame-budget",
+        R::PartialFrame => "partial-frame",
+        R::ResponseIdMismatch => "response-id-mismatch",
+        R::MissingResult => "missing-result",
+        R::MissingMethod => "missing-method",
+        R::UnexpectedResponse => "unexpected-response",
+        R::UnsupportedGlobal => "unsupported-global",
+        R::ThreadScope => "thread-scope",
+        R::TurnScope => "turn-scope",
+        R::ThreadStartedScope => "thread-started-scope",
+        R::GlobalScope => "global-scope",
+        R::WarningScope => "warning-scope",
+        R::McpMetadataScope => "mcp-metadata-scope",
+        R::AuthenticationChanged => "authentication-changed",
+        R::DeltaType => "delta-type",
+        R::OutputBudget => "output-budget",
+        R::TerminalStatus => "terminal-status",
+        R::InvalidTurnId => "invalid-turn-id",
+        R::ConfigurationRejected => "configuration-rejected",
+        R::ObservationRejected => "observation-rejected",
+        R::OperationFailed => "operation-failed",
+    };
+    let params = message.and_then(|message| message.get("params"));
+    let nested = |key: &str| params.and_then(|params| params.get(key));
+    let method_sha256 = message
+        .and_then(|message| message.get("method"))
+        .and_then(Value::as_str)
+        .map(|method| format!("{:x}", Sha256::digest(method.as_bytes())));
+    json!({
+        "version":1,"stage":stage,"reason":reason,"methodSha256":method_sha256,
+        "idShape":shape(message.and_then(|message| message.get("id"))),
+        "paramsShape":shape(params),
+        "identityShapes":{
+            "threadId":shape(nested("threadId")),
+            "thread.id":shape(nested("thread").and_then(|thread| thread.get("id"))),
+            "turnId":shape(nested("turnId")),
+            "turn.id":shape(nested("turn").and_then(|turn| turn.get("id")))
+        }
+    })
+}
+fn shape(value: Option<&Value>) -> &'static str {
+    match value {
+        None => "absent",
+        Some(Value::Null) => "null",
+        Some(Value::Bool(_)) => "bool",
+        Some(Value::Number(_)) => "number",
+        Some(Value::String(_)) => "string",
+        Some(Value::Array(_)) => "array",
+        Some(Value::Object(_)) => "object",
+    }
+}
 
 pub(super) struct Rpc {
     pub process: OwnedProcess,
@@ -88,7 +204,12 @@ impl Rpc {
                 continue;
             }
             if message["id"] != id {
-                return Err(RuntimeError::new("protocol", "unknown"));
+                return Err(diagnosed(
+                    RuntimeError::new("protocol", "unknown"),
+                    DiagnosticStage::RpcResponse,
+                    DiagnosticReason::ResponseIdMismatch,
+                    Some(&message),
+                ));
             }
             if message.get("error").is_some() {
                 let tag = message["error"]["data"]["type"].as_str();
@@ -101,10 +222,14 @@ impl Rpc {
                     "sent",
                 ));
             }
-            return message
-                .get("result")
-                .cloned()
-                .ok_or_else(|| RuntimeError::new("protocol", "unknown"));
+            return message.get("result").cloned().ok_or_else(|| {
+                diagnosed(
+                    RuntimeError::new("protocol", "unknown"),
+                    DiagnosticStage::RpcResponse,
+                    DiagnosticReason::MissingResult,
+                    Some(&message),
+                )
+            });
         }
     }
     pub fn deny_request(&self, message: &Value) -> RuntimeResult<()> {
@@ -147,19 +272,40 @@ impl Rpc {
                     while let Some(end) = self.pending_bytes.iter().position(|byte| *byte == b'\n')
                     {
                         if end > 65_536 || self.messages.len() >= 128 || self.frames >= 4096 {
-                            return Err(RuntimeError::new("budget", "unknown"));
+                            return Err(diagnosed(
+                                RuntimeError::new("budget", "unknown"),
+                                DiagnosticStage::Framing,
+                                DiagnosticReason::FrameBudget,
+                                None,
+                            ));
                         }
                         let frame: Vec<_> = self.pending_bytes.drain(..=end).collect();
-                        let message: Value = serde_json::from_slice(&frame)
-                            .map_err(|_| RuntimeError::new("protocol", "unknown"))?;
+                        let message: Value = serde_json::from_slice(&frame).map_err(|_| {
+                            diagnosed(
+                                RuntimeError::new("protocol", "unknown"),
+                                DiagnosticStage::Framing,
+                                DiagnosticReason::InvalidJson,
+                                None,
+                            )
+                        })?;
                         if !message.is_object() || message.get("jsonrpc").is_some() {
-                            return Err(RuntimeError::new("protocol", "unknown"));
+                            return Err(diagnosed(
+                                RuntimeError::new("protocol", "unknown"),
+                                DiagnosticStage::Framing,
+                                DiagnosticReason::InvalidEnvelope,
+                                Some(&message),
+                            ));
                         }
                         self.frames += 1;
                         self.messages.push_back(message);
                     }
                     if self.pending_bytes.len() > 65_536 {
-                        return Err(RuntimeError::new("budget", "unknown"));
+                        return Err(diagnosed(
+                            RuntimeError::new("budget", "unknown"),
+                            DiagnosticStage::Framing,
+                            DiagnosticReason::FrameBudget,
+                            None,
+                        ));
                     }
                 }
             }
@@ -172,7 +318,12 @@ impl Rpc {
         }
         let streams = self.process.streams();
         if streams.stdout_closed && !self.pending_bytes.is_empty() {
-            return Err(RuntimeError::new("protocol", "unknown"));
+            return Err(diagnosed(
+                RuntimeError::new("protocol", "unknown"),
+                DiagnosticStage::Framing,
+                DiagnosticReason::PartialFrame,
+                None,
+            ));
         }
         if streams.stdout_closed && self.process.tree()?.root_exit_code.is_some() {
             return Err(RuntimeError::new(

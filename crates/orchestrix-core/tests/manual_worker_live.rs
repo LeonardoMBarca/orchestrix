@@ -221,7 +221,7 @@ fn summary(report: &RuntimeReport) -> Value {
         .unwrap()
         .snapshot();
     json!({"synthetic":report.synthetic,"dispatch":report.dispatch,
-        "fault":report.fault.as_ref().map(RuntimeError::code),"phase":snapshot["phase"],
+        "fault":report.fault.as_ref().map(RuntimeError::code),"adapterDiagnostic":report.adapter_diagnostic,"phase":snapshot["phase"],
         "startObserved":snapshot["startObserved"],"terminalConfirmed":snapshot["terminalConfirmed"],
         "terminal":snapshot["terminal"],"interrupt":snapshot["interrupt"],
         "tree":report.tree.map(|tree|json!({"owned":tree.owned,"rootExitCode":tree.root_exit_code,"activeProcesses":tree.active_processes})),
@@ -441,9 +441,16 @@ fn codex_worker_resume_context_and_cancellation_live_opt_in() {
         &CancellationToken::new(),
     )
     .expect("live worker operation");
+    let observed = record
+        .observations
+        .iter()
+        .find(|observation| observation.status == WorkerStatus::RuntimeObserved);
     journal.stage(
         "worker-result",
-        json!({"status":record.status(),"delivered":false,"review":"pending-independent-review"}),
+        json!({"status":record.status(),"delivered":false,"review":"pending-independent-review",
+            "dispatch":observed.map(|value| &value.details["dispatch"]),
+            "fault":observed.map(|value| &value.details["fault"]),
+            "adapterDiagnostic":observed.map(|value| &value.details["adapterDiagnostic"])}),
     );
     assert_eq!(
         record.status(),

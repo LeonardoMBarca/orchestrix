@@ -477,7 +477,7 @@ impl ManualWorker {
             store,
             &input.id,
             WorkerStatus::RuntimeObserved,
-            json!({"dispatch":report.dispatch,"fault":report.fault.as_ref().map(RuntimeError::code),"treeStopped":tree_stopped,"streamsClosed":drained,"synthetic":report.synthetic,"adapterBinding":report.binding.as_ref().map(|b|b.checkpoint()),"worktreeOperation":worktree.intent.operation_id}),
+            json!({"dispatch":report.dispatch,"fault":report.fault.as_ref().map(RuntimeError::code),"treeStopped":tree_stopped,"streamsClosed":drained,"synthetic":report.synthetic,"adapterBinding":report.binding.as_ref().map(|b|b.checkpoint()),"adapterDiagnostic":report.adapter_diagnostic,"worktreeOperation":worktree.intent.operation_id}),
         )?;
         let current = record(store, &input.id)?;
         let state = store.load()?;

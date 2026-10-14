@@ -37,6 +37,7 @@ impl CancellationToken {
 pub struct RuntimeError {
     code: &'static str,
     dispatch: &'static str,
+    adapter_diagnostic: Option<serde_json::Value>,
 }
 impl RuntimeError {
     /// The host failed to durably record an observation. No raw database error crosses this boundary.
@@ -50,7 +51,15 @@ impl RuntimeError {
         self.dispatch
     }
     pub(crate) fn new(code: &'static str, dispatch: &'static str) -> Self {
-        Self { code, dispatch }
+        Self {
+            code,
+            dispatch,
+            adapter_diagnostic: None,
+        }
+    }
+    fn with_adapter_diagnostic(mut self, diagnostic: serde_json::Value) -> Self {
+        self.adapter_diagnostic = Some(diagnostic);
+        self
     }
 }
 impl std::fmt::Display for RuntimeError {

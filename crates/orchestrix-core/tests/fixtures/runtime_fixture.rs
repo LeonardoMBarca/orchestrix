@@ -227,6 +227,50 @@ fn main() {
                 if scenario != "lost-reply" {
                     send(json!({"id":id,"result":{"turn":{"id":turn_id,"status":"inProgress"}}}));
                 }
+                if scenario == "unscoped-private" {
+                    send(
+                        json!({"method":"private.method.fixture-value","params":{"output":"do-not-persist-provider-message"}}),
+                    );
+                }
+                if scenario.starts_with("warning-") {
+                    let mut params = json!({"message":"do-not-persist-provider-message"});
+                    match scenario {
+                        "warning-null" => params["threadId"] = Value::Null,
+                        "warning-absent" => {}
+                        "warning-thread" => params["threadId"] = json!(thread),
+                        "warning-foreign" => params["threadId"] = json!("private-foreign-thread"),
+                        "warning-turn" => {
+                            params["threadId"] = Value::Null;
+                            params["turnId"] = json!("private-foreign-turn");
+                        }
+                        "warning-nested-thread" => {
+                            params["threadId"] = Value::Null;
+                            params["thread"] = json!({"id":"private-foreign-thread"});
+                        }
+                        _ => panic!("unknown warning fixture"),
+                    }
+                    send(json!({"method":"warning","params":params}));
+                }
+                if scenario.starts_with("mcp-metadata-") {
+                    let mut params = json!({"name":"do-not-persist-server-name","status":"ready","error":"do-not-persist-provider-message","failureReason":null});
+                    match scenario {
+                        "mcp-metadata-null" => params["threadId"] = Value::Null,
+                        "mcp-metadata-thread" => params["threadId"] = json!(thread),
+                        "mcp-metadata-foreign" => {
+                            params["threadId"] = json!("private-foreign-thread")
+                        }
+                        "mcp-metadata-turn" => {
+                            params["threadId"] = Value::Null;
+                            params["turnId"] = Value::Null;
+                        }
+                        "mcp-metadata-absent" => {}
+                        "mcp-metadata-nonobject" => {
+                            params = json!(["do-not-persist-provider-message"])
+                        }
+                        _ => panic!("unknown MCP metadata fixture"),
+                    }
+                    send(json!({"method":"mcpServer/startupStatus/updated","params":params}));
+                }
                 send(
                     json!({"method":"turn/started","params":{"threadId":thread,"turn":{"id":turn_id,"status":"inProgress"}}}),
                 );

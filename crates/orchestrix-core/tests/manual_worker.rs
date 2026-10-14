@@ -698,6 +698,84 @@ fn crash_and_lost_response_reopen_without_automatic_model_execution() {
 }
 
 #[test]
+fn protocol_diagnostic_is_durable_private_and_does_not_authorize_reexecution() {
+    let fixture = Fixture::new();
+    let request = fixture.request("diagnostic-worker");
+    let mut store = fixture.store();
+    let record = ManualWorker::run(
+        &mut store,
+        &request,
+        fixture.launch("unscoped-private"),
+        &CancellationToken::new(),
+    )
+    .unwrap();
+    assert_eq!(record.status(), WorkerStatus::Uncertain);
+    let observed = record
+        .observations
+        .iter()
+        .find(|entry| entry.status == WorkerStatus::RuntimeObserved)
+        .unwrap();
+    assert_eq!(observed.details["fault"], "protocol");
+    assert_eq!(observed.details["dispatch"], "sent");
+    assert_eq!(observed.details["treeStopped"], true);
+    assert_eq!(observed.details["streamsClosed"], true);
+    let diagnostic = observed.details["adapterDiagnostic"].clone();
+    assert!(diagnostic.is_object());
+    assert!(diagnostic.to_string().len() <= 4_096);
+    let method_hash = orchestrix_core::git_records::content_hash(b"private.method.fixture-value");
+    assert_eq!(diagnostic["methodSha256"], method_hash);
+    for private in [
+        "private.method.fixture-value",
+        "do-not-persist-provider-message",
+    ] {
+        assert!(!diagnostic.to_string().contains(private));
+    }
+    assert!(!record.summary().to_string().contains(&method_hash));
+    let state = store.load().unwrap();
+    let task = state.runs()[&RunId::new(&record.intent.run_id).unwrap()]
+        .task(&TaskId::new(&record.intent.task_id).unwrap())
+        .unwrap();
+    assert_eq!(task.state(), TaskState::Blocked);
+    assert!(task.verifications().is_empty());
+    drop(state);
+    drop(store);
+    let mut reopened = fixture.store();
+    let inspected = ManualWorker::inspect(&mut reopened, &request.id).unwrap();
+    assert_eq!(inspected, record);
+    let replay = ManualWorker::run(
+        &mut reopened,
+        &request,
+        fixture.launch("success"),
+        &CancellationToken::new(),
+    )
+    .unwrap();
+    assert_eq!(replay, record);
+    assert_eq!(fixture.thread_count(), 1);
+    assert_eq!(
+        fs::read_to_string(fixture.home.join("dispatch-count")).unwrap(),
+        "1"
+    );
+    drop(reopened);
+    for entry in fs::read_dir(&fixture.root).unwrap() {
+        let entry = entry.unwrap();
+        if entry
+            .file_name()
+            .to_string_lossy()
+            .starts_with("state.sqlite")
+        {
+            let bytes = fs::read(entry.path()).unwrap();
+            let text = String::from_utf8_lossy(&bytes);
+            assert!(!text.contains("private.method.fixture-value"));
+            assert!(!text.contains("do-not-persist-provider-message"));
+        }
+    }
+    assert_eq!(
+        fs::read_to_string(fixture.repository.join("fixture.txt")).unwrap(),
+        "before\n"
+    );
+}
+
+#[test]
 fn required_sensitive_context_is_rejected_before_worktree_and_model_dispatch() {
     let fixture = Fixture::new();
     let secret = "API_KEY=sk-syntheticfixturecredential123456";

@@ -344,6 +344,223 @@ fn global_metadata_does_not_impersonate_turn_evidence_and_native_rate_limit_is_t
     assert_eq!(report.tree.unwrap().active_processes, 0);
 }
 #[test]
+fn nullable_or_matching_metadata_scope_is_not_attempt_execution_evidence() {
+    for scenario in [
+        "warning-null",
+        "warning-absent",
+        "warning-thread",
+        "mcp-metadata-null",
+        "mcp-metadata-thread",
+    ] {
+        let fixture = Fixture::new();
+        let mut adapter = fixture.connect(scenario);
+        let mut events = Vec::new();
+        let report = adapter
+            .execute(
+                execution("warning-scope"),
+                &CancellationToken::new(),
+                |event, _| {
+                    events.push(event.clone());
+                    Ok(())
+                },
+            )
+            .unwrap();
+        assert_eq!(report.fault, None, "{scenario}");
+        assert_eq!(report.adapter_diagnostic, None, "{scenario}");
+        let snapshot = RuntimeObserver::restore_checkpoint(&report.observer_checkpoint)
+            .unwrap()
+            .snapshot();
+        assert_eq!(snapshot["terminalConfirmed"], true, "{scenario}");
+        assert_eq!(snapshot["terminal"]["outcome"], "completed", "{scenario}");
+        assert_eq!(
+            events
+                .iter()
+                .filter(|event| event["type"] == "attempt.start-observed")
+                .count(),
+            1
+        );
+        assert_eq!(
+            events
+                .iter()
+                .filter(|event| event["type"] == "attempt.terminal-observed")
+                .count(),
+            1
+        );
+        let normalized = serde_json::to_string(&events).unwrap();
+        assert!(!normalized.contains("do-not-persist-provider-message"));
+        assert!(!normalized.contains("do-not-persist-server-name"));
+        assert!(!normalized.contains("fixture-thread"));
+        assert_eq!(report.tree.unwrap().active_processes, 0);
+    }
+}
+#[test]
+fn metadata_with_foreign_contradictory_or_invalid_scope_still_fails_closed() {
+    for scenario in [
+        "warning-foreign",
+        "warning-turn",
+        "warning-nested-thread",
+        "mcp-metadata-foreign",
+        "mcp-metadata-turn",
+        "mcp-metadata-absent",
+        "mcp-metadata-nonobject",
+    ] {
+        let fixture = Fixture::new();
+        let mut adapter = fixture.connect(scenario);
+        let report = adapter
+            .execute(
+                execution("warning-contradiction"),
+                &CancellationToken::new(),
+                |_, _| Ok(()),
+            )
+            .unwrap();
+        assert_eq!(
+            report.fault.as_ref().unwrap().code(),
+            "ownership",
+            "{scenario}"
+        );
+        let snapshot = RuntimeObserver::restore_checkpoint(&report.observer_checkpoint)
+            .unwrap()
+            .snapshot();
+        assert_eq!(snapshot["startObserved"], false);
+        assert_eq!(snapshot["terminalConfirmed"], false);
+        let diagnostic = report.adapter_diagnostic.unwrap();
+        assert_eq!(diagnostic["stage"], "notification");
+        assert_eq!(
+            diagnostic["reason"],
+            if scenario.starts_with("warning-") {
+                "warning-scope"
+            } else {
+                "mcp-metadata-scope"
+            }
+        );
+        assert_eq!(
+            diagnostic["methodSha256"],
+            orchestrix_core::git_records::content_hash(if scenario.starts_with("warning-") {
+                b"warning"
+            } else {
+                b"mcpServer/startupStatus/updated"
+            })
+        );
+        assert_eq!(
+            diagnostic["identityShapes"]["threadId"],
+            if scenario.ends_with("foreign") {
+                "string"
+            } else if scenario.ends_with("absent") || scenario.ends_with("nonobject") {
+                "absent"
+            } else {
+                "null"
+            }
+        );
+        assert_eq!(
+            diagnostic["identityShapes"]["turnId"],
+            if scenario == "mcp-metadata-turn" {
+                "null"
+            } else if scenario == "warning-turn" {
+                "string"
+            } else {
+                "absent"
+            }
+        );
+        assert_eq!(
+            diagnostic["identityShapes"]["thread.id"],
+            if scenario == "warning-nested-thread" {
+                "string"
+            } else {
+                "absent"
+            }
+        );
+        for private in [
+            "private-foreign-thread",
+            "private-foreign-turn",
+            "do-not-persist-provider-message",
+            "do-not-persist-server-name",
+        ] {
+            assert!(!diagnostic.to_string().contains(private));
+        }
+        assert_eq!(report.tree.unwrap().active_processes, 0);
+    }
+}
+#[test]
+fn protocol_diagnostic_contains_only_closed_local_routes_shapes_and_method_hash() {
+    for scenario in ["unscoped-private", "malformed"] {
+        let fixture = Fixture::new();
+        let mut adapter = fixture.connect(scenario);
+        let report = adapter
+            .execute(
+                execution("private-protocol"),
+                &CancellationToken::new(),
+                |_, _| Ok(()),
+            )
+            .unwrap();
+        assert_eq!(
+            report.fault.as_ref().unwrap().code(),
+            "protocol",
+            "{scenario}"
+        );
+        assert_eq!(report.dispatch, "sent");
+        let diagnostic = report.adapter_diagnostic.unwrap();
+        assert_eq!(diagnostic["version"], 1);
+        let keys: Vec<_> = diagnostic
+            .as_object()
+            .unwrap()
+            .keys()
+            .map(String::as_str)
+            .collect();
+        assert_eq!(
+            keys,
+            [
+                "idShape",
+                "identityShapes",
+                "methodSha256",
+                "paramsShape",
+                "reason",
+                "stage",
+                "version"
+            ]
+        );
+        assert_eq!(diagnostic["idShape"], "absent");
+        assert!(diagnostic.to_string().len() <= 1024);
+        for private in [
+            "private.method.fixture-value",
+            "do-not-persist-provider-message",
+            "fixture-thread",
+            "synthetic-identity",
+            "malformed",
+        ] {
+            assert!(!diagnostic.to_string().contains(private));
+        }
+        if scenario == "unscoped-private" {
+            assert_eq!(diagnostic["stage"], "notification");
+            assert_eq!(diagnostic["reason"], "unsupported-global");
+            assert_eq!(
+                diagnostic["methodSha256"],
+                orchestrix_core::git_records::content_hash(b"private.method.fixture-value")
+            );
+            assert_eq!(diagnostic["paramsShape"], "object");
+        } else {
+            assert_eq!(diagnostic["stage"], "framing");
+            assert_eq!(diagnostic["reason"], "invalid-json");
+            assert_eq!(diagnostic["methodSha256"], serde_json::Value::Null);
+            assert_eq!(diagnostic["paramsShape"], "absent");
+        }
+        assert!(
+            diagnostic["identityShapes"]
+                .as_object()
+                .unwrap()
+                .values()
+                .all(|shape| shape == "absent")
+        );
+        let snapshot = RuntimeObserver::restore_checkpoint(&report.observer_checkpoint)
+            .unwrap()
+            .snapshot();
+        assert_eq!(snapshot["terminalConfirmed"], false);
+        if scenario == "unscoped-private" {
+            assert_eq!(snapshot["startObserved"], false);
+        }
+        assert_eq!(report.tree.unwrap().active_processes, 0);
+    }
+}
+#[test]
 fn owns_descendant_after_root_exit_and_never_terminates_unrelated_process() {
     struct Unrelated(std::process::Child);
     impl Drop for Unrelated {

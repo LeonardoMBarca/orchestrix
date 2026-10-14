@@ -1,4 +1,4 @@
-use super::rpc::Rpc;
+use super::rpc::{DiagnosticReason as R, DiagnosticStage as S, Rpc, diagnosed, diagnostic};
 use super::{CancellationToken, RuntimeError, RuntimeResult};
 use crate::runtime_contract::{
     EventOrigin, Limits, RuntimeDescriptor, RuntimeObserver, RuntimeRequest, assert_admission,
@@ -282,6 +282,9 @@ pub struct RuntimeReport {
     pub observer_checkpoint: Value,
     pub binding: Option<SessionBinding>,
     pub fault: Option<RuntimeError>,
+    /// Adapter-private route/shape evidence, without provider content or identity values.
+    /// This is not a normalized domain event or evidence of a native terminal.
+    pub adapter_diagnostic: Option<Value>,
     pub dispatch: &'static str,
     pub tree: Option<TreeState>,
     pub streams: StreamState,
@@ -431,10 +434,17 @@ impl CodexAdapter {
             ).is_err() { fault = Some(RuntimeError::new("transport-loss", "unknown")); }
         }
         let dispatch = self.rpc.turn_dispatch;
+        let adapter_diagnostic = fault.as_ref().map(|error| {
+            error
+                .adapter_diagnostic
+                .clone()
+                .unwrap_or_else(|| diagnostic(S::Attempt, R::OperationFailed, None))
+        });
         Ok(RuntimeReport {
             observer_checkpoint: observer.checkpoint(),
             binding,
             fault,
+            adapter_diagnostic,
             dispatch,
             tree,
             streams,
@@ -528,7 +538,8 @@ impl CodexAdapter {
             &self.launch.cwd,
             writable,
             execution.resume.as_ref(),
-        )?;
+        )
+        .map_err(|error| diagnosed(error, S::Configuration, R::ConfigurationRejected, None))?;
         if let Some(model) = model
             && configuration["model"] != model.name
         {
@@ -574,7 +585,14 @@ impl CodexAdapter {
         let native_turn = acknowledgement["turn"]["id"]
             .as_str()
             .filter(|value| native(Some(value)))
-            .ok_or_else(|| RuntimeError::new("protocol", "unknown"))?
+            .ok_or_else(|| {
+                diagnosed(
+                    RuntimeError::new("protocol", "unknown"),
+                    S::Admission,
+                    R::InvalidTurnId,
+                    None,
+                )
+            })?
             .to_owned();
         emit(
             observer,
@@ -662,12 +680,51 @@ impl CodexAdapter {
                     self.rpc.deny_request(&message)?;
                     continue;
                 }
-                return Err(RuntimeError::new("protocol", "unknown"));
+                return Err(diagnosed(
+                    RuntimeError::new("protocol", "unknown"),
+                    S::Notification,
+                    R::UnexpectedResponse,
+                    Some(&message),
+                ));
             }
-            let method = message["method"]
-                .as_str()
-                .ok_or_else(|| RuntimeError::new("protocol", "unknown"))?;
+            let method = message["method"].as_str().ok_or_else(|| {
+                diagnosed(
+                    RuntimeError::new("protocol", "unknown"),
+                    S::Notification,
+                    R::MissingMethod,
+                    Some(&message),
+                )
+            })?;
             let params = &message["params"];
+            // Both pinned v2 metadata notifications have a nullable threadId.
+            // Their contents grant no execution/capability/control evidence.
+            // A warning without a target is also safely discarded as info;
+            // MCP requires the schema's explicit target (possibly null).
+            // Any targeted message must belong to this thread with no aliases.
+            if matches!(method, "warning" | "mcpServer/startupStatus/updated") {
+                if !params.is_object()
+                    || (method == "mcpServer/startupStatus/updated"
+                        && params.get("threadId").is_none())
+                    || params
+                        .get("threadId")
+                        .is_some_and(|id| !id.is_null() && *id != native_thread)
+                    || params.get("thread").is_some()
+                    || params.get("turnId").is_some()
+                    || params.get("turn").is_some()
+                {
+                    return Err(diagnosed(
+                        RuntimeError::new("ownership", "unknown"),
+                        S::Notification,
+                        if method == "warning" {
+                            R::WarningScope
+                        } else {
+                            R::McpMetadataScope
+                        },
+                        Some(&message),
+                    ));
+                }
+                continue;
+            }
             // Global metadata is not evidence of this attempt's execution. The
             // transport still bounds its frames/bytes; never adopt its contents
             // as an auth, quota, configuration or terminal observation here.
@@ -683,10 +740,20 @@ impl CodexAdapter {
                     || params.get("turnId").is_some()
                     || params.get("turn").is_some()
                 {
-                    return Err(RuntimeError::new("ownership", "unknown"));
+                    return Err(diagnosed(
+                        RuntimeError::new("ownership", "unknown"),
+                        S::Notification,
+                        R::GlobalScope,
+                        Some(&message),
+                    ));
                 }
                 if method == "account/updated" && params["authMode"] != "chatgpt" {
-                    return Err(RuntimeError::new("authentication", "unknown"));
+                    return Err(diagnosed(
+                        RuntimeError::new("authentication", "unknown"),
+                        S::Notification,
+                        R::AuthenticationChanged,
+                        Some(&message),
+                    ));
                 }
                 continue;
             }
@@ -703,7 +770,12 @@ impl CodexAdapter {
                     || params.get("turnId").is_some()
                     || params.get("turn").is_some()
                 {
-                    return Err(RuntimeError::new("ownership", "unknown"));
+                    return Err(diagnosed(
+                        RuntimeError::new("ownership", "unknown"),
+                        S::Notification,
+                        R::ThreadStartedScope,
+                        Some(&message),
+                    ));
                 }
                 continue;
             }
@@ -715,9 +787,19 @@ impl CodexAdapter {
                 // A contradictory execution frame is a protocol ownership
                 // failure, even when a later valid terminal follows it.
                 if relevant || params.get("threadId").is_some() {
-                    return Err(RuntimeError::new("ownership", "unknown"));
+                    return Err(diagnosed(
+                        RuntimeError::new("ownership", "unknown"),
+                        S::Notification,
+                        R::ThreadScope,
+                        Some(&message),
+                    ));
                 }
-                return Err(RuntimeError::new("protocol", "unknown"));
+                return Err(diagnosed(
+                    RuntimeError::new("protocol", "unknown"),
+                    S::Notification,
+                    R::UnsupportedGlobal,
+                    Some(&message),
+                ));
             }
             if relevant {
                 let actual_turn = if method.starts_with("turn/") {
@@ -733,7 +815,12 @@ impl CodexAdapter {
                             .get("id")
                             .is_some_and(|id| *id != native_turn))
                 {
-                    return Err(RuntimeError::new("ownership", "unknown"));
+                    return Err(diagnosed(
+                        RuntimeError::new("ownership", "unknown"),
+                        S::Notification,
+                        R::TurnScope,
+                        Some(&message),
+                    ));
                 }
             }
             match method {
@@ -745,23 +832,43 @@ impl CodexAdapter {
                             json!({}),
                             EventOrigin::Runtime,
                             sink,
-                        )?;
+                        )
+                        .map_err(|error| {
+                            diagnosed(error, S::Observer, R::ObservationRejected, Some(&message))
+                        })?;
                     }
                 }
                 "item/agentMessage/delta" => {
-                    let delta = params["delta"]
-                        .as_str()
-                        .ok_or_else(|| RuntimeError::new("protocol", "unknown"))?;
+                    let delta = params["delta"].as_str().ok_or_else(|| {
+                        diagnosed(
+                            RuntimeError::new("protocol", "unknown"),
+                            S::Notification,
+                            R::DeltaType,
+                            Some(&message),
+                        )
+                    })?;
                     output_bytes = output_bytes.saturating_add(delta.len() as u64);
                     if output_bytes > 65_536 {
-                        return Err(RuntimeError::new("budget", "unknown"));
+                        return Err(diagnosed(
+                            RuntimeError::new("budget", "unknown"),
+                            S::Notification,
+                            R::OutputBudget,
+                            Some(&message),
+                        ));
                     }
                 }
                 "turn/completed" => {
                     let outcome = params["turn"]["status"]
                         .as_str()
                         .filter(|status| ["completed", "failed", "interrupted"].contains(status))
-                        .ok_or_else(|| RuntimeError::new("protocol", "unknown"))?;
+                        .ok_or_else(|| {
+                            diagnosed(
+                                RuntimeError::new("protocol", "unknown"),
+                                S::Notification,
+                                R::TerminalStatus,
+                                Some(&message),
+                            )
+                        })?;
                     if output_bytes > 0 {
                         emit(
                             observer,
@@ -769,7 +876,10 @@ impl CodexAdapter {
                             json!({"channel":"assistant","bytes":output_bytes}),
                             EventOrigin::Runtime,
                             sink,
-                        )?;
+                        )
+                        .map_err(|error| {
+                            diagnosed(error, S::Observer, R::ObservationRejected, Some(&message))
+                        })?;
                     }
                     let error = if params["turn"]["error"].is_null() {
                         Value::Null
@@ -782,7 +892,10 @@ impl CodexAdapter {
                         json!({"outcome":outcome,"error":error}),
                         EventOrigin::Runtime,
                         sink,
-                    )?;
+                    )
+                    .map_err(|error| {
+                        diagnosed(error, S::Observer, R::ObservationRejected, Some(&message))
+                    })?;
                     if cancelled && outcome == "completed" && !interrupt_acked {
                         return Err(RuntimeError::new("timeout", "sent"));
                     }
@@ -1147,8 +1260,11 @@ where
     for (key, value) in fields.as_object().unwrap() {
         frame[key] = value.clone();
     }
-    let event = observer.accept(&frame.to_string(), origin)?;
+    let event = observer
+        .accept(&frame.to_string(), origin)
+        .map_err(|error| diagnosed(error.into(), S::Observer, R::ObservationRejected, None))?;
     sink(&event, origin)
+        .map_err(|error| diagnosed(error, S::Observer, R::ObservationRejected, None))
 }
 fn native_error(error: &Value) -> &'static str {
     match error["codexErrorInfo"]
