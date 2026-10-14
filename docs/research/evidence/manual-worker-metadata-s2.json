@@ -1,0 +1,27 @@
+{
+  "metadata": {
+    "authentication": "authenticated",
+    "availability": "available",
+    "billing": "subscription",
+    "catalog": {
+      "completeness": "complete"
+    },
+    "controls": [
+      "control:read-only",
+      "control:workspace-write",
+      "control:network-disabled",
+      "control:approval-never",
+      "control:native-delegation-disabled"
+    ],
+    "inference": false,
+    "login": false,
+    "modelCount": 7,
+    "runtimeVersion": "0.162.0-alpha.17.2",
+    "synthetic": false
+  },
+  "tree": {
+    "activeProcesses": 0,
+    "owned": true,
+    "rootExitCode": 0
+  }
+}

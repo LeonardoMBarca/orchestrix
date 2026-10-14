@@ -1,0 +1,75 @@
+# Manual worker, policy and runtime boundary
+
+This is the initial OX-007/008/009 implementation contract. [Current status](../DEVELOPMENT_STATUS.md) owns acceptance; synthetic runtime tests do not certify a provider or another operating system.
+
+## Ownership and interfaces
+
+- `policy/` is pure: schema 1, deterministic resolution and Context Pack compilation. It performs no process, filesystem, provider or SQLite operations.
+- `runtime/` owns Codex app-server protocol, native model/effort translation, authentication scope and opaque resume bindings. The domain receives only normalized contract 1.1 events.
+- `orchestrix-process` owns Windows process handles, Job Objects, pipe pumps and directory watches. Core retains `forbid(unsafe_code)`; the separate OS crate contains the small Win32 FFI boundary. Other platforms explicitly return Unsupported.
+- `worker.rs` is the serial host service; `evaluator.rs` runs explicitly authorized commands; `mechanical.rs` serves authorized local queries without a model. `Store` remains the sole durable command boundary. No writer transaction spans Git, a process, inference or a check.
+
+## Policy schema 1
+
+The precedence is System → User → Project → Profile → CategoryRisk → Execution → Task, with at most one layer per scope. Mode defaults enter at the system baseline and executor profile defaults at profile scope. Mandatory mode/layer restrictions accumulate rather than being removed by a later preference. Mode, executor profile, resource strategy and specialized preset have separate identities.
+
+Efficiency, Performance, Balanced and Custom consider the supplied task type, complexity, risk and importance. Missing classifications use the documented conservative medium level. Strength/efficiency ranks require an explicit source; price, model spelling and a larger reasoning level are not global quality evidence. Specialized presets reuse this resolution. Snapshots explain candidates, exclusion reasons, selected controls, evidence, fallback and revalidation needs. Explicit overrides cannot bypass mandatory limits. Resolution is deterministic for the same document, classification, observations and clock.
+
+Defaults: Balanced, Subscription Only, serial concurrency 1, workspace write, network disabled, approval never, native delegation disabled and fallback Block. Compatible fallback must be explicitly enabled. A runtime-default choice with unknown model entitlement is distinguishable from selecting an entitled model. Required model capabilities/strength/reasoning cannot be satisfied by an unknown runtime-default choice.
+
+The real read-only Codex observation in this increment exposes a catalog but no per-model entitlement. In that case the initial live path requires explicitly permitted runtime-default fallback. An explicit reasoning preference can also fall back to runtime-default only when Compatible permits it; the snapshot records that fallback. It is not evidence that the preferred low/high level was applied. Mandatory explicit reasoning instead blocks. Actual cross-model optimization is not claimed from this metadata result.
+
+Observation leases bind connection ID/revision, runtime version, fact, model scope and evidence reference. Default maximum ages are 300 s for identity/billing, 60 s for availability and 900 s for catalog/controls/capabilities; the earlier provider lease expiry wins. Policy configuration may shorten/change these within schema bounds, without extending the observation's own validity. Stale critical facts trigger revalidation or block. Historical snapshots replay at their captured time and never grant fresh admission. Partial inventories/timeouts cannot confirm model removal.
+
+## Focused context
+
+The host reads only individually authorized relative files, rejects links/reparse points/escapes and records the SHA-256 of the actual read bytes, including an explicitly selected dirty working file. This is not a claim that these bytes came from the pinned Git base. The worker separately materializes its pinned base and preserves staged, unstaged and untracked source changes.
+
+The pack includes objective, acceptance criteria, constraints, authorized instructions/files, source revisions, budget, byte counts and omissions. Required unsafe/oversized content blocks; optional content may be omitted with a reason. No repository scan or provider transcript is included. Context budget is UTF-8 bytes, with an optional byte/4 local token estimate rather than provider tokenization. The initial adapter limits the actual rendered pack to 32 KiB; the manifest records the effective budget. Repository/user instructions are untrusted task content, not permission grants.
+
+## Read-only discovery and execution
+
+`CodexMetadataService` wires authorized app-server reads to a bounded shared cache. Its scope includes connection/revision/runtime plus a hash of the executable, auth store, cwd, fixture arguments and imposed profile. Valid cached values preserve original dates; concurrent reads coalesce, and partial/failing reads back off. Manual/System clocks are injectable. Deadline, cancellation and connection invalidation reject late responses and terminate only owned processes. It does not request login/logout or explicit credential refresh (`account/read` uses `refreshToken:false`), tools, inference or an active billing probe. Normal authentication cache/renewal behavior belongs to the runtime; the host neither copies tokens nor edits personal configuration. The host drives refresh calls; no daemon or autonomous background loop is introduced.
+
+`MetadataRefreshCoordinator` adds host-driven periodic and event triggers: requirement needed, reconnection, configuration/identity/runtime revision changes and resource errors. Registration starts no process. `tick` respects a controlled clock, minimum interval, bounded registrations/reads/in-flight work, coalescence and failure backoff. Revocation/replacement invalidates pending results; authentication/policy/version/ownership failures pause periodic retries until an explicit relevant event. This is a reusable host component, not an unattended daemon.
+
+The worker persists the exact observation used by a decision as a scoped diagnostic and links it to the immutable attempt snapshot. A separate fresh pre-dispatch connection must match account identity, revision, descriptor and controls and reproduce the selected request. That admission observation is also persisted and referenced by DispatchPlanned; it does not rewrite the original decision snapshot. A changed account/configuration blocks before dispatch. Startup configuration is imposed only on the child, without editing the user's files. Catalog listing is not model entitlement. Unobservable critical configuration blocks the affected combination.
+
+The pinned adapter profiles are Codex `0.162.0-alpha.2` and `0.162.0-alpha.17.2`. Native `xhigh` maps to normalized `maximum` only for those profiles (and the synthetic fixture). Selecting that level requires the corresponding catalog capability; reporting a factual effective level uses the confirmed per-thread response and does not establish general entitlement. No universal maximum/ultra equivalence is inferred. Runtime-default model/reasoning is recorded as such; factual per-thread settings must be confirmed before turn submission. Fast/service-tier selection is not implemented in the initial worker and is blocked when requested.
+
+Subscription authentication, official ChatGPT endpoint, no paid fallback, no API credential environment, no-daemon, disabled hooks/plugins/apps/MCP and native delegation restrictions are checked. Both `features.multi_agent=false` and `agents.enabled=false` must be confirmed for this profile; unknown enforcement blocks. The worker requests MXC, scoped workspace-write/read-only, network disabled, approval never and no additional temporary writable roots. Full access is not granted by discovery. [Official app-server](https://learn.chatgpt.com/docs/app-server), [configuration reference](https://learn.chatgpt.com/docs/config-file/config-reference) and [subagents](https://learn.chatgpt.com/docs/agent-configuration/subagents) inform the pinned implementation; live proof remains separate.
+
+## Process evidence and uncertain work
+
+The Windows child starts suspended and joins an unnamed non-breakaway Job before resuming. Only stdin/stdout/stderr handles are inherited. Independent bounded pumps prevent blocked stdout/stderr from stalling the caller; input writes have an acknowledgement deadline. Limits include 300 s Job lifetime, 90 s turn, 15 s metadata/request and bounded frames/output. Cooperative interruption escalates to termination of the owned Job. Job exhaustion, root exit, stream closure and provider terminal are independent facts; none invents another.
+
+Reservation is one SQLite command covering project/connection/session, definitions/diagnostics, ready task and attempt. Schema 4 adds immutable worker intents and append-only observations; migrations 1–3 remain unchanged. Admission is serial per installation/database, including reserved, dispatched and uncertain work across sessions. An uncertain worker blocks new admissions until explicit reconciliation, which remains OX-011; this is not a scheduler or a claim about other databases.
+
+Worktree creation uses OX-006 intent → effect → confirmation. DispatchPlanned is committed before sending a turn. Each normalized observation is committed separately before being acknowledged by the host callback. A lost callback/result, crash or interrupted dispatch is durable Uncertain; there is no automatic retry. A Windows file-handle host lease outside SQLite/worktrees protects the active operation. Status returns historical state without mutating it while that lease is held; after an interrupted host releases it, inspection records unfinished work as uncertain and starts no runtime. Native resume bindings are stored as adapter-owned opaque data, omitted from CLI summaries. This increment supports adapter resume but does not automatically resume a worker.
+
+## Exact checks and durable result
+
+The task manifest explicitly authorizes each executable, argv, timeout and authorization reference. Checks run in the owned worktree with sanitized environment, no shell wrapping or script discovery. Executable hashes and canonical command hashes, cwd, timeout, bounded sanitized stdout/stderr, exit code and process-tree/stream evidence are retained. Optional executable hash pinning rejects changed binaries. A configured command's authority does not extend to other discovered scripts.
+
+After confirmed runtime success, the worker captures and publishes the exact OX-006 artifact. Other terminal/uncertain outcomes preserve capture when safe but do not publish a successful task result. Every check is bracketed by exact captures. Persistent change notifications cover both worktree and common Git admin directory, including index/refs; write-and-restore invalidates evidence. The initial conservative profile rejects **any write** there during verification, including ignored build outputs. Authorized build tools must explicitly direct outputs elsewhere; this watch is not a filesystem sandbox. Sequential captures and watch checks also cover the final durable result write.
+
+Passed checks produce Verified, pending independent review. Checks stop at the first failure/cancellation or invalidated artifact and record omitted command IDs and reasons. Failed checks produce NeedsWork; missing checks produce NoChecks. Neither missing nor failed tests produce a green result. Mutation changes the affected check report to Invalidated even if its process exited zero. Later inspection recaptures Verified artifacts and withdraws their current positive status on changed/uninspectable bytes while retaining historical facts. Independent review, final integration/application and delivery remain OX-013/OX-014; a worker result never marks the Task Completed or the Run Delivered.
+
+## Minimal CLI
+
+`cargo run --bin orchestrix -- help` prints the manual entry points; no inference occurs. Copy and adapt [the task manifest](../examples/manual-task.example.json). SQLite must live outside the source/worktree directories. Paths and full base OID are explicit. `run` requires `--allow-live yes` for Codex; `--synthetic-runtime` is separately labelled and never establishes provider evidence. `status` inspects durable work without executing it; repeating a task ID with different input is a conflict.
+
+```powershell
+orchestrix run --database C:/orchestrix/state.sqlite --task C:/orchestrix/task.json --codex C:/path/codex.exe --codex-home C:/Users/USER/.codex --runtime-version 0.162.0-alpha.17.2 --allow-live yes
+orchestrix status --database C:/orchestrix/state.sqlite --id manual-change-1
+```
+
+`--cancel-after-ms` is an optional total-operation cancellation deadline, including metadata/Git preparation. The host API accepts a cancellation token throughout execution/checks. Closing/killing the CLI relies on OS Job ownership and leaves durable uncertainty for inspection rather than silently rerunning. It does not yet provide a cross-process cancellation daemon or interactive Desktop controls.
+
+`query --query FILE [--database FILE]` serves separately authorized GitStatus, GitDiff, FileExists, CheckResults and historical ProcessStatus reads. The policy routes mechanical classifications to this deterministic service; neither policy nor a model performs the query itself. Historical process observations are not current liveness evidence.
+
+## Opt-in provider proof
+
+[The ignored live test](../../crates/orchestrix-core/tests/manual_worker_live.rs) is separate from normal offline execution. Its environment gates require a fresh authorization reference, an allowance of three turns, pinned executable/version/auth-store paths, a new temporary fixture root and a new report path. It runs the manual worker on one arithmetic fixture, restarts/resumes the persisted native binding in a separate authorized directory for a context marker, then interrupts a third turn after factual start. Model/reasoning remain runtime-default with explicit Compatible fallback; the observed effective settings are recorded rather than labelled low or optimized.
+
+The same file's ordinary offline control validates Context Pack sanitization and checks both incorrect and correct arithmetic through the explicitly authorized Windows `cscript.exe` helper. It never performs inference. The live report records bounded facts and hashes, preserves the verified worker artifact and keeps the isolated fixture for inspection. Matching native thread and a recovered marker absent from the second prompt establish that continuity test's scope; the test does not audit every runtime filesystem read or claim exclusive knowledge of hidden memory. No failed/uncertain step is retried automatically.

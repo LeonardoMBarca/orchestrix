@@ -220,7 +220,86 @@ fn v2_database_with_existing_project_migrates_to_git_schema_without_rewriting_hi
             .connection
             .pragma_query_value(None, "user_version", |row| row.get::<_, i64>(0))
             .unwrap(),
+        schema::SCHEMA_VERSION
+    );
+}
+
+#[test]
+fn populated_v3_migrates_to_worker_schema_without_rewriting_existing_project() {
+    let temp = TempDb::new();
+    schema::create_v3(&temp.path);
+    let db = Connection::open(&temp.path).unwrap();
+    let p = project("v3-existing");
+    let body = p.checkpoint().to_string();
+    db.execute(
+        "INSERT INTO repositories VALUES(?1,?2)",
+        params![
+            p.repository().id().as_str(),
+            p.repository().location().as_str()
+        ],
+    )
+    .unwrap();
+    db.execute(
+        "INSERT INTO projects VALUES(?1,?2,?3)",
+        params![p.id().as_str(), p.repository().id().as_str(), body],
+    )
+    .unwrap();
+    let mut conversations = ConversationStore::new();
+    conversations.add_project(p).unwrap();
+    db.execute(
+        "INSERT INTO conversation_store VALUES(1,?1)",
+        [conversations.checkpoint().to_string()],
+    )
+    .unwrap();
+    drop(db);
+    let store = Store::open(&temp.path).unwrap();
+    assert_eq!(store.load().unwrap().projects().len(), 1);
+    assert!(store.load().unwrap().workers().is_empty());
+    let saved: String = store
+        .connection
+        .query_row("SELECT checkpoint FROM projects", [], |r| r.get(0))
+        .unwrap();
+    assert_eq!(saved, body);
+    assert_eq!(
+        store
+            .connection
+            .pragma_query_value(None, "user_version", |r| r.get::<_, i64>(0))
+            .unwrap(),
+        4
+    );
+}
+
+#[test]
+fn worker_migration_failure_is_atomic_and_preserves_version_three() {
+    let temp = TempDb::new();
+    schema::create_v3(&temp.path);
+    let db = Connection::open(&temp.path).unwrap();
+    db.execute_batch(
+        "CREATE TABLE manual_workers(sentinel TEXT); INSERT INTO manual_workers VALUES('preserve')",
+    )
+    .unwrap();
+    drop(db);
+    assert!(Store::open(&temp.path).is_err());
+    let db = Connection::open(&temp.path).unwrap();
+    assert_eq!(
+        db.pragma_query_value(None, "user_version", |r| r.get::<_, i64>(0))
+            .unwrap(),
         3
+    );
+    assert_eq!(
+        db.query_row("SELECT sentinel FROM manual_workers", [], |r| r
+            .get::<_, String>(0))
+            .unwrap(),
+        "preserve"
+    );
+    assert_eq!(
+        db.query_row(
+            "SELECT count(*) FROM sqlite_master WHERE name='worker_observations'",
+            [],
+            |r| r.get::<_, i64>(0)
+        )
+        .unwrap(),
+        0
     );
 }
 

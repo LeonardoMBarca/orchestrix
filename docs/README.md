@@ -42,6 +42,7 @@ Current status takes precedence over older reports' “next” or “pending” 
 | [Domain and States](./contracts/domain-and-states.md) | Implemented OX-004 identities, conversations, versioned snapshots, guarded task/Run completion and exact application evidence; in-memory domain, not persistence or execution infrastructure. [Acceptance evidence](./research/ox-004-domain-increment.md). |
 | [Persistence Boundary](./contracts/persistence.md) | OX-005 transaction, idempotency, restoration, schema and privacy contract; implementation validation remains separate from the specification. |
 | [Git Worktrees and Capture](./contracts/git-worktrees.md) | OX-006 owned worktrees, pinned bases, exact artifact provenance, recoverable Git/SQL effects and conservative cleanup. [Increment evidence](./research/ox-006-git-increment.md). |
+| [Manual Worker, Policy and Runtime](./contracts/manual-worker.md) | OX-007/008/009 interfaces, deterministic policy/context, authorized metadata refresh, Windows supervision, serial durable worker, evaluators and CLI. Current status distinguishes synthetic evidence from live provider acceptance. |
 | [API Connection Contract](./design/api-connection-contract.md) | Two-stage subscription/API connection flow, provider-specific credentials and host boundary. |
 | [Connection Diagnostics](./design/connection-diagnostics.md) | Available/unavailable/unknown evidence, scoped checks and recheck. Periodic/event-driven refresh is specified future work; active probes/production authentication retain their gates. |
 

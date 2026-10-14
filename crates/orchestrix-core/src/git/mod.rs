@@ -1,7 +1,7 @@
 //! Bounded local Git worktrees and exact artifact capture; no agent execution.
 mod capture;
 mod executor;
-mod paths;
+pub(crate) mod paths;
 mod worktrees;
 
 use crate::persistence::StoreError;

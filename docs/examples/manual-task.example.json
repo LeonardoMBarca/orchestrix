@@ -1,0 +1,28 @@
+{
+  "schema_version": 1,
+  "id": "manual-change-1",
+  "project_id": "my-project",
+  "repository_id": "my-repository",
+  "repository_directory": "C:/projects/my-project",
+  "authorized_worktree_directory": "C:/orchestrix/attempts",
+  "base_commit": "REPLACE_WITH_FULL_PINNED_COMMIT_OID",
+  "connection_id": "my-codex-subscription",
+  "connection_revision": 1,
+  "objective": "Describe the authorized change here.",
+  "acceptance_criteria": ["Describe an observable result here."],
+  "policy": {
+    "schema_version": 1,
+    "revision": 1,
+    "mode": {"id": "development", "version": 1},
+    "profile": {"id": "implementation-engineer", "version": 1},
+    "mode_defaults": {"strategy": "balanced", "fallback": "compatible"},
+    "mode_requirements": {"subscription_only": true, "forbid_network": true, "max_concurrency": 1, "require_review": true},
+    "profile_defaults": {},
+    "layers": [],
+    "model_ranks": []
+  },
+  "classification": {"kind": "implementation", "complexity": "low", "risk": "low", "importance": "medium", "source_ref": "manual-user"},
+  "context_files": [],
+  "instructions": ["Edit only the authorized worktree and preserve unrelated files."],
+  "checks": []
+}

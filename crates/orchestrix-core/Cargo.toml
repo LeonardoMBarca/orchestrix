@@ -4,7 +4,7 @@ version = "0.1.0"
 edition.workspace = true
 license.workspace = true
 publish.workspace = true
-description = "Portable runtime contract, guarded domain and local SQLite persistence; not a production worker"
+description = "Portable domain and policy with SQLite, local Git and a supervised manual worker"
 
 [dependencies]
 serde_json.workspace = true

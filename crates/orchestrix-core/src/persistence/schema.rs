@@ -2,7 +2,7 @@ use super::{StoreError, StoreResult};
 use rusqlite::{Connection, TransactionBehavior};
 use std::time::Duration;
 
-pub const SCHEMA_VERSION: i64 = 3;
+pub const SCHEMA_VERSION: i64 = 4;
 const APPLICATION_ID: i64 = 0x4f585354;
 
 // Kept as separate, immutable migrations so an existing v1 database can advance.
@@ -64,6 +64,15 @@ CREATE TRIGGER git_observations_no_update BEFORE UPDATE ON git_observations BEGI
 CREATE TRIGGER git_observations_no_delete BEFORE DELETE ON git_observations BEGIN SELECT RAISE(ABORT,'append-only Git observation'); END;
 CREATE TRIGGER captured_artifacts_no_update BEFORE UPDATE ON captured_artifacts BEGIN SELECT RAISE(ABORT,'immutable exact artifact'); END;
 CREATE TRIGGER captured_artifacts_no_delete BEFORE DELETE ON captured_artifacts BEGIN SELECT RAISE(ABORT,'retained exact artifact'); END;
+"#;
+
+const V4: &str = r#"
+CREATE TABLE manual_workers(id TEXT PRIMARY KEY, run_id TEXT NOT NULL REFERENCES runs(id), task_id TEXT NOT NULL, attempt_id TEXT NOT NULL UNIQUE REFERENCES attempts(id), intent TEXT NOT NULL, FOREIGN KEY(run_id,task_id) REFERENCES tasks(run_id,id));
+CREATE TABLE worker_observations(worker_id TEXT NOT NULL REFERENCES manual_workers(id), ordinal INTEGER NOT NULL, body TEXT NOT NULL, digest TEXT NOT NULL, PRIMARY KEY(worker_id,ordinal));
+CREATE TRIGGER manual_workers_no_update BEFORE UPDATE ON manual_workers BEGIN SELECT RAISE(ABORT,'immutable worker intent'); END;
+CREATE TRIGGER manual_workers_no_delete BEFORE DELETE ON manual_workers BEGIN SELECT RAISE(ABORT,'retained worker intent'); END;
+CREATE TRIGGER worker_observations_no_update BEFORE UPDATE ON worker_observations BEGIN SELECT RAISE(ABORT,'append-only worker observations'); END;
+CREATE TRIGGER worker_observations_no_delete BEFORE DELETE ON worker_observations BEGIN SELECT RAISE(ABORT,'append-only worker observations'); END;
 "#;
 
 pub(super) fn initialize(connection: &mut Connection) -> StoreResult<()> {
@@ -145,6 +154,11 @@ pub(super) fn initialize(connection: &mut Connection) -> StoreResult<()> {
     if current == 2 {
         transaction.execute_batch(V3)?;
         transaction.pragma_update(None, "user_version", 3)?;
+        current = 3;
+    }
+    if current == 3 {
+        transaction.execute_batch(V4)?;
+        transaction.pragma_update(None, "user_version", 4)?;
     }
     transaction.commit()?;
     Ok(())
@@ -166,4 +180,12 @@ pub(super) fn create_v2(path: &std::path::Path) {
     let connection = Connection::open(path).unwrap();
     connection.execute_batch(V2).unwrap();
     connection.pragma_update(None, "user_version", 2).unwrap();
+}
+
+#[cfg(test)]
+pub(super) fn create_v3(path: &std::path::Path) {
+    create_v2(path);
+    let connection = Connection::open(path).unwrap();
+    connection.execute_batch(V3).unwrap();
+    connection.pragma_update(None, "user_version", 3).unwrap();
 }

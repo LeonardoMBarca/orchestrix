@@ -39,6 +39,7 @@ pub enum Command {
     },
     Records(crate::persistence_records::RecordsCommand),
     Git(crate::git_records::GitCommand),
+    Worker(crate::worker_records::WorkerCommand),
 }
 
 pub enum RunAction {
@@ -136,6 +137,19 @@ impl Command {
                 })
                 .unwrap_or_default();
         }
+        if let Self::Worker(command) = self {
+            return state
+                .workers
+                .get(command.id())
+                .map(|w| {
+                    (
+                        Some(w.intent.run_id.clone()),
+                        Some(w.intent.task_id.clone()),
+                        Some(w.intent.attempt_id.clone()),
+                    )
+                })
+                .unwrap_or_default();
+        }
         let (run, task, attempt) = match self {
             Self::CreateRun(run) => (Some(run.id()), None, None),
             Self::Run { id, action } => {
@@ -224,6 +238,7 @@ impl Command {
             ]),
             Self::Records(value) => json!(["records", value]),
             Self::Git(value) => value.fingerprint_body(),
+            Self::Worker(value) => value.fingerprint(),
         }
     }
     pub(super) fn name(&self) -> &'static str {
@@ -241,6 +256,7 @@ impl Command {
             Self::LinkWork { .. } => "conversation.link",
             Self::Records(_) => "records",
             Self::Git(value) => value.name(),
+            Self::Worker(_) => "worker",
         }
     }
     pub(super) fn observed_failure(&self, error: &DomainError) -> bool {
@@ -261,6 +277,10 @@ impl Command {
         )
     }
     pub(super) fn apply(&self, state: &mut SavedState) -> StoreResult<Value> {
+        if let Self::Worker(command) = self {
+            super::worker::apply(state, command)?;
+            return Ok(Value::Null);
+        }
         if let Self::Git(command) = self {
             super::git::apply(state, command)?;
             return Ok(match command {
@@ -465,6 +485,7 @@ impl Command {
                 }
             }
             Self::Git(_) => unreachable!("Git commands handled before domain commands"),
+            Self::Worker(_) => unreachable!("Worker commands handled before domain commands"),
         }
         Ok(Value::Null)
     }

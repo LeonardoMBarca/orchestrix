@@ -4,6 +4,7 @@ mod commands;
 mod git;
 mod schema;
 mod state;
+mod worker;
 
 use crate::domain::{DomainError, LocalRef};
 use crate::persistence_privacy::{PrivacyError, sanitize_json};
@@ -128,8 +129,13 @@ pub enum FaultPoint {
 
 pub struct Store {
     connection: Connection,
+    path: std::path::PathBuf,
 }
 impl Store {
+    /// Canonical database identity for the host's OS lease, never a domain permission.
+    pub fn path(&self) -> &Path {
+        &self.path
+    }
     /// Parent directory must exist; no implicit app directory or in-memory database.
     pub fn open(path: impl AsRef<Path>) -> StoreResult<Self> {
         let path = path.as_ref();
@@ -142,7 +148,10 @@ impl Store {
         }
         let mut connection = Connection::open(path)?;
         schema::initialize(&mut connection)?;
-        let store = Self { connection };
+        let store = Self {
+            connection,
+            path: std::fs::canonicalize(path).map_err(|_| StoreError::InvalidPath)?,
+        };
         store.load()?; // Reject incompatible contents without rewriting the database.
         Ok(store)
     }
@@ -168,6 +177,13 @@ impl Store {
         }
         if let Command::Git(command) = &request.command
             && !command.input_bounded()
+        {
+            return Err(StoreError::Privacy(
+                crate::persistence_privacy::PrivacyError::Limit,
+            ));
+        }
+        if let Command::Worker(command) = &request.command
+            && !command.bounded()
         {
             return Err(StoreError::Privacy(
                 crate::persistence_privacy::PrivacyError::Limit,
