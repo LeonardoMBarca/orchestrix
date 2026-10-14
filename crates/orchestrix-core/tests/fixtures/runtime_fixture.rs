@@ -189,6 +189,11 @@ fn main() {
                 } else {
                     std::fs::write(binding_path, b"synthetic thread state").unwrap();
                 }
+                // Real app-server emits this before the RPC reply. It carries
+                // a nested Thread rather than a top-level threadId.
+                send(
+                    json!({"method":"thread/started","params":{"thread":{"id":if scenario == "contradictory-thread-start" {"foreign-thread"} else {&thread},"cwd":cwd,"modelProvider":"openai"}}}),
+                );
                 send(
                     json!({"id":id,"result":{"thread":{"id":thread,"ephemeral":false,"status":{"type":"idle"},"cwd":cwd,"modelProvider":"openai","turns":[]},"model":model,"modelProvider":"openai","cwd":cwd,"reasoningEffort":effort,"approvalPolicy":"never","approvalsReviewer":"user","sandbox":sandbox}}),
                 );
@@ -215,6 +220,38 @@ fn main() {
                 if scenario == "hang" || scenario == "lost-reply" || scenario == "ignore-interrupt"
                 {
                     continue;
+                }
+                if scenario == "global-notifications" {
+                    send(
+                        json!({"method":"account/updated","params":{"authMode":"chatgpt","planType":"pro"}}),
+                    );
+                    send(
+                        json!({"method":"account/rateLimits/updated","params":{"rateLimits":{"primary":null}}}),
+                    );
+                    send(
+                        json!({"method":"configWarning","params":{"summary":"Synthetic harmless metadata update"}}),
+                    );
+                }
+                if scenario == "changed-global-auth" {
+                    send(
+                        json!({"method":"account/updated","params":{"authMode":"apikey","planType":null}}),
+                    );
+                }
+                if scenario == "rate-limit" {
+                    send(
+                        json!({"method":"turn/completed","params":{"threadId":thread,"turn":{"id":turn_id,"status":"failed","error":{"codexErrorInfo":"usageLimitExceeded","message":"Synthetic quota boundary"}}}}),
+                    );
+                    continue;
+                }
+                if scenario == "contradictory-delta" {
+                    send(
+                        json!({"method":"item/agentMessage/delta","params":{"threadId":thread,"turnId":turn_id,"turn":{"id":"foreign-turn"},"delta":"Contradictory execution identity"}}),
+                    );
+                }
+                if scenario == "contradictory-thread" {
+                    send(
+                        json!({"method":"item/agentMessage/delta","params":{"threadId":"foreign-thread","turnId":turn_id,"delta":"Contradictory execution scope"}}),
+                    );
                 }
                 if scenario == "success" || scenario == "check-failed" {
                     if prompt.contains("fixture-edit") {
