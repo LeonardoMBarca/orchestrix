@@ -164,9 +164,20 @@ fn main() {
             "config/read" => send(
                 json!({"id":id,"result":{"config":{"model_provider":"openai","chatgpt_base_url":"https://chatgpt.com/backend-api/","openai_base_url":"","web_search":"disabled","windows":{"sandbox":"mxc"},"features":{"hooks":false,"plugins":false,"apps":false,"multi_agent":scenario == "delegation-enabled"},"agents":{"enabled":scenario == "agents-enabled"},"notify":[],"mcp_servers":{}}}}),
             ),
-            "model/list" => send(
-                json!({"id":id,"result":{"data":[{"id":"fixture-codex","model":"fixture-codex","isDefault":true,"supportedReasoningEfforts":[{"reasoningEffort":"low"},{"reasoningEffort":"medium"},{"reasoningEffort":"high"},{"reasoningEffort":"xhigh"}]}],"nextCursor":null}}),
-            ),
+            "model/list" => {
+                let first = json!({"id":"fixture-codex","model":"fixture-codex","isDefault":true,"supportedReasoningEfforts":[{"reasoningEffort":"low"},{"reasoningEffort":"medium"},{"reasoningEffort":"high"},{"reasoningEffort":"xhigh"}]});
+                let mut data = vec![first.clone()];
+                if scenario == "catalog-seven" {
+                    for index in 2..=7 {
+                        let mut row = first.clone();
+                        row["id"] = json!(format!("fixture-codex-{index}"));
+                        row["model"] = row["id"].clone();
+                        row["isDefault"] = json!(false);
+                        data.push(row);
+                    }
+                }
+                send(json!({"id":id,"result":{"data":data,"nextCursor":null}}));
+            }
             "thread/start" | "thread/resume" => {
                 cwd = params["cwd"].as_str().map(PathBuf::from).unwrap_or(cwd);
                 thread = if method == "thread/resume" {
@@ -263,17 +274,17 @@ fn main() {
                         json!({"method":"item/agentMessage/delta","params":{"threadId":"foreign-thread","turnId":turn_id,"delta":"Contradictory execution scope"}}),
                     );
                 }
-                if (scenario == "success" || scenario == "check-failed")
+                if matches!(scenario, "success" | "check-failed" | "catalog-seven")
                     && prompt.contains("fixture-edit")
                 {
                     let path = cwd.join("fixture.txt");
                     if path.is_file() {
                         std::fs::write(
                             path,
-                            if scenario == "success" {
-                                "after\n"
-                            } else {
+                            if scenario == "check-failed" {
                                 "incorrect\n"
+                            } else {
+                                "after\n"
                             },
                         )
                         .unwrap();

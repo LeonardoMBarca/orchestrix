@@ -385,6 +385,133 @@ fn manual_worker_runs_policy_context_reservation_worktree_runtime_capture_and_ch
 }
 
 #[test]
+fn seven_model_catalog_reserves_executes_and_reopens_without_truncating_evidence() {
+    let fixture = Fixture::new();
+    let mut request = fixture.request("seven-model-worker");
+    request.checks = vec![check(&["--check-fixture", "after\n"])];
+    let mut store = fixture.store();
+    let record = ManualWorker::run(
+        &mut store,
+        &request,
+        fixture.launch("catalog-seven"),
+        &CancellationToken::new(),
+    )
+    .expect("seven-model catalog must fit the bounded atomic worker reservation");
+    assert_eq!(
+        record.status(),
+        WorkerStatus::Verified,
+        "{}",
+        record.summary()
+    );
+    let state = store.load().unwrap();
+    assert_eq!(state.workers().len(), 1);
+    assert_eq!(state.connections().len(), 1);
+    assert_eq!(state.worktrees().len(), 1);
+    let descriptor = state
+        .connections()
+        .values()
+        .next()
+        .unwrap()
+        .descriptor()
+        .as_json()
+        .clone();
+    let models = descriptor["models"].as_array().unwrap();
+    assert_eq!(models.len(), 7);
+    assert_eq!(descriptor["catalog"]["completeness"], "complete");
+    for model in models {
+        assert_eq!(model["capabilities"].as_object().unwrap().len(), 11);
+        assert_eq!(model["availability"], "unknown");
+    }
+    let policy_observation = &record.intent.policy["runtimeObservations"][0];
+    assert_eq!(policy_observation["descriptor"], descriptor);
+    assert_eq!(
+        record.intent.policy["candidates"].as_array().unwrap().len(),
+        8,
+        "retain all seven model exclusions and the explicit runtime-default candidate"
+    );
+    let restored_policy =
+        orchestrix_core::policy::EffectivePolicySnapshot::from_json(&record.intent.policy).unwrap();
+    assert_eq!(restored_policy.as_json(), &record.intent.policy);
+    let run = &state.runs()[&RunId::new(&record.intent.run_id).unwrap()];
+    let task = run
+        .task(&TaskId::new(&record.intent.task_id).unwrap())
+        .unwrap();
+    assert_eq!(task.state(), TaskState::NeedsReview);
+    assert_eq!(task.attempts().len(), 1);
+    assert_eq!(task.verifications().len(), 1);
+    assert_eq!(
+        task.verifications()[0].result,
+        orchestrix_core::domain::CheckResult::Passed
+    );
+    let snapshot = state.snapshots().values().next().unwrap().clone();
+    assert_eq!(snapshot.definition.attempt_id, record.intent.attempt_id);
+    assert_eq!(snapshot.diagnostics.len(), 1);
+    assert_eq!(
+        state
+            .records()
+            .definition(&snapshot.definition.configuration)
+            .unwrap()
+            .body,
+        record.intent.policy
+    );
+    let diagnostics = state.records().diagnostics().to_vec();
+    assert_eq!(
+        diagnostics.len(),
+        2,
+        "decision and fresh admission are retained"
+    );
+    for diagnostic in &diagnostics {
+        assert!(diagnostic.complete);
+        assert_eq!(
+            diagnostic.outcome,
+            orchestrix_core::persistence_records::DiagnosticOutcome::Success
+        );
+        assert_eq!(diagnostic.values["descriptor"], descriptor);
+    }
+    assert_eq!(
+        state
+            .records()
+            .diagnostic(&snapshot.diagnostics[0])
+            .unwrap()
+            .values["observations"],
+        policy_observation["observations"]
+    );
+    drop(state);
+    drop(store);
+    let mut reopened = fixture.store();
+    let inspected = ManualWorker::inspect(&mut reopened, &request.id).unwrap();
+    assert_eq!(inspected, record);
+    let replayed = ManualWorker::run(
+        &mut reopened,
+        &request,
+        fixture.launch("catalog-seven"),
+        &CancellationToken::new(),
+    )
+    .unwrap();
+    assert_eq!(replayed, record);
+    let saved = reopened.load().unwrap();
+    assert_eq!(saved.workers().len(), 1);
+    assert_eq!(saved.worktrees().len(), 1);
+    assert_eq!(saved.snapshots().values().next().unwrap(), &snapshot);
+    assert_eq!(saved.records().diagnostics(), diagnostics.as_slice());
+    assert_eq!(
+        saved
+            .connections()
+            .values()
+            .next()
+            .unwrap()
+            .descriptor()
+            .as_json(),
+        &descriptor
+    );
+    assert_eq!(fixture.thread_count(), 1);
+    assert_eq!(
+        fs::read_to_string(fixture.repository.join("fixture.txt")).unwrap(),
+        "before\n"
+    );
+}
+
+#[test]
 fn failing_authorized_check_prevents_green_result_and_retains_artifact() {
     let fixture = Fixture::new();
     let mut request = fixture.request("failed-check");

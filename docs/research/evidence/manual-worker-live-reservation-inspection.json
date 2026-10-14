@@ -1,0 +1,18 @@
+{
+    "schemaVersion":  4,
+    "counts":  {
+                   "manual_workers":  0,
+                   "worker_observations":  0,
+                   "git_worktrees":  0,
+                   "runs":  0,
+                   "attempts":  0,
+                   "diagnostic_observations":  0,
+                   "commands":  0,
+                   "events":  0
+               },
+    "inferenceSent":  false,
+    "reason":  "atomic-reservation-did-not-commit-before-worktree-and-adapter-execution",
+    "sourceRevision":  "e067e298f84830b2db47de71ed8468b58e028bbd",
+    "sourceSeal":  "66645a89187312579b49ccdd649c0ea30b0020f92a113e8c7083aa8df89c8e63",
+    "reportSha256":  "932a7324b22a12139a42996847ec219632ef508fa7ae9b1a031ca6fd18f85cfb"
+}

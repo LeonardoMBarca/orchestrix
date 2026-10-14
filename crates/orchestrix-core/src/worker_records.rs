@@ -1,6 +1,6 @@
 //! Durable manual-worker lifecycle; no automatic dispatch on restoration.
 use crate::git_records::{content_hash, is_hash};
-use crate::persistence_privacy::sanitize_json;
+use crate::persistence_privacy::{sanitize_checkpoint, sanitize_json};
 use crate::{domain::*, persistence::AttemptSnapshot, persistence_records::DefinitionInput};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -197,9 +197,88 @@ impl WorkerCommand {
         }
     }
     pub(crate) fn bounded(&self) -> bool {
-        exact_safe(&self.body(), 1_048_576)
+        let body = self.body();
+        match self {
+            Self::Reserve(r) => {
+                // This command composes independently bounded documents. The
+                // same descriptor occurs in the connection, observer, policy
+                // and diagnostic; it is not one provider document's node budget.
+                let components = [
+                    json!(r.intent),
+                    r.project.checkpoint(),
+                    r.connection.checkpoint(),
+                    r.session.checkpoint(),
+                    r.run.checkpoint(),
+                    r.attempt.checkpoint(),
+                    json!(r.snapshot),
+                ];
+                bounded_reservation(
+                    &body,
+                    components
+                        .into_iter()
+                        .chain(r.definitions.iter().map(|d| json!(d)))
+                        .chain(r.diagnostics.iter().map(|d| json!(d))),
+                )
+            }
+            Self::Observe { .. } => exact_safe(&body, 1_048_576),
+        }
     }
     pub(crate) fn fingerprint(&self) -> Value {
         json!(["worker", content_hash(self.body().to_string().as_bytes())])
+    }
+}
+
+fn bounded_reservation(body: &Value, components: impl IntoIterator<Item = Value>) -> bool {
+    // The existing aggregate profile still scans every key/string and rejects
+    // redaction, omission and collisions. Individual documents retain the
+    // ordinary depth/node/text budgets; the command retains its 1 MiB ceiling.
+    serde_json::to_vec(body).is_ok_and(|bytes| bytes.len() <= 1_048_576)
+        && components
+            .into_iter()
+            .all(|part| exact_safe(&part, 1_048_576))
+        && sanitize_checkpoint(body).is_ok_and(|cleaned| cleaned == *body)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn composed_documents_do_not_share_one_documents_node_budget() {
+        let part = json!(vec![Value::Null; 3_000]);
+        let parts = vec![part.clone(), part];
+        let body = json!(parts);
+        assert!(sanitize_json(&body).is_err());
+        assert!(bounded_reservation(&body, parts));
+    }
+
+    #[test]
+    fn every_component_keeps_the_ordinary_node_and_depth_limits() {
+        let oversized = json!(vec![Value::Null; 4_096]);
+        assert!(!bounded_reservation(&json!([oversized]), [oversized]));
+        let mut deep = Value::Null;
+        for _ in 0..33 {
+            deep = json!([deep]);
+        }
+        assert!(!bounded_reservation(&json!([deep]), [deep]));
+    }
+
+    #[test]
+    fn secrets_and_transcripts_remain_rejected_without_silent_changes() {
+        for part in [
+            json!({"api_key":"synthetic-credential"}),
+            json!({"value":"password=synthetic-credential"}),
+            json!({"providerTranscript":"synthetic private conversation"}),
+        ] {
+            assert!(!bounded_reservation(&json!([part]), [part]));
+        }
+    }
+
+    #[test]
+    fn total_reservation_byte_budget_is_not_expanded_by_component_validation() {
+        let part = json!("x".repeat(600_000));
+        assert!(exact_safe(&part, 1_048_576));
+        let parts = vec![part.clone(), part];
+        assert!(!bounded_reservation(&json!(parts), parts));
     }
 }
