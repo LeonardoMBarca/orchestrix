@@ -804,7 +804,6 @@ fn metadata_resource_error_events_cannot_reset_backoff() {
     let service = CodexMetadataService::new(
         clock.clone(),
         RefreshBounds {
-            deadline_ms: 100,
             initial_backoff_ms: 5_000,
             max_backoff_ms: 5_000,
             ..RefreshBounds::default()
@@ -815,11 +814,14 @@ fn metadata_resource_error_events_cannot_reset_backoff() {
         MetadataRefreshCoordinator::new(service, clock.clone(), MetadataScheduleBounds::default())
             .unwrap();
     schedule
-        .register(schedule_registration(&fixture, "metadata-hang", 1))
+        .register(schedule_registration(&fixture, "quota-failure", 1))
         .unwrap();
+    // This case proves backoff after a known quota error. A short wall-clock
+    // startup timeout could fail before initialize increments metadata-reads;
+    // dedicated timeout tests cover that independent, valid outcome.
     assert!(matches!(
         &schedule.tick(&CancellationToken::new()).unwrap()[0].outcome,
-        ScheduledMetadataOutcome::Failed(_)
+        ScheduledMetadataOutcome::Failed(error) if error.code() == "unavailable"
     ));
     for now in [1_100, 2_100] {
         clock.set(now);
@@ -838,7 +840,7 @@ fn metadata_resource_error_events_cannot_reset_backoff() {
     clock.set(5_100);
     assert!(matches!(
         &schedule.tick(&CancellationToken::new()).unwrap()[0].outcome,
-        ScheduledMetadataOutcome::Failed(_)
+        ScheduledMetadataOutcome::Failed(error) if error.code() == "unavailable"
     ));
     assert_eq!(metadata_read_count(&fixture), 2);
 }
