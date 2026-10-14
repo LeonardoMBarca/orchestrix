@@ -1,6 +1,7 @@
 //! Synchronous SQLite boundary. The domain has no database or process types.
 //! Every mutation uses detached state and a single, bounded writer transaction.
 mod commands;
+mod git;
 mod schema;
 mod state;
 
@@ -165,6 +166,13 @@ impl Store {
                 return Err(DomainError::InvalidReference.into());
             }
         }
+        if let Command::Git(command) = &request.command
+            && !command.input_bounded()
+        {
+            return Err(StoreError::Privacy(
+                crate::persistence_privacy::PrivacyError::Limit,
+            ));
+        }
         let body = request.command.body();
         // Check supported input bounds before hashing; only the digest is stored.
         sanitize_json(&body).map_err(StoreError::Privacy)?;
@@ -293,6 +301,30 @@ impl Store {
         )
         .map_err(|_| StoreError::InvalidState)
     }
+    /// Read-only lookup of a validated receipt. It grants no authority to replay
+    /// different content: execute() still checks the original fingerprint.
+    pub fn command_result(
+        &self,
+        scope: &LocalRef,
+        key: &LocalRef,
+    ) -> StoreResult<Option<CommandResult>> {
+        for value in [scope.as_str(), key.as_str()] {
+            if crate::persistence_privacy::sanitize_text(value).map_err(StoreError::Privacy)?
+                != value
+            {
+                return Err(DomainError::InvalidReference.into());
+            }
+        }
+        let value: Option<String> = self
+            .connection
+            .query_row(
+                "SELECT result FROM commands WHERE scope=?1 AND key=?2",
+                params![scope.as_str(), key.as_str()],
+                |row| row.get(0),
+            )
+            .optional()?;
+        value.as_deref().map(decode_result).transpose()
+    }
     pub fn sqlite_version() -> &'static str {
         rusqlite::version()
     }
@@ -314,8 +346,32 @@ pub(super) fn decode_result(text: &str) -> StoreResult<CommandResult> {
         return Err(StoreError::InvalidState);
     }
     if !result.output.is_null() {
-        crate::domain::DeliveryCandidate::restore_checkpoint(&result.output)
-            .map_err(|_| StoreError::InvalidState)?;
+        if let Some(artifact) = result.output.get("gitArtifact") {
+            if result.disposition != Disposition::Applied
+                || result.output.as_object().is_none_or(|map| map.len() != 1)
+                || artifact.as_object().is_none_or(|map| map.len() != 3)
+                || crate::domain::ArtifactId::new(
+                    artifact["id"].as_str().ok_or(StoreError::InvalidState)?,
+                )
+                .is_err()
+                || !crate::git_records::is_hash(
+                    artifact["revision"]
+                        .as_str()
+                        .ok_or(StoreError::InvalidState)?,
+                )
+                || LocalRef::new(
+                    artifact["operationId"]
+                        .as_str()
+                        .ok_or(StoreError::InvalidState)?,
+                )
+                .is_err()
+            {
+                return Err(StoreError::InvalidState);
+            }
+        } else {
+            crate::domain::DeliveryCandidate::restore_checkpoint(&result.output)
+                .map_err(|_| StoreError::InvalidState)?;
+        }
     }
     Ok(result)
 }

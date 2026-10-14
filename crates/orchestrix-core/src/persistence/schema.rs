@@ -2,7 +2,7 @@ use super::{StoreError, StoreResult};
 use rusqlite::{Connection, TransactionBehavior};
 use std::time::Duration;
 
-pub const SCHEMA_VERSION: i64 = 2;
+pub const SCHEMA_VERSION: i64 = 3;
 const APPLICATION_ID: i64 = 0x4f585354;
 
 // Kept as separate, immutable migrations so an existing v1 database can advance.
@@ -51,6 +51,19 @@ CREATE TRIGGER definitions_no_update BEFORE UPDATE ON definitions BEGIN SELECT R
 CREATE TRIGGER definitions_no_delete BEFORE DELETE ON definitions BEGIN SELECT RAISE(ABORT,'immutable definition'); END;
 CREATE TRIGGER diagnostics_no_update BEFORE UPDATE ON diagnostic_observations BEGIN SELECT RAISE(ABORT,'append-only diagnostic'); END;
 CREATE TRIGGER diagnostics_no_delete BEFORE DELETE ON diagnostic_observations BEGIN SELECT RAISE(ABORT,'append-only diagnostic'); END;
+"#;
+
+const V3: &str = r#"
+CREATE TABLE git_worktrees(operation_id TEXT PRIMARY KEY, project_id TEXT NOT NULL REFERENCES projects(id), repository_id TEXT NOT NULL REFERENCES repositories(id), run_id TEXT NOT NULL, task_id TEXT NOT NULL, attempt_id TEXT NOT NULL UNIQUE REFERENCES attempts(id), path TEXT NOT NULL UNIQUE, branch TEXT NOT NULL, main_repository TEXT NOT NULL, state TEXT NOT NULL, intent TEXT NOT NULL, FOREIGN KEY(run_id,task_id) REFERENCES tasks(run_id,id), UNIQUE(main_repository,branch));
+CREATE TABLE git_observations(operation_id TEXT NOT NULL REFERENCES git_worktrees(operation_id), ordinal INTEGER NOT NULL CHECK(ordinal>0), kind TEXT NOT NULL, evidence_sha256 TEXT NOT NULL, PRIMARY KEY(operation_id,ordinal));
+CREATE TABLE captured_artifacts(id TEXT NOT NULL, revision TEXT NOT NULL, operation_id TEXT NOT NULL REFERENCES git_worktrees(operation_id), attempt_id TEXT NOT NULL REFERENCES attempts(id), base_oid TEXT NOT NULL, patch_sha256 TEXT NOT NULL, body TEXT NOT NULL, PRIMARY KEY(id,revision));
+CREATE INDEX captured_artifacts_attempt ON captured_artifacts(attempt_id,id,revision);
+CREATE TRIGGER git_intent_immutable BEFORE UPDATE ON git_worktrees WHEN old.operation_id!=new.operation_id OR old.project_id!=new.project_id OR old.repository_id!=new.repository_id OR old.run_id!=new.run_id OR old.task_id!=new.task_id OR old.attempt_id!=new.attempt_id OR old.path!=new.path OR old.branch!=new.branch OR old.main_repository!=new.main_repository OR old.intent!=new.intent BEGIN SELECT RAISE(ABORT,'immutable Git intent'); END;
+CREATE TRIGGER git_worktrees_no_delete BEFORE DELETE ON git_worktrees BEGIN SELECT RAISE(ABORT,'retained Git provenance'); END;
+CREATE TRIGGER git_observations_no_update BEFORE UPDATE ON git_observations BEGIN SELECT RAISE(ABORT,'append-only Git observation'); END;
+CREATE TRIGGER git_observations_no_delete BEFORE DELETE ON git_observations BEGIN SELECT RAISE(ABORT,'append-only Git observation'); END;
+CREATE TRIGGER captured_artifacts_no_update BEFORE UPDATE ON captured_artifacts BEGIN SELECT RAISE(ABORT,'immutable exact artifact'); END;
+CREATE TRIGGER captured_artifacts_no_delete BEFORE DELETE ON captured_artifacts BEGIN SELECT RAISE(ABORT,'retained exact artifact'); END;
 "#;
 
 pub(super) fn initialize(connection: &mut Connection) -> StoreResult<()> {
@@ -127,6 +140,11 @@ pub(super) fn initialize(connection: &mut Connection) -> StoreResult<()> {
     if current == 1 {
         transaction.execute_batch(V2)?;
         transaction.pragma_update(None, "user_version", 2)?;
+        current = 2;
+    }
+    if current == 2 {
+        transaction.execute_batch(V3)?;
+        transaction.pragma_update(None, "user_version", 3)?;
     }
     transaction.commit()?;
     Ok(())
@@ -140,4 +158,12 @@ pub(super) fn create_v1(path: &std::path::Path) {
         .pragma_update(None, "application_id", APPLICATION_ID)
         .unwrap();
     connection.pragma_update(None, "user_version", 1).unwrap();
+}
+
+#[cfg(test)]
+pub(super) fn create_v2(path: &std::path::Path) {
+    create_v1(path);
+    let connection = Connection::open(path).unwrap();
+    connection.execute_batch(V2).unwrap();
+    connection.pragma_update(None, "user_version", 2).unwrap();
 }

@@ -1,5 +1,9 @@
 //! File-backed acceptance of the guarded domain through the durable command boundary.
 use orchestrix_core::domain::*;
+use orchestrix_core::git_records::{
+    CapturedArtifact, CapturedFile, FileContent, GitCommand, WorktreeIntent, WorktreeObservation,
+    WorktreeState, content_hash,
+};
 use orchestrix_core::persistence::{
     AttemptSnapshot, Command, Disposition, FaultPoint, Receipt, Request, RunAction, Store,
     StoreError,
@@ -14,6 +18,237 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 static NEXT_DIRECTORY: AtomicU64 = AtomicU64::new(0);
+
+fn git_intent(directory: &Path) -> WorktreeIntent {
+    WorktreeIntent {
+        operation_id: "worktree-operation-1".into(),
+        project_id: "project-1".into(),
+        repository_id: "repository-1".into(),
+        run_id: "git-run".into(),
+        task_id: "task-1".into(),
+        attempt_id: "attempt-git".into(),
+        base_oid: "a".repeat(40),
+        domain_base: "base-1".into(),
+        worktree_ref: "worktree-1".into(),
+        authorized_root: directory.to_str().unwrap().into(),
+        path: directory.join("attempt-worktree").to_str().unwrap().into(),
+        main_repository: directory.join("repository").to_str().unwrap().into(),
+        branch: "orchestrix/run-task-attempt-git".into(),
+        common_git_dir: directory.join("repository/.git").to_str().unwrap().into(),
+        ownership_token: content_hash(b"synthetic-noncredential-ownership"),
+    }
+}
+fn git_observation(kind: &str) -> WorktreeObservation {
+    WorktreeObservation {
+        kind: kind.into(),
+        evidence_sha256: content_hash(kind.as_bytes()),
+    }
+}
+fn captured(intent: &WorktreeIntent) -> CapturedArtifact {
+    let mut artifact = CapturedArtifact {
+        id: "artifact-git".into(),
+        revision: String::new(),
+        operation_id: intent.operation_id.clone(),
+        repository_id: intent.repository_id.clone(),
+        run_id: intent.run_id.clone(),
+        task_id: intent.task_id.clone(),
+        attempt_id: intent.attempt_id.clone(),
+        base_oid: intent.base_oid.clone(),
+        origin: intent.path.clone(),
+        files: vec![CapturedFile {
+            path: "readme.md".into(),
+            base: Some(FileContent::new("old\n".into(), "100644".into()).unwrap()),
+            index: Some(FileContent::new("old\n".into(), "100644".into()).unwrap()),
+            worktree: Some(FileContent::new("new\n".into(), "100644".into()).unwrap()),
+            untracked: false,
+        }],
+        exclusions: vec![],
+        patch: "exact patch fixture\n".into(),
+        patch_sha256: content_hash(b"exact patch fixture\n"),
+    };
+    artifact.revision = artifact.content_revision();
+    artifact
+}
+
+#[test]
+fn git_records_are_atomic_owned_idempotent_and_preserve_exact_content() {
+    let temp = TestDatabase::new();
+    let mut store = temp.reopen();
+    seed(&mut store);
+    create_run(&mut store, "git-run", TaskKind::Code);
+    let reserve = reservation(
+        &store,
+        "reserve-git",
+        "git-run",
+        "attempt-git",
+        TaskKind::Code,
+    );
+    store.execute(&reserve).unwrap();
+    let intent = git_intent(&temp.directory);
+    assert!(intent.validate());
+    let plan = request(
+        &store,
+        "plan-git",
+        Command::Git(GitCommand::Plan(intent.clone())),
+    );
+    let receipt = store.execute(&plan).unwrap();
+    assert_eq!(receipt.result.disposition, Disposition::Applied);
+    assert!(store.execute(&plan).unwrap().replayed);
+    let before_events = store.event_count().unwrap();
+    let confirm = request(
+        &store,
+        "confirm-git",
+        Command::Git(GitCommand::ConfirmCreated {
+            operation_id: intent.operation_id.clone(),
+            observation: git_observation("created"),
+        }),
+    );
+    assert_eq!(
+        store.execute_with_fault(&confirm, FaultPoint::AfterEvent),
+        Err(StoreError::InjectedRollback)
+    );
+    assert_eq!(
+        store.load().unwrap().worktrees()[&intent.operation_id].state,
+        WorktreeState::Planned
+    );
+    assert_eq!(store.event_count().unwrap(), before_events);
+    store.execute(&confirm).unwrap();
+    let artifact = captured(&intent);
+    assert!(artifact.validate());
+    let save = request(
+        &store,
+        "capture-git",
+        Command::Git(GitCommand::RecordArtifact(artifact.clone())),
+    );
+    assert_eq!(
+        store.execute_with_fault(&save, FaultPoint::AfterState),
+        Err(StoreError::InjectedRollback)
+    );
+    assert!(store.load().unwrap().captured_artifacts().is_empty());
+    assert_eq!(
+        store.execute_with_fault(&save, FaultPoint::AfterCommit),
+        Err(StoreError::ReplyLost)
+    );
+    drop(store);
+    let mut store = temp.reopen();
+    assert!(store.execute(&save).unwrap().replayed);
+    assert!(store.execute(&plan).unwrap().replayed);
+    let state = store.load().unwrap();
+    assert_eq!(
+        state.captured_artifacts()[&(artifact.id.clone(), artifact.revision.clone())],
+        artifact
+    );
+    assert_eq!(
+        store
+            .command_result(
+                &LocalRef::new("workflow").unwrap(),
+                &LocalRef::new("capture-git").unwrap()
+            )
+            .unwrap()
+            .unwrap()
+            .output,
+        json!({"gitArtifact":{"id":artifact.id,"revision":artifact.revision,"operationId":artifact.operation_id}})
+    );
+    assert_eq!(
+        state.runs()[&run_id("git-run")]
+            .task(&task_id())
+            .unwrap()
+            .state(),
+        TaskState::Assigned
+    );
+    assert!(
+        state.runs()[&run_id("git-run")]
+            .task(&task_id())
+            .unwrap()
+            .artifact()
+            .is_none()
+    );
+    let mut altered = artifact.clone();
+    altered.files[0].worktree.as_mut().unwrap().content = "changed bytes\n".into();
+    let invalid = request(
+        &store,
+        "invalid-hash",
+        Command::Git(GitCommand::RecordArtifact(altered)),
+    );
+    assert_eq!(
+        store.execute(&invalid).unwrap().result.disposition,
+        Disposition::InvalidNoChange
+    );
+    let mut wrong = intent.clone();
+    wrong.operation_id = "different-operation".into();
+    wrong.attempt_id = "unknown-attempt".into();
+    let invalid = request(&store, "wrong-owner", Command::Git(GitCommand::Plan(wrong)));
+    assert_eq!(
+        store.execute(&invalid).unwrap().result.disposition,
+        Disposition::InvalidNoChange
+    );
+    let mut secret = artifact.clone();
+    secret.files[0].worktree.as_mut().unwrap().content = "api_key=synthetic-private-value\n".into();
+    secret.files[0].worktree.as_mut().unwrap().sha256 = content_hash(
+        secret.files[0]
+            .worktree
+            .as_ref()
+            .unwrap()
+            .content
+            .as_bytes(),
+    );
+    secret.revision = secret.content_revision();
+    let invalid = request(
+        &store,
+        "secret-content",
+        Command::Git(GitCommand::RecordArtifact(secret)),
+    );
+    assert_eq!(
+        store.execute(&invalid).unwrap().result.disposition,
+        Disposition::InvalidNoChange
+    );
+    let mut oversized = artifact.clone();
+    oversized.patch = "x".repeat(orchestrix_core::git_records::MAX_FILE_BYTES + 1);
+    let invalid = request(
+        &store,
+        "oversized-exact-content",
+        Command::Git(GitCommand::RecordArtifact(oversized)),
+    );
+    assert!(matches!(
+        store.execute(&invalid),
+        Err(StoreError::Privacy(_))
+    ));
+    for (key, command) in [
+        (
+            "cleanup-plan",
+            GitCommand::PlanCleanup {
+                operation_id: intent.operation_id.clone(),
+                observation: git_observation("cleanup-planned"),
+            },
+        ),
+        (
+            "cleanup-removed",
+            GitCommand::ConfirmRemoved {
+                operation_id: intent.operation_id.clone(),
+                observation: git_observation("removed"),
+            },
+        ),
+    ] {
+        execute(&mut store, key, Command::Git(command));
+    }
+    assert_eq!(
+        store.load().unwrap().worktrees()[&intent.operation_id].state,
+        WorktreeState::Removed
+    );
+    drop(store);
+    let bytes = std::fs::read(temp.path()).unwrap();
+    assert!(!String::from_utf8_lossy(&bytes).contains("synthetic-private-value"));
+    let sql = rusqlite::Connection::open(temp.path()).unwrap();
+    assert!(
+        sql.execute("UPDATE captured_artifacts SET patch_sha256='tampered'", [])
+            .is_err()
+    );
+    assert!(sql.execute("DELETE FROM git_observations", []).is_err());
+    assert!(
+        sql.execute("UPDATE git_worktrees SET path='foreign'", [])
+            .is_err()
+    );
+}
 
 struct TestDatabase {
     directory: PathBuf,

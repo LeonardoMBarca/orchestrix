@@ -1,10 +1,12 @@
-# Orchestrix Core — runtime contract, domain and persistence
+# Orchestrix Core — runtime, domain, persistence and local Git
 
-OX-003 provides the Rust consumer of portable runtime contract 1.1: validation, admission checks and observation of one owned attempt. The crate has no Node dependency, provider SDK/messages, OS process handles, Tauri, scheduler, production worker or daemon.
+OX-003 provides the Rust consumer of portable runtime contract 1.1: validation, admission checks and observation of one owned attempt. The runtime contract and domain remain independent of OS process handles and database types. The crate has no Node dependency, provider SDK/messages, Tauri, scheduler, production worker or daemon.
 
 OX-004 adds the [pure domain](src/domain/mod.rs): typed identities, projects/repositories, connections/shared capacity, conversations/session references, versioned modes/profiles, attempts, tasks and Runs. It consumes the same runtime observer and keeps execution outcome, output production, artifact acceptance, internal integration and final application separate. [Domain contract/API rules](../../docs/contracts/domain-and-states.md) and [original acceptance evidence](../../docs/research/ox-004-domain-increment.md) describe guarded operations. The domain module remains independent of SQL and actual process/Git/check services.
 
 OX-005 adds [SQLite persistence](src/persistence/mod.rs), outside the domain, using rusqlite 0.40.2 with bundled SQLite 3.53.2. It stores current state, evidence, append-only audit events and idempotent command results transactionally. Validated checkpoints preserve private invariants, observer budgets/quarantine, exact artifact/approval versions and historical definitions. [Persistence contract](../../docs/contracts/persistence.md) and [ADR-0006](../../docs/adr/0006-synchronous-sqlite-persistence.md) define the boundary; [current status](../../docs/DEVELOPMENT_STATUS.md) owns the ticket/milestone completion decision.
+
+OX-006 adds the separate [local Git infrastructure](src/git/mod.rs), with an installed Git CLI and schema migration 3. [Worktree and capture contract](../../docs/contracts/git-worktrees.md) defines pinned bases, directory authority, durable ownership, bounded exact evidence and conservative cleanup. This infrastructure uses OS processes; it does not move them into the pure domain or implement the runtime supervisor.
 
 OX-003 is accepted for the first local single-account runtime under [portable input profile revision 1](../../docs/contracts/runtime-input-profile.md). This explicitly replaces the previous permissive experimental decoder; normalized v1.0/v1.1 data remains compatible, while ambiguous/nonportable inputs are rejected without timezone inference. Semantic wire version and codec revision are separate. [Acceptance and verification](../../docs/research/portable-runtime-input-increment.md) do not close M0 or production/provider gates.
 
@@ -37,7 +39,7 @@ After dependency download, these Cargo commands also work with `--offline`. The 
 
 The separate [document records](src/persistence_records.rs) module validates versioned definitions and scoped diagnostic histories; [privacy](src/persistence_privacy.rs) applies bounded sanitization before storage. A failed diagnostic refresh preserves the last successful observation and its original dates; no refresh service or new authentication check is implemented. Domain `checkpoint()` / `restore_checkpoint()` and observer equivalents are validated formats, not general-purpose entity deserialization.
 
-[Workflow tests](tests/persistence_workflow.rs) exercise file-backed Run → Task → attempt → artifact/evidence → event → reopen → continued delivery, preserved negative integration/application evidence, stale references, global session bindings, quarantine and all three injected write boundaries. Eight parent tests pass; the separate-process parent explicitly invokes its ignored helper to reload an Approved Task and continue integration. The additional storage tests in [persistence/tests.rs](src/persistence/tests.rs) cover migrations, contention, command replay and commit-before-reply loss. Ignored child helpers are executed by their parent tests rather than counted as untested capability.
+[Workflow tests](tests/persistence_workflow.rs) exercise file-backed Run → Task → attempt → artifact/evidence → event → reopen → continued delivery, preserved negative integration/application evidence, stale references, global session bindings, quarantine and all three injected write boundaries. Nine parent tests pass, including OX-006 record atomicity; the separate-process parent explicitly invokes its ignored helper to reload an Approved Task and continue integration. The additional storage tests in [persistence/tests.rs](src/persistence/tests.rs) cover migrations, contention, command replay and commit-before-reply loss. Ignored child helpers are executed by their parent tests rather than counted as untested capability.
 
 ```powershell
 cargo test --package orchestrix-core --test persistence_workflow --locked --offline
@@ -46,6 +48,16 @@ cargo test --package orchestrix-core --test persistence_records --locked --offli
 ```
 
 These tests use isolated temporary files and synthetic observations. Rollback injection is not a power-loss recovery test; no provider login, live inference, Git project operation or process reconciliation is performed.
+
+## Registered attempt to durable Git artifact
+
+`WorktreeService::create(&mut Store, &CreateWorktree)` requires an existing Project/Repository/Run/Task/Attempt, its granted directory reference, an existing absolute authorized root, and a full pinned commit OID matching the attempt's base. It commits intent, creates owned refs and a locked worktree, materializes raw blobs without checkout/filter execution, then confirms creation in a separate transaction. A retry verifies retained ownership rather than adopting a matching name.
+
+`capture()` records immutable base/index/working content and an exact patch with SHA-256 provenance. A committed capture key replays its original evidence after edits, reopen or removal. It does not publish an accepted domain artifact, run project checks or approve/apply changes. `remove()` accepts only an inactive registered attempt at its exact clean pinned base, with no untracked, ignored or excluded content; ownership/base/completion anchors and persisted evidence remain. Dirty or uniquely committed work is preserved.
+
+The initial profile supports bounded regular UTF-8 files with mode `100644`; unsupported bases, links, submodules, modified binaries, configured filters and unsafe exact content are refused. Limits and crash gaps are explicit in the contract. These checks do not provide OS containment or protection against a hostile writer replacing metadata between operations. Loading SQLite never executes Git.
+
+[Real Git + SQLite workflow tests](tests/git_worktrees.rs) cover isolation, main-checkout preservation, replay, another process, ownership collisions and recovery after Git effects but before SQL confirmation. [Capture tests](tests/git_capture.rs) cover staged/working differences, additions/deletions, concurrency, exclusions and patch syntax. Temporary fixtures use installed Git without providers, project scripts or network access. [Increment evidence](../../docs/research/ox-006-git-increment.md) records results and remaining boundaries.
 
 ## Conformance and adapter integration
 
@@ -65,4 +77,4 @@ This is a portable Core module, not a production adapter/supervisor. The actual 
 
 The [input profile](../../docs/contracts/runtime-input-profile.md) defines strict Gregorian/offset timestamps, finite binary64 JSON numbers and Unicode scalar strings. Normalized UTC milliseconds are idempotent; invalid/ambiguous legacy strings never become evidence. This is scoped conformance, not equivalence with every permissive `Date.parse` or arbitrary JavaScript input. Lexical validation includes ignored/overwritten fields; projection validates/skips compatible deep unknown data, including the existing 500-level regressions. Typed invalid-field priorities and numeric rounding match the compared inputs. The example's outer host-bundle decoder remains bounded and is not a production transport. Frame/collection bounds do not certify global memory usage, durability or cross-platform runtime support.
 
-See [contract](../../docs/contracts/runtime-contract-v1.md), [portable input acceptance](../../docs/research/portable-runtime-input-increment.md), [preceding Rust evidence](../../docs/research/rust-runtime-contract-increment.md) and the [backlog](../../docs/DEVELOPMENT_BACKLOG.md). Git/worktree services, production supervision, routing, daemon and Desktop retain their own dependencies; durable state alone does not complete M0.
+See [contract](../../docs/contracts/runtime-contract-v1.md), [portable input acceptance](../../docs/research/portable-runtime-input-increment.md), [preceding Rust evidence](../../docs/research/rust-runtime-contract-increment.md) and the [backlog](../../docs/DEVELOPMENT_BACKLOG.md). Production supervision, routing, integration/application, daemon and Desktop retain their own dependencies; local Git and durable state alone do not complete M0.

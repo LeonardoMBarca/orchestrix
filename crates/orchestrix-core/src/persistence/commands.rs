@@ -38,6 +38,7 @@ pub enum Command {
         attempt: Option<AttemptId>,
     },
     Records(crate::persistence_records::RecordsCommand),
+    Git(crate::git_records::GitCommand),
 }
 
 pub enum RunAction {
@@ -122,6 +123,19 @@ impl Command {
         &self,
         state: &SavedState,
     ) -> (Option<String>, Option<String>, Option<String>) {
+        if let Self::Git(command) = self {
+            return state
+                .worktrees
+                .get(command.operation_id())
+                .map(|record| {
+                    (
+                        Some(record.intent.run_id.clone()),
+                        Some(record.intent.task_id.clone()),
+                        Some(record.intent.attempt_id.clone()),
+                    )
+                })
+                .unwrap_or_default();
+        }
         let (run, task, attempt) = match self {
             Self::CreateRun(run) => (Some(run.id()), None, None),
             Self::Run { id, action } => {
@@ -209,6 +223,7 @@ impl Command {
                 attempt.as_ref().map(AttemptId::as_str)
             ]),
             Self::Records(value) => json!(["records", value]),
+            Self::Git(value) => value.fingerprint_body(),
         }
     }
     pub(super) fn name(&self) -> &'static str {
@@ -225,6 +240,7 @@ impl Command {
             Self::SaveDraft { .. } => "conversation.draft",
             Self::LinkWork { .. } => "conversation.link",
             Self::Records(_) => "records",
+            Self::Git(value) => value.name(),
         }
     }
     pub(super) fn observed_failure(&self, error: &DomainError) -> bool {
@@ -245,6 +261,15 @@ impl Command {
         )
     }
     pub(super) fn apply(&self, state: &mut SavedState) -> StoreResult<Value> {
+        if let Self::Git(command) = self {
+            super::git::apply(state, command)?;
+            return Ok(match command {
+                crate::git_records::GitCommand::RecordArtifact(artifact) => {
+                    json!({"gitArtifact":{"id":artifact.id,"revision":artifact.revision,"operationId":artifact.operation_id}})
+                }
+                _ => Value::Null,
+            });
+        }
         match self {
             Self::AddProject(value) => {
                 if state.projects.values().any(|p| {
@@ -439,6 +464,7 @@ impl Command {
                     _ => state.records.apply(value).map_err(StoreError::Records)?,
                 }
             }
+            Self::Git(_) => unreachable!("Git commands handled before domain commands"),
         }
         Ok(Value::Null)
     }

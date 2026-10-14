@@ -19,6 +19,8 @@ pub struct SavedState {
     pub(super) drafts: BTreeMap<ConversationId, String>,
     pub(super) records: DocumentRecords,
     pub(super) snapshots: BTreeMap<AttemptId, AttemptSnapshot>,
+    pub(super) worktrees: BTreeMap<String, crate::git_records::WorktreeRecord>,
+    pub(super) captured_artifacts: BTreeMap<(String, String), crate::git_records::CapturedArtifact>,
 }
 impl SavedState {
     pub fn revision(&self) -> u64 {
@@ -51,6 +53,14 @@ impl SavedState {
     pub fn snapshots(&self) -> &BTreeMap<AttemptId, AttemptSnapshot> {
         &self.snapshots
     }
+    pub fn worktrees(&self) -> &BTreeMap<String, crate::git_records::WorktreeRecord> {
+        &self.worktrees
+    }
+    pub fn captured_artifacts(
+        &self,
+    ) -> &BTreeMap<(String, String), crate::git_records::CapturedArtifact> {
+        &self.captured_artifacts
+    }
 
     pub(super) fn checkpoint(&self) -> Value {
         json!({"schemaVersion":1,
@@ -61,7 +71,9 @@ impl SavedState {
             "runs":self.runs.values().map(Run::checkpoint).collect::<Vec<_>>(),
             "conversations":self.conversations.checkpoint(),"records":self.records.checkpoint(),
             "drafts":self.drafts.iter().map(|(id,text)|json!([id.as_str(),text])).collect::<Vec<_>>(),
-            "snapshots":self.snapshots.values().collect::<Vec<_>>()})
+            "snapshots":self.snapshots.values().collect::<Vec<_>>(),
+            "gitWorktrees":self.worktrees.values().collect::<Vec<_>>(),
+            "gitArtifacts":self.captured_artifacts.values().map(|a|(&a.id,&a.revision)).collect::<Vec<_>>()})
     }
     pub(super) fn validate_snapshot(
         &self,
@@ -116,6 +128,7 @@ impl SavedState {
         Ok(())
     }
     fn validate(&self) -> StoreResult<()> {
+        super::git::validate(self)?;
         for group in self.capacity_groups.values() {
             if group
                 .members()
@@ -284,6 +297,9 @@ impl SavedState {
                 .insert(AttemptId::new(&value.definition.attempt_id)?, value);
         }
         state.revision = self.revision;
+        // Exact artifacts are a separately bounded immutable store; they are never redacted.
+        state.worktrees = self.worktrees.clone();
+        state.captured_artifacts = self.captured_artifacts.clone();
         state.validate()?;
         Ok(state)
     }
@@ -413,6 +429,7 @@ pub(super) fn load(connection: &SqlConnection) -> StoreResult<SavedState> {
         }
         state.snapshots.insert(AttemptId::new(id)?, value);
     }
+    super::git::load(connection, &mut state)?;
     state.validate()?;
     let checkpoint = state.checkpoint();
     if sanitize_checkpoint(&checkpoint).map_err(StoreError::Privacy)? != checkpoint {
@@ -607,6 +624,7 @@ pub(super) fn save(connection: &SqlConnection, state: &SavedState) -> StoreResul
             ],
         )?;
     }
+    super::git::save(connection, state)?;
     connection.execute(
         "UPDATE store_meta SET revision=?1 WHERE singleton=1",
         [super::sql_int(state.revision)?],

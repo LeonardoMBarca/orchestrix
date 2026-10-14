@@ -52,6 +52,36 @@ fn request(key: &str, revision: u64, command: Command) -> Request {
         command,
     }
 }
+
+#[test]
+fn captured_artifact_receipts_use_one_closed_validated_reference_tag() {
+    let result = CommandResult {
+        schema_version: 1,
+        revision: 3,
+        disposition: Disposition::Applied,
+        error_code: None,
+        output: json!({"gitArtifact":{"id":"artifact-1","revision":"a".repeat(64),"operationId":"worktree-operation"}}),
+    };
+    assert_eq!(
+        decode_result(&serde_json::to_string(&result).unwrap()).unwrap(),
+        result
+    );
+    for output in [
+        json!({"gitArtifact":{"id":"artifact-1","revision":"a".repeat(64),"operationId":"worktree-operation","extra":true}}),
+        json!({"gitArtifact":{"id":"artifact-1","revision":"a".repeat(64),"operationId":"worktree-operation"},"extra":true}),
+        json!({"gitArtifact":{"id":"artifact-1","revision":"broken-hash","operationId":"worktree-operation"}}),
+        json!({"otherTag":{"id":"artifact-1"}}),
+    ] {
+        let altered = CommandResult {
+            output,
+            ..result.clone()
+        };
+        assert_eq!(
+            decode_result(&serde_json::to_string(&altered).unwrap()),
+            Err(StoreError::InvalidState)
+        );
+    }
+}
 fn add(key: &str, revision: u64, id: &str) -> Request {
     request(key, revision, Command::AddProject(project(id)))
 }
@@ -93,7 +123,7 @@ fn compiled_sqlite_settings_and_real_file_migration_preserve_existing_data() {
     let store = Store::open(&temp.path).unwrap();
     assert_eq!(Store::sqlite_version(), "3.53.2");
     println!(
-        "rusqlite 0.40.2 bundled SQLite {}: migrated file v1 -> v2",
+        "rusqlite 0.40.2 bundled SQLite {}: migrated file v1 -> current",
         Store::sqlite_version()
     );
     assert!(
@@ -108,7 +138,7 @@ fn compiled_sqlite_settings_and_real_file_migration_preserve_existing_data() {
             .connection
             .pragma_query_value(None, "user_version", |row| row.get::<_, i64>(0))
             .unwrap(),
-        2
+        SCHEMA_VERSION
     );
     assert_eq!(
         store
@@ -137,6 +167,60 @@ fn compiled_sqlite_settings_and_real_file_migration_preserve_existing_data() {
             .pragma_query_value(None, "journal_mode", |row| row.get::<_, String>(0))
             .unwrap(),
         "wal"
+    );
+}
+
+#[test]
+fn v2_database_with_existing_project_migrates_to_git_schema_without_rewriting_history() {
+    let temp = TempDb::new();
+    schema::create_v2(&temp.path);
+    let connection = Connection::open(&temp.path).unwrap();
+    let project = project("v2-existing");
+    connection
+        .execute(
+            "INSERT INTO repositories VALUES(?1,?2)",
+            params![
+                project.repository().id().as_str(),
+                project.repository().location().as_str()
+            ],
+        )
+        .unwrap();
+    connection
+        .execute(
+            "INSERT INTO projects VALUES(?1,?2,?3)",
+            params![
+                project.id().as_str(),
+                project.repository().id().as_str(),
+                project.checkpoint().to_string()
+            ],
+        )
+        .unwrap();
+    let mut conversations = ConversationStore::new();
+    conversations.add_project(project).unwrap();
+    connection
+        .execute(
+            "INSERT INTO conversation_store VALUES(1,?1)",
+            [conversations.checkpoint().to_string()],
+        )
+        .unwrap();
+    let before: String = connection
+        .query_row("SELECT checkpoint FROM projects", [], |row| row.get(0))
+        .unwrap();
+    drop(connection);
+    let store = Store::open(&temp.path).unwrap();
+    assert_eq!(store.load().unwrap().projects().len(), 1);
+    assert!(store.load().unwrap().worktrees().is_empty());
+    let after: String = store
+        .connection
+        .query_row("SELECT checkpoint FROM projects", [], |row| row.get(0))
+        .unwrap();
+    assert_eq!(before, after);
+    assert_eq!(
+        store
+            .connection
+            .pragma_query_value(None, "user_version", |row| row.get::<_, i64>(0))
+            .unwrap(),
+        3
     );
 }
 
