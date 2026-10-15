@@ -10,6 +10,11 @@ import controls from '../../../prototypes/desktop/locales/chat-controls.json';
 export type Language = 'en'|'pt'|'es';
 const catalog = Object.assign({},chrome,shell,settings,activity,files,experience,sessions,controls) as Record<string,{en:string,es:string}>;
 const extra: Record<string,[string,string]> = {
+  'Project file':['Arquivo do projeto','Archivo del proyecto'],
+  'Worktree file':['Arquivo do worktree','Archivo del worktree'],
+  'Recorded project':['Projeto registrado','Proyecto registrado'],
+  'Recorded worker':['Worker registrado','Worker registrado'],
+  'Metadata revision':['Revisão dos metadados','Revisión de los metadatos'],
   'Reviewed result · Awaiting integration':['Resultado revisado · Aguardando integração','Resultado revisado · Pendiente de integración'],
   'Awaiting independent review':['Aguardando revisão independente','Pendiente de revisión independiente'],
   'I authorize this recovery action after inspecting its evidence.':['Autorizo esta ação de recuperação após inspecionar suas evidências.','Autorizo esta acción de recuperación tras inspeccionar sus evidencias.'],

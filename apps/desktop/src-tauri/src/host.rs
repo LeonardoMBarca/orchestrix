@@ -41,6 +41,8 @@ struct Prepared {
     conversation_id: String,
     corrections: u32,
 }
+#[cfg(test)]
+type TestTransport = Arc<dyn Fn(Operation) -> Result<Value, String> + Send + Sync>;
 pub struct Host {
     pub database: PathBuf,
     pub directory: PathBuf,
@@ -50,6 +52,8 @@ pub struct Host {
     startup: Mutex<()>,
     metadata: CodexMetadataService,
     close_behavior: Mutex<String>,
+    #[cfg(test)]
+    test_transport: Option<TestTransport>,
     #[cfg(feature = "test-fixtures")]
     fixture: Option<FixtureConfig>,
 }
@@ -194,7 +198,7 @@ pub enum HostRequest {
         worker_id: String,
     },
     PrepareTask {
-        draft: TaskDraft,
+        draft: Box<TaskDraft>,
     },
     ArtifactText {
         artifact_id: String,
@@ -313,11 +317,17 @@ impl Host {
                     })
                     .unwrap_or_else(|| "continue".into()),
             ),
+            #[cfg(test)]
+            test_transport: None,
             #[cfg(feature = "test-fixtures")]
             fixture: fixture_config()?,
         })
     }
     pub fn call(&self, operation: Operation) -> Result<Value, String> {
+        #[cfg(test)]
+        if let Some(transport) = &self.test_transport {
+            return transport(operation);
+        }
         let response = Client::new(&self.database)?.request(&Request {
             api_version: API_VERSION,
             operation,
@@ -393,17 +403,31 @@ impl Host {
         )
     }
     pub fn edit(&self, request: EditorRequest) -> Result<Value, String> {
+        let mutating = matches!(
+            &request,
+            EditorRequest::Save { .. } | EditorRequest::Create { .. }
+        );
         let (outcome, path) = {
             let mut editor = self.editor.lock().map_err(|_| "editor-lock")?;
-            let path = if let EditorRequest::Save { document, .. } = &request {
-                Some(editor.document_path(document)?)
-            } else {
-                None
+            let path = match &request {
+                EditorRequest::Save { document, .. } => Some(editor.document_path(document)?),
+                EditorRequest::Create { grant, name } => Some(editor.creation_path(grant, name)?),
+                _ => None,
             };
-            (editor.execute(request), path)
+            let outcome = editor.execute(request);
+            let opened = match &outcome {
+                Ok(value) => value
+                    .get("id")
+                    .and_then(Value::as_str)
+                    .map(|document| editor.document_path(document))
+                    .transpose()?,
+                Err(_) => None,
+            };
+            (outcome, path.or(opened))
         };
-        // A failed in-place write may already have changed disk bytes. Preserve the
-        // caller's buffer and invalidate evidence on both successful and failed saves.
+        // A failed write/create may already have changed disk bytes. The target
+        // was authorized before the effect, so conservatively revalidate even
+        // when failure happened before writing. Never claim successful creation.
         let mut result = match outcome {
             Ok(value) => value,
             Err(reason) if path.is_some() => json!({"saveError":reason}),
@@ -411,10 +435,25 @@ impl Host {
         };
         if let Some(path) = path {
             result["authorizedPath"] = json!(path);
+            result["origin"] = json!("authorized-file");
+            result["originObservation"] = Value::Null;
             match self.desktop(DesktopRequest::AffectedWorkers {
                 canonical_path: path.to_string_lossy().into(),
             }) {
                 Ok(affected) => {
+                    // These are historical relationships, never file grants. Do not
+                    // canonicalize or open paths obtained from project metadata.
+                    let projects = if affected["workerIds"].as_array().is_some_and(Vec::is_empty) {
+                        self.desktop(DesktopRequest::Bootstrap).ok()
+                    } else {
+                        None
+                    };
+                    let origin = observed_file_origin(&path, &affected, projects.as_ref());
+                    result["origin"] = origin["origin"].clone();
+                    result["originObservation"] = origin["originObservation"].clone();
+                    if !mutating {
+                        return Ok(result);
+                    }
                     let ids: Vec<String> = affected["workerIds"]
                         .as_array()
                         .into_iter()
@@ -430,18 +469,16 @@ impl Host {
                         });
                         checks.push(json!({"workerId":worker_id,"commandId":command_id,"accepted":observation.is_ok(),"reason":observation.err()}));
                     }
-                    result["origin"] = json!(if ids.is_empty() {
-                        "authorized-file"
-                    } else {
-                        "owned-worktree"
-                    });
                     result["affectedWorkers"] = json!(ids);
                     result["revalidation"] = json!(checks);
                 }
                 Err(_) => {
-                    result["revalidationPending"] = json!(true);
-                    result["warning"] =
-                        json!("Artifact revalidation unavailable; prior evidence is historical.");
+                    if mutating {
+                        result["revalidationPending"] = json!(true);
+                        result["warning"] = json!(
+                            "Artifact revalidation unavailable; prior evidence is historical."
+                        );
+                    }
                 }
             }
         }
@@ -683,10 +720,10 @@ impl Host {
         let fingerprint = sha(serde_json::to_vec(&body)
             .map_err(|_| "desktop-request-schema")?
             .as_slice());
-        if let Some(command) = body["commandId"].as_str() {
-            if let Some(effect) = crate::journal::read(&self.directory, command, &fingerprint)? {
-                return self.replay(effect);
-            }
+        if let Some(command) = body["commandId"].as_str()
+            && let Some(effect) = crate::journal::read(&self.directory, command, &fingerprint)?
+        {
+            return self.replay(effect);
         }
         self.handle_new(request, &fingerprint)
     }
@@ -797,7 +834,7 @@ impl Host {
                 offset,
                 limit,
             }),
-            HostRequest::PrepareTask { draft } => self.prepare(draft),
+            HostRequest::PrepareTask { draft } => self.prepare(*draft),
             HostRequest::SaveConnection {
                 command_id,
                 label,
@@ -1362,6 +1399,63 @@ impl Host {
         )
     }
 }
+/// A role is an observed Core relationship, independent of native file access.
+/// The caller must already possess a validated document/grant. This helper has
+/// no filesystem effects and does not inspect arbitrary project metadata paths.
+fn observed_file_origin(
+    path: &std::path::Path,
+    affected: &Value,
+    projects: Option<&Value>,
+) -> Value {
+    let unknown = || json!({"origin":"authorized-file","originObservation":null});
+    if !path.is_absolute() || affected["grantsAccess"] != false || affected["historical"] != true {
+        return unknown();
+    }
+    let Some(workers) = affected["workerIds"].as_array() else {
+        return unknown();
+    };
+    if workers.len() == 1 {
+        let Some(worker) = workers[0]
+            .as_str()
+            .filter(|id| orchestrix_core::domain::LocalRef::new(*id).is_ok())
+        else {
+            return unknown();
+        };
+        return json!({"origin":"worktree-file","originObservation":{"source":"core-metadata","historical":true,"workerId":worker}});
+    }
+    if !workers.is_empty() {
+        return unknown();
+    }
+    let Some(snapshot) = projects else {
+        return unknown();
+    };
+    let Some(revision) = snapshot["revision"].as_u64() else {
+        return unknown();
+    };
+    let Some(projects) = snapshot["projects"].as_array() else {
+        return unknown();
+    };
+    let mut matches = projects.iter().filter(|project| {
+        project["directory"].as_str().is_some_and(|directory| {
+            let root = std::path::Path::new(directory);
+            root.is_absolute() && path.starts_with(root)
+        })
+    });
+    let Some(project) = matches.next() else {
+        return unknown();
+    };
+    if matches.next().is_some() {
+        return unknown();
+    }
+    let Some(id) = project["id"]
+        .as_str()
+        .filter(|id| orchestrix_core::domain::ProjectId::new(*id).is_ok())
+    else {
+        return unknown();
+    };
+    json!({"origin":"project-file","originObservation":{"source":"core-metadata","historical":true,"projectId":id,"projectName":project["name"].as_str(),"revision":revision}})
+}
+
 fn effect_runtime(operation: &Operation) -> Option<&RuntimeChoice> {
     match operation {
         Operation::SubmitConversation { runtime, .. }
@@ -1448,6 +1542,196 @@ mod tests {
         let mut changed = binding("account-a");
         changed.label = "changed at same revision".into();
         assert!(second.persist_binding(changed).is_err());
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn file_origin_uses_unique_recorded_relationships_without_filesystem_access() {
+        let root = std::env::temp_dir();
+        let project = root.join("metadata-only-project");
+        let path = project.join("notes.md");
+        let empty = json!({"workerIds":[],"historical":true,"grantsAccess":false});
+        let snapshot = json!({"revision":7,"projects":[{"id":"project-one","name":"Recorded project","directory":project}]});
+        let role = observed_file_origin(&path, &empty, Some(&snapshot));
+        assert_eq!(role["origin"], "project-file");
+        assert_eq!(role["originObservation"]["projectId"], "project-one");
+        assert_eq!(role["originObservation"]["revision"], 7);
+        let worktree = json!({"workerIds":["worker-one"],"historical":true,"grantsAccess":false});
+        let role = observed_file_origin(&path, &worktree, None);
+        assert_eq!(role["origin"], "worktree-file");
+        assert_eq!(role["originObservation"]["workerId"], "worker-one");
+        assert_eq!(role["originObservation"]["historical"], true);
+        let ambiguous = json!({"revision":7,"projects":[{"id":"one","directory":project},{"id":"two","directory":root}]});
+        for (workers, projects) in [
+            (empty.clone(), None),
+            (empty.clone(), Some(ambiguous)),
+            (
+                json!({"workerIds":["one","two"],"historical":true,"grantsAccess":false}),
+                Some(snapshot.clone()),
+            ),
+            (
+                json!({"workerIds":["one"],"historical":true,"grantsAccess":true}),
+                Some(snapshot.clone()),
+            ),
+            (
+                json!({"workerIds":[null],"historical":true,"grantsAccess":false}),
+                Some(snapshot.clone()),
+            ),
+        ] {
+            assert_eq!(
+                observed_file_origin(&path, &workers, projects.as_ref())["origin"],
+                "authorized-file"
+            );
+        }
+        let unrelated = root.join("metadata-only-project-other").join("notes.md");
+        assert_eq!(
+            observed_file_origin(&unrelated, &empty, Some(&snapshot))["origin"],
+            "authorized-file"
+        );
+        // Neither a saved project directory nor a role label is a file grant.
+        let mut editor = Editor::default();
+        assert!(
+            editor
+                .execute(EditorRequest::Open {
+                    grant: "project-one".into(),
+                    relative: "notes.md".into()
+                })
+                .is_err()
+        );
+    }
+
+    #[test]
+    fn offline_open_preserves_the_authorized_buffer_and_unknown_role() {
+        let root = directory();
+        let path = root.join("notes.md");
+        fs::write(&path, "authorized buffer survives offline\n").unwrap();
+        let host = Host::new(root.clone()).unwrap();
+        let grant = host
+            .editor
+            .lock()
+            .unwrap()
+            .grant_dialog_selection(path)
+            .unwrap();
+        let result = host
+            .edit(EditorRequest::Open {
+                grant: grant.id,
+                relative: String::new(),
+            })
+            .unwrap();
+        assert_eq!(result["text"], "authorized buffer survives offline\n");
+        assert_eq!(result["origin"], "authorized-file");
+        assert_eq!(result["originObservation"], Value::Null);
+        assert!(result.get("saveError").is_none());
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn create_schedules_worktree_revalidation_while_open_is_metadata_only() {
+        let root = directory();
+        let mut host = Host::new(root.clone()).unwrap();
+        let operations = Arc::new(Mutex::new(Vec::new()));
+        let recorded = operations.clone();
+        host.test_transport = Some(Arc::new(move |operation| match operation {
+            Operation::Desktop { request }
+                if matches!(&*request, DesktopRequest::AffectedWorkers { .. }) =>
+            {
+                Ok(
+                    json!({"workerIds":["previously-verified-worker"],"historical":true,"grantsAccess":false}),
+                )
+            }
+            Operation::RevalidateArtifact {
+                command_id,
+                worker_id,
+            } => {
+                recorded
+                    .lock()
+                    .unwrap()
+                    .push((command_id.clone(), worker_id.clone()));
+                // Acceptance only schedules inspection. It is never a retained
+                // verification or review approval of the changed inventory.
+                Ok(json!({"accepted":true,"commandId":command_id,"workerId":worker_id}))
+            }
+            _ => Err("unexpected-test-operation".into()),
+        }));
+        let grant = host
+            .editor
+            .lock()
+            .unwrap()
+            .grant_dialog_selection(root.clone())
+            .unwrap();
+        let created = host
+            .edit(EditorRequest::Create {
+                grant: grant.id.clone(),
+                name: "new-notes.md".into(),
+            })
+            .unwrap();
+        assert_eq!(fs::read(root.join("new-notes.md")).unwrap(), b"");
+        assert_eq!(
+            created["affectedWorkers"],
+            json!(["previously-verified-worker"])
+        );
+        assert_eq!(created["revalidation"][0]["accepted"], true);
+        assert_eq!(
+            created["revalidation"][0]["workerId"],
+            "previously-verified-worker"
+        );
+        assert!(
+            !created["revalidation"][0]["commandId"]
+                .as_str()
+                .unwrap()
+                .is_empty()
+        );
+        assert_eq!(operations.lock().unwrap().len(), 1);
+        assert!(created.get("verified").is_none());
+        assert!(created.get("approved").is_none());
+        let opened = host
+            .edit(EditorRequest::Open {
+                grant: grant.id.clone(),
+                relative: "new-notes.md".into(),
+            })
+            .unwrap();
+        assert_eq!(opened["origin"], "worktree-file");
+        assert!(opened.get("revalidation").is_none());
+        assert_eq!(operations.lock().unwrap().len(), 1);
+        // After target validation a failure may follow create_new, sync or
+        // reopen. Existing-name failure also revalidates conservatively, without
+        // claiming a new write or returning a usable document.
+        let failed = host
+            .edit(EditorRequest::Create {
+                grant: grant.id.clone(),
+                name: "new-notes.md".into(),
+            })
+            .unwrap();
+        assert_eq!(
+            failed["saveError"],
+            "create-file-exists-or-permission-denied"
+        );
+        assert_eq!(
+            failed["affectedWorkers"],
+            json!(["previously-verified-worker"])
+        );
+        assert_eq!(failed["revalidation"][0]["accepted"], true);
+        assert!(failed.get("id").is_none());
+        assert!(failed.get("version").is_none());
+        assert_eq!(fs::read(root.join("new-notes.md")).unwrap(), b"");
+        assert_eq!(operations.lock().unwrap().len(), 2);
+        // Invalid names or nonexistent grants fail before any authorized target
+        // or filesystem effect exists, so no revalidation is requested.
+        assert!(
+            host.edit(EditorRequest::Create {
+                grant: grant.id,
+                name: "../escape.md".into()
+            })
+            .is_err()
+        );
+        assert!(
+            host.edit(EditorRequest::Create {
+                grant: "not-a-native-grant".into(),
+                name: "notes.md".into()
+            })
+            .is_err()
+        );
+        assert_eq!(operations.lock().unwrap().len(), 2);
         fs::remove_dir_all(root).unwrap();
     }
 }

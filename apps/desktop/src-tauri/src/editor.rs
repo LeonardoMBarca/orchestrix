@@ -219,6 +219,15 @@ impl Editor {
             .map(|d| d.path.clone())
             .ok_or_else(|| fail("open-document-required"))
     }
+    /// Resolve a possible mutation target from a native directory grant before
+    /// create_new can change disk. This does not claim that creation succeeded.
+    pub fn creation_path(&self, grant: &str, name: &str) -> Result<PathBuf, String> {
+        let child = relative(name)?;
+        if child.components().count() != 1 {
+            return Err(fail("single-file-name-required"));
+        }
+        Ok(self.directory(grant)?.join(child))
+    }
     fn resolve(&self, id: &str, child: &str) -> Result<PathBuf, String> {
         let grant = self.grants.get(id).ok_or_else(|| fail("grant-required"))?;
         let mut path = grant.path.clone();
@@ -348,13 +357,11 @@ impl Editor {
                 Ok(serde_json::json!({"version": hash(text.as_bytes())}))
             }
             EditorRequest::Create { grant, name } => {
-                let child = relative(&name)?;
-                if child.components().count() != 1 {
-                    return Err(fail("single-file-name-required"));
-                }
-                let root = self.directory(&grant)?;
-                let _directory = pin_directory(&root)?;
-                let path = root.join(child);
+                let path = self.creation_path(&grant, &name)?;
+                let root = path
+                    .parent()
+                    .ok_or_else(|| fail("directory-grant-required"))?;
+                let _directory = pin_directory(root)?;
                 let mut options = OpenOptions::new();
                 options.write(true).create_new(true);
                 #[cfg(windows)]

@@ -529,9 +529,11 @@ mod tests {
             },
         )
         .unwrap();
-        let mut settings = Settings::default();
-        settings.language = "pt-BR".into();
-        settings.theme = "forest".into();
+        let mut settings = Settings {
+            language: "pt-BR".into(),
+            theme: "forest".into(),
+            ..Settings::default()
+        };
         settings.policy.revision = 2;
         let revision = store.load().unwrap().revision();
         let request = DesktopRequest::SaveSettings {

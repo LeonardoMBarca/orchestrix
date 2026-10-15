@@ -102,13 +102,13 @@ pub fn correction_budget(directory: &Path, worker: &str) -> Result<Option<u32>, 
         }
         let effect: Effect =
             serde_json::from_slice(&bytes).map_err(|_| "desktop-command-schema")?;
-        if effect.worker_id.as_deref() == Some(worker) {
-            if let Some(value) = effect.correction_budget {
-                if budget.is_some_and(|old| old != value) {
-                    return Err("correction-budget-conflict".into());
-                }
-                budget = Some(value);
+        if effect.worker_id.as_deref() == Some(worker)
+            && let Some(value) = effect.correction_budget
+        {
+            if budget.is_some_and(|old| old != value) {
+                return Err("correction-budget-conflict".into());
             }
+            budget = Some(value);
         }
     }
     Ok(budget)

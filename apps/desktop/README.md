@@ -37,6 +37,8 @@ Opening Home creates no conversation. Sending the first nonempty message persist
 
 File grants originate in native dialogs, live only in the host, and do not follow from a saved project path. The supporting editor permits bounded UTF-8 text, explicit creation and version-checked writes. Windows handle sharing prevents other writers/renames during comparison and save. External changes are conflicts; the UI buffer remains available. Markdown renders text nodes without active HTML or remote resources. Opening `.env` never adds it to an agent Context Pack.
 
+After a native grant, file labels distinguish a unique recorded project or worker relationship from an otherwise authorized file. These historical metadata labels confer no access; ambiguous or unavailable metadata stays unknown. Creating or saving in a worktree requests exact artifact revalidation and withdraws previous current-evidence claims, including failures after a possible disk mutation. Historical artifact snapshots remain read-only.
+
 Host command records retain exact authorized operations and request hashes for lost replies/reopen, excluding credentials and rejected secret patterns. They are distinct from provider context and Core's authoritative journal. Subscription Only has no paid API fallback. The first validated subscription surface uses an explicitly selected, already authenticated Codex home; this is not OAuth or an independent account vault. Unknown quotas remain unknown. API adapters and unsupported connection modes are visibly unavailable.
 
 ## Explicit synthetic native QA
