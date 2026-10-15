@@ -1,4 +1,4 @@
-use super::{Error, MAX_FRAME, Result, checked_deadline};
+use super::{Diagnostic, Error, MAX_FRAME, Result, checked_deadline, record_diagnostic};
 use std::{
     ffi::c_void,
     mem::{size_of, zeroed},
@@ -238,7 +238,13 @@ impl Listener {
         if result == 0 {
             match unsafe { GetLastError() } {
                 535 => {}
-                997 => match complete(self.pipe.handle.0, &mut op, deadline) {
+                997 => match complete(
+                    self.pipe.handle.0,
+                    &mut op,
+                    deadline,
+                    "accept-pending",
+                    Instant::now(),
+                ) {
                     Ok(_) => {}
                     Err(Error::Deadline) => return Ok(None),
                     Err(e) => return Err(e),
@@ -334,7 +340,14 @@ impl Stream {
                 deadline,
             )?;
             if n == 0 {
-                return Err(Error::Closed);
+                return Err(diagnostic(
+                    "read-zero",
+                    Error::Closed,
+                    None,
+                    None,
+                    Instant::now(),
+                    0,
+                ));
             }
             buffer = &mut buffer[n..];
         }
@@ -350,7 +363,14 @@ impl Stream {
                 deadline,
             )?;
             if n == 0 {
-                return Err(Error::Closed);
+                return Err(diagnostic(
+                    "write-zero",
+                    Error::Closed,
+                    None,
+                    None,
+                    Instant::now(),
+                    0,
+                ));
             }
             buffer = &buffer[n..];
         }
@@ -365,7 +385,31 @@ fn event() -> Result<Owned> {
         Ok(Owned(e))
     }
 }
-fn complete(handle: Handle, op: &mut Overlapped, deadline: Instant) -> Result<usize> {
+fn diagnostic(
+    stage: &'static str,
+    error: Error,
+    native_code: Option<u32>,
+    wait_result: Option<u32>,
+    started: Instant,
+    transferred_bytes: u32,
+) -> Error {
+    record_diagnostic(Diagnostic {
+        stage,
+        error,
+        native_code,
+        wait_result,
+        elapsed_ms: started.elapsed().as_millis().min(u64::MAX as u128) as u64,
+        transferred_bytes,
+    });
+    error
+}
+fn complete(
+    handle: Handle,
+    op: &mut Overlapped,
+    deadline: Instant,
+    stage: &'static str,
+    started: Instant,
+) -> Result<usize> {
     let remaining = deadline.saturating_duration_since(Instant::now());
     let wait = unsafe {
         WaitForSingleObject(op.event, remaining.as_millis().min(u32::MAX as u128) as u32)
@@ -373,18 +417,38 @@ fn complete(handle: Handle, op: &mut Overlapped, deadline: Instant) -> Result<us
     let mut bytes = 0;
     if wait != 0 {
         // Cancellation is not completion: dequeue before freeing OVERLAPPED and buffer.
-        unsafe {
+        let result = unsafe {
             CancelIoEx(handle, op);
-            GetOverlappedResult(handle, op, &mut bytes, 1);
-        }
-        return Err(if wait == 258 {
-            Error::Deadline
+            GetOverlappedResult(handle, op, &mut bytes, 1)
+        };
+        let native_code = if result == 0 {
+            Some(unsafe { GetLastError() })
         } else {
-            Error::Io
-        });
+            None
+        };
+        return Err(diagnostic(
+            stage,
+            if wait == 258 {
+                Error::Deadline
+            } else {
+                Error::Io
+            },
+            native_code,
+            Some(wait),
+            started,
+            bytes,
+        ));
     }
     if unsafe { GetOverlappedResult(handle, op, &mut bytes, 0) } == 0 {
-        return Err(Error::Closed);
+        let code = unsafe { GetLastError() };
+        return Err(diagnostic(
+            stage,
+            Error::Closed,
+            Some(code),
+            Some(wait),
+            started,
+            bytes,
+        ));
     }
     Ok(bytes as usize)
 }
@@ -395,27 +459,76 @@ fn transfer(
     write: bool,
     deadline: Instant,
 ) -> Result<usize> {
+    let started = Instant::now();
+    let stage = if write { "write" } else { "read" };
     if Instant::now() >= deadline {
-        return Err(Error::Deadline);
+        return Err(diagnostic(stage, Error::Deadline, None, None, started, 0));
     }
     let event = event()?;
     let mut op: Overlapped = unsafe { zeroed() };
     op.event = event.0;
-    let mut bytes = 0;
     let result = unsafe {
+        // FILE_FLAG_OVERLAPPED requires the byte-count parameter to be NULL.
+        // GetOverlappedResult is authoritative even if the operation finishes
+        // immediately (ReadFile/WriteFile documentation).
         if write {
-            WriteFile(handle, buffer.cast(), len as u32, &mut bytes, &mut op)
+            WriteFile(handle, buffer.cast(), len as u32, null_mut(), &mut op)
         } else {
-            ReadFile(handle, buffer.cast(), len as u32, &mut bytes, &mut op)
+            ReadFile(handle, buffer.cast(), len as u32, null_mut(), &mut op)
         }
     };
     if result != 0 {
+        #[cfg(test)]
+        observe_transfer(false);
+        let mut bytes = 0;
+        if unsafe { GetOverlappedResult(handle, &mut op, &mut bytes, 0) } == 0 {
+            let code = unsafe { GetLastError() };
+            return Err(diagnostic(
+                stage,
+                Error::Closed,
+                Some(code),
+                None,
+                started,
+                bytes,
+            ));
+        }
         return Ok(bytes as usize);
     }
-    if unsafe { GetLastError() } != 997 {
-        return Err(Error::Closed);
+    let code = unsafe { GetLastError() };
+    if code != 997 {
+        return Err(diagnostic(
+            stage,
+            Error::Closed,
+            Some(code),
+            None,
+            started,
+            0,
+        ));
     }
-    complete(handle, &mut op, deadline)
+    #[cfg(test)]
+    observe_transfer(true);
+    complete(
+        handle,
+        &mut op,
+        deadline,
+        if write {
+            "write-pending"
+        } else {
+            "read-pending"
+        },
+        started,
+    )
+}
+
+#[cfg(test)]
+thread_local! {static TRANSFER_OBSERVER:std::cell::RefCell<Option<std::sync::mpsc::Sender<bool>>>=const{std::cell::RefCell::new(None)};}
+#[cfg(test)]
+fn observe_transfer(pending: bool) {
+    TRANSFER_OBSERVER.with(|slot| {
+        if let Some(sender) = slot.borrow().as_ref() {
+            let _ = sender.send(pending);
+        }
+    });
 }
 
 #[cfg(test)]
@@ -469,6 +582,138 @@ mod tests {
         fn drop(&mut self) {
             assert_ne!(unsafe { RevertToSelf() }, 0);
         }
+    }
+    #[test]
+    fn immediate_and_pending_transfers_get_their_exact_completed_byte_count() {
+        let unique = format!(
+            "{:064x}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        );
+        let mut listener = Listener::bind(&unique).unwrap();
+        let scope = unique.clone();
+        let (buffered, ready) = std::sync::mpsc::channel();
+        let (release, wait) = std::sync::mpsc::channel();
+        let client = std::thread::spawn(move || {
+            let client = Stream::connect(&scope, Duration::from_secs(1)).unwrap();
+            client
+                .write_all(
+                    b"buffered-byte-count",
+                    Instant::now() + Duration::from_secs(1),
+                )
+                .unwrap();
+            buffered.send(()).unwrap();
+            wait.recv_timeout(Duration::from_secs(1)).unwrap();
+            client
+                .write_all(
+                    b"pending-byte-count",
+                    Instant::now() + Duration::from_secs(1),
+                )
+                .unwrap();
+        });
+        let stream = listener.accept(Duration::from_secs(1)).unwrap().unwrap();
+        ready.recv_timeout(Duration::from_secs(1)).unwrap();
+        let (events, observed) = std::sync::mpsc::channel();
+        TRANSFER_OBSERVER.with(|slot| *slot.borrow_mut() = Some(events));
+        let mut first = [0u8; 19];
+        let count = transfer(
+            stream.handle.handle.0,
+            first.as_mut_ptr(),
+            first.len(),
+            false,
+            Instant::now() + Duration::from_secs(1),
+        )
+        .unwrap();
+        assert_eq!(count, 19);
+        assert_eq!(&first, b"buffered-byte-count");
+        assert!(
+            !observed.recv_timeout(Duration::from_secs(1)).unwrap(),
+            "prebuffered read must finish immediately"
+        );
+        let pending_observer = std::thread::spawn(move || {
+            assert!(
+                observed.recv_timeout(Duration::from_secs(1)).unwrap(),
+                "unbuffered read must be pending before writer release"
+            );
+            release.send(()).unwrap();
+        });
+        let mut second = [0u8; 18];
+        let count = transfer(
+            stream.handle.handle.0,
+            second.as_mut_ptr(),
+            second.len(),
+            false,
+            Instant::now() + Duration::from_secs(1),
+        )
+        .unwrap();
+        assert_eq!(count, 18);
+        assert_eq!(&second, b"pending-byte-count");
+        TRANSFER_OBSERVER.with(|slot| *slot.borrow_mut() = None);
+        pending_observer.join().unwrap();
+        client.join().unwrap();
+    }
+    #[test]
+    fn immediate_and_pending_writes_report_the_completed_count_before_buffer_reuse() {
+        let unique = format!(
+            "{:064x}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        );
+        let mut listener = Listener::bind(&unique).unwrap();
+        let (events, observed) = std::sync::mpsc::channel();
+        let sender = std::thread::spawn(move || {
+            let client = Stream::connect(&unique, Duration::from_secs(1)).unwrap();
+            TRANSFER_OBSERVER.with(|slot| *slot.borrow_mut() = Some(events));
+            let first = b"immediate-write-count";
+            assert_eq!(
+                transfer(
+                    client.handle.handle.0,
+                    first.as_ptr().cast_mut(),
+                    first.len(),
+                    true,
+                    Instant::now() + Duration::from_secs(1)
+                )
+                .unwrap(),
+                first.len()
+            );
+            let second = vec![0xA7; 131_072];
+            assert_eq!(
+                transfer(
+                    client.handle.handle.0,
+                    second.as_ptr().cast_mut(),
+                    second.len(),
+                    true,
+                    Instant::now() + Duration::from_secs(1)
+                )
+                .unwrap(),
+                second.len()
+            );
+            TRANSFER_OBSERVER.with(|slot| *slot.borrow_mut() = None);
+        });
+        let stream = listener.accept(Duration::from_secs(1)).unwrap().unwrap();
+        assert!(
+            !observed.recv_timeout(Duration::from_secs(1)).unwrap(),
+            "small write must complete immediately with available buffer"
+        );
+        assert!(
+            observed.recv_timeout(Duration::from_secs(1)).unwrap(),
+            "write larger than pipe buffer must be pending before peer reads"
+        );
+        let mut first = [0u8; 21];
+        stream
+            .read_exact(&mut first, Instant::now() + Duration::from_secs(1))
+            .unwrap();
+        assert_eq!(&first, b"immediate-write-count");
+        let mut second = vec![0; 131_072];
+        stream
+            .read_exact(&mut second, Instant::now() + Duration::from_secs(1))
+            .unwrap();
+        assert!(second.iter().all(|b| *b == 0xA7));
+        sender.join().unwrap();
     }
     #[test]
     fn dacl_is_exact_current_user_and_disabled_user_token_cannot_connect() {

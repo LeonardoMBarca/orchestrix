@@ -22,6 +22,29 @@ impl std::fmt::Display for Error {
 impl std::error::Error for Error {}
 pub type Result<T> = std::result::Result<T, Error>;
 
+/// Host-only diagnostic: fixed stage tags, numeric OS facts and durations; no
+/// endpoint, identity, request or response bytes. Not part of the application API.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Diagnostic {
+    pub stage: &'static str,
+    pub error: Error,
+    pub native_code: Option<u32>,
+    pub wait_result: Option<u32>,
+    pub elapsed_ms: u64,
+    pub transferred_bytes: u32,
+}
+thread_local! {static LAST_DIAGNOSTIC:std::cell::Cell<Option<Diagnostic>>=const{std::cell::Cell::new(None)};}
+pub fn clear_diagnostic() {
+    LAST_DIAGNOSTIC.with(|slot| slot.set(None));
+}
+pub fn last_diagnostic() -> Option<Diagnostic> {
+    LAST_DIAGNOSTIC.with(std::cell::Cell::get)
+}
+#[cfg(windows)]
+fn record_diagnostic(value: Diagnostic) {
+    LAST_DIAGNOSTIC.with(|slot| slot.set(Some(value)));
+}
+
 #[cfg(windows)]
 #[path = "ipc_windows.rs"]
 mod native;
