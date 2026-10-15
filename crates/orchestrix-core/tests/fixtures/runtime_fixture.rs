@@ -232,6 +232,28 @@ fn main() {
                         json!({"method":"private.method.fixture-value","params":{"output":"do-not-persist-provider-message"}}),
                     );
                 }
+                if scenario.starts_with("remote-status-") {
+                    let mut params = json!({"status":"disabled","serverName":"do-not-persist-server-name","installationId":"do-not-persist-installation-id","environmentId":"do-not-persist-environment-id"});
+                    match scenario {
+                        "remote-status-global" => {}
+                        "remote-status-thread" => {
+                            params["threadId"] = json!("private-foreign-thread")
+                        }
+                        "remote-status-thread-null" => params["threadId"] = Value::Null,
+                        "remote-status-turn-null" => params["turnId"] = Value::Null,
+                        "remote-status-nested-thread" => {
+                            params["thread"] = json!({"id":"private-foreign-thread"})
+                        }
+                        "remote-status-nested-turn" => {
+                            params["turn"] = json!({"id":"private-foreign-turn"})
+                        }
+                        "remote-status-nonobject" => {
+                            params = json!(["do-not-persist-provider-message"])
+                        }
+                        _ => panic!("unknown remote status fixture"),
+                    }
+                    send(json!({"method":"remoteControl/status/changed","params":params}));
+                }
                 if scenario.starts_with("warning-") {
                     let mut params = json!({"message":"do-not-persist-provider-message"});
                     match scenario {
@@ -318,8 +340,10 @@ fn main() {
                         json!({"method":"item/agentMessage/delta","params":{"threadId":"foreign-thread","turnId":turn_id,"delta":"Contradictory execution scope"}}),
                     );
                 }
-                if matches!(scenario, "success" | "check-failed" | "catalog-seven")
-                    && prompt.contains("fixture-edit")
+                if matches!(
+                    scenario,
+                    "success" | "check-failed" | "catalog-seven" | "remote-status-global"
+                ) && prompt.contains("fixture-edit")
                 {
                     let path = cwd.join("fixture.txt");
                     if path.is_file() {

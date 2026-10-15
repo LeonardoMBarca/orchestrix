@@ -1,0 +1,165 @@
+{
+  "schemaVersion": 4,
+  "sourceRevision": "233a9dc3114c1cb85e639f0bc3ba93233d77f404",
+  "sourceSeal": "c48f2b1cb6cc80a6afffce144220da48507aaba5729ecb1aaf823ba7e4017efb",
+  "reportSha256": "ddf7180bb53f4ed56bde2746253bc81f9f6fbc2798ce2ad150438cc9b6ad9138",
+  "authorizationScope": "replacement-three-turns-no-carryover",
+  "sentTurns": 1,
+  "adapterConfirmedStarts": 0,
+  "resumeTurnsSent": 0,
+  "cancellationTurnsSent": 0,
+  "unusedDependentTurns": 2,
+  "automaticRetries": 0,
+  "workerRef": "live-arithmetic-worker",
+  "attemptRef": "attempt-dfcf053307f4a9249dadf377",
+  "baseOid": "117b1b6a535a36485d964c1d6e087a65caf4d378",
+  "counts": {
+    "workers": 1,
+    "attempts": 1,
+    "worktrees": 1
+  },
+  "observations": [
+    {
+      "ordinal": 1,
+      "status": "dispatch-planned",
+      "synthetic": false
+    },
+    {
+      "ordinal": 2,
+      "status": "runtime-observed",
+      "dispatch": "sent",
+      "fault": "protocol",
+      "adapterDiagnostic": {
+        "idShape": "absent",
+        "identityShapes": {
+          "thread.id": "absent",
+          "threadId": "absent",
+          "turn.id": "absent",
+          "turnId": "absent"
+        },
+        "methodSha256": "fc90be8d31a9f1bb24948acd35f025e91f103bcde03fb735388a7169f1262d24",
+        "paramsShape": "object",
+        "reason": "unsupported-global",
+        "stage": "notification",
+        "version": 1
+      },
+      "treeStopped": true,
+      "streamsClosed": true,
+      "synthetic": false
+    },
+    {
+      "ordinal": 3,
+      "status": "uncertain",
+      "reason": "runtime-outcome-not-confirmed",
+      "inspectionRequired": true,
+      "synthetic": false
+    }
+  ],
+  "observer": {
+    "phase": "accepted",
+    "fatal": true,
+    "fault": {
+      "code": "protocol"
+    },
+    "outcome": "unknown",
+    "startObserved": false,
+    "terminal": null,
+    "terminalConfirmed": false,
+    "observation": "uncertain",
+    "effective": {
+      "approval": {
+        "evidence": {
+          "observedAt": null,
+          "reference": "resolved-configuration",
+          "scope": "attempt",
+          "source": "configuration"
+        },
+        "state": "known",
+        "value": "never"
+      },
+      "model": {
+        "evidence": {
+          "observedAt": null,
+          "reference": "resolved-configuration",
+          "scope": "attempt",
+          "source": "configuration"
+        },
+        "state": "known",
+        "value": "model-dedfefd51120f28386c9dba78e46feb403523e23d67980cd"
+      },
+      "network": {
+        "evidence": {
+          "observedAt": null,
+          "reference": "resolved-configuration",
+          "scope": "attempt",
+          "source": "configuration"
+        },
+        "state": "known",
+        "value": "disabled"
+      },
+      "reasoning": {
+        "evidence": {
+          "observedAt": null,
+          "reference": "resolved-configuration",
+          "scope": "attempt",
+          "source": "configuration"
+        },
+        "state": "known",
+        "value": "maximum"
+      },
+      "sandbox": {
+        "evidence": {
+          "observedAt": null,
+          "reference": "resolved-configuration",
+          "scope": "attempt",
+          "source": "configuration"
+        },
+        "state": "known",
+        "value": "workspace-write"
+      }
+    },
+    "process": {
+      "helper": {
+        "code": null,
+        "exited": false,
+        "signal": "unknown",
+        "stdioClosed": false,
+        "streams": null
+      },
+      "runtime": {
+        "code": 137,
+        "exited": true,
+        "signal": "killed",
+        "stdioClosed": true,
+        "streams": {
+          "faulted": false,
+          "stderr": true,
+          "stdin": true,
+          "stdout": true
+        }
+      },
+      "tree": {
+        "activeCount": 0,
+        "evidenceRef": "rust-owned-job",
+        "ownership": "confirmed",
+        "source": "owned-job",
+        "termination": "confirmed"
+      }
+    }
+  },
+  "eventTypes": [
+    "configuration.observation-recorded",
+    "attempt.admission-observed",
+    "runtime.error",
+    "process.exited",
+    "process.streams-observed",
+    "process.tree-observed"
+  ],
+  "arithmeticFile": {
+    "sourceSha256": "1d571e080871eaacf3291d9c0a79688a37183ef8f6ee148e10d6144d90a71226",
+    "worktreeSha256": "1d571e080871eaacf3291d9c0a79688a37183ef8f6ee148e10d6144d90a71226",
+    "changed": false
+  },
+  "taskState": "Blocked",
+  "verifiedChecks": 0
+}

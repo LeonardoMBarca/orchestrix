@@ -253,7 +253,9 @@ fn manual_worker_runs_policy_context_reservation_worktree_runtime_capture_and_ch
             "--codex-home",
             fixture.home.to_str().unwrap(),
             "--scenario",
-            "success",
+            // The real pinned provider emits this global notification before
+            // turn start; it must also pass the full durable CLI/check path.
+            "remote-status-global",
         ],
     );
     assert_eq!(output["status"], "verified");
@@ -382,6 +384,25 @@ fn manual_worker_runs_policy_context_reservation_worktree_runtime_capture_and_ch
     assert_eq!(fixture.thread_count(), 1);
     assert_eq!(inspected.intent.context, record.intent.context);
     assert_eq!(inspected.intent.policy, record.intent.policy);
+    for entry in fs::read_dir(&fixture.root).unwrap() {
+        let entry = entry.unwrap();
+        if entry
+            .file_name()
+            .to_string_lossy()
+            .starts_with("state.sqlite")
+        {
+            let bytes = fs::read(entry.path()).unwrap();
+            let text = String::from_utf8_lossy(&bytes);
+            for private in [
+                "remoteControl/status/changed",
+                "do-not-persist-server-name",
+                "do-not-persist-installation-id",
+                "do-not-persist-environment-id",
+            ] {
+                assert!(!text.contains(private));
+            }
+        }
+    }
 }
 
 #[test]

@@ -561,6 +561,115 @@ fn protocol_diagnostic_contains_only_closed_local_routes_shapes_and_method_hash(
     }
 }
 #[test]
+fn remote_control_global_status_is_only_information_and_never_attempt_evidence() {
+    let fixture = Fixture::new();
+    let mut adapter = fixture.connect("remote-status-global");
+    let descriptor = adapter.metadata().descriptor.as_json().clone();
+    let controls = adapter.metadata().controls.clone();
+    let mut events = Vec::new();
+    let report = adapter
+        .execute(
+            execution("remote-info"),
+            &CancellationToken::new(),
+            |event, _| {
+                events.push(event.clone());
+                Ok(())
+            },
+        )
+        .unwrap();
+    assert_eq!(report.fault, None);
+    assert_eq!(report.adapter_diagnostic, None);
+    assert_eq!(*adapter.metadata().descriptor.as_json(), descriptor);
+    assert_eq!(adapter.metadata().controls, controls);
+    let snapshot = RuntimeObserver::restore_checkpoint(&report.observer_checkpoint)
+        .unwrap()
+        .snapshot();
+    assert_eq!(snapshot["terminalConfirmed"], true);
+    assert_eq!(snapshot["terminal"]["outcome"], "completed");
+    assert_eq!(
+        events
+            .iter()
+            .filter(|event| event["type"] == "attempt.start-observed")
+            .count(),
+        1
+    );
+    assert_eq!(
+        events
+            .iter()
+            .filter(|event| event["type"] == "attempt.terminal-observed")
+            .count(),
+        1
+    );
+    let normalized = serde_json::to_string(&events).unwrap();
+    for private in [
+        "remoteControl/status/changed",
+        "do-not-persist-server-name",
+        "do-not-persist-installation-id",
+        "do-not-persist-environment-id",
+    ] {
+        assert!(!normalized.contains(private));
+    }
+    assert_eq!(report.tree.unwrap().active_processes, 0);
+}
+#[test]
+fn remote_control_status_with_any_execution_identity_or_invalid_params_fails_closed() {
+    for scenario in [
+        "remote-status-thread",
+        "remote-status-thread-null",
+        "remote-status-turn-null",
+        "remote-status-nested-thread",
+        "remote-status-nested-turn",
+        "remote-status-nonobject",
+    ] {
+        let fixture = Fixture::new();
+        let mut adapter = fixture.connect(scenario);
+        let report = adapter
+            .execute(
+                execution("remote-contradiction"),
+                &CancellationToken::new(),
+                |_, _| Ok(()),
+            )
+            .unwrap();
+        assert_eq!(
+            report.fault.as_ref().unwrap().code(),
+            "ownership",
+            "{scenario}"
+        );
+        let snapshot = RuntimeObserver::restore_checkpoint(&report.observer_checkpoint)
+            .unwrap()
+            .snapshot();
+        assert_eq!(snapshot["startObserved"], false);
+        assert_eq!(snapshot["terminalConfirmed"], false);
+        let diagnostic = report.adapter_diagnostic.unwrap();
+        assert_eq!(diagnostic["stage"], "notification");
+        assert_eq!(diagnostic["reason"], "global-scope");
+        assert_eq!(
+            diagnostic["methodSha256"],
+            "fc90be8d31a9f1bb24948acd35f025e91f103bcde03fb735388a7169f1262d24"
+        );
+        assert_eq!(
+            diagnostic["paramsShape"],
+            if scenario == "remote-status-nonobject" {
+                "array"
+            } else {
+                "object"
+            }
+        );
+        for private in [
+            "remoteControl/status/changed",
+            "private-foreign-thread",
+            "private-foreign-turn",
+            "do-not-persist-server-name",
+            "do-not-persist-installation-id",
+            "do-not-persist-environment-id",
+            "do-not-persist-provider-message",
+        ] {
+            assert!(!diagnostic.to_string().contains(private));
+        }
+        assert_eq!(report.tree.unwrap().active_processes, 0);
+    }
+}
+#[test]
 fn owns_descendant_after_root_exit_and_never_terminates_unrelated_process() {
     struct Unrelated(std::process::Child);
     impl Drop for Unrelated {

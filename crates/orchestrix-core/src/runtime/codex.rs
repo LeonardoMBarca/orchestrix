@@ -735,8 +735,14 @@ impl CodexAdapter {
                     | "configWarning"
                     | "deprecationNotice"
                     | "windows/worldWritableWarning"
+                    | "remoteControl/status/changed"
             ) {
-                if params.get("threadId").is_some()
+                // The pinned remote-control status is global, with no thread
+                // or turn identities. Its remote identifiers/content are never
+                // adopted or retained, and no remote-control command is sent.
+                if !params.is_object()
+                    || params.get("threadId").is_some()
+                    || params.get("thread").is_some()
                     || params.get("turnId").is_some()
                     || params.get("turn").is_some()
                 {

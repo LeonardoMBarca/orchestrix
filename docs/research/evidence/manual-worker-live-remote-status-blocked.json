@@ -1,0 +1,68 @@
+{
+  "accepted": false,
+  "authorizationSha256": "219aabc6f99a479f5f6352d4eae84b688117bcfef52aa3465ef1160c1e412205",
+  "billing": "subscription-only",
+  "events": [],
+  "limits": {
+    "automaticRetries": 0,
+    "jobSeconds": 300,
+    "maxTurns": 3,
+    "serial": true,
+    "turnSeconds": 90
+  },
+  "paidFallback": "forbidden",
+  "platform": "windows",
+  "reservedTurns": 1,
+  "runtimeVersion": "0.162.0-alpha.17.2",
+  "schemaVersion": 1,
+  "selection": {
+    "fallback": "compatible",
+    "modelPolicy": "runtime-default",
+    "reasoning": "runtime-default"
+  },
+  "steps": [
+    {
+      "facts": {
+        "arithmeticFailureObserved": true,
+        "checkScriptSha256": "fac569ccbaf3cdb33bc5ec48106d44745c3780d6bdf9a71be2354b5197e27f21",
+        "commandHash": "dd46455f3265c54914b9e995247cacd7ce0fb9088a34df00bf4df7c7c50e44e8",
+        "executableHash": "b0f9c78c7cf93554724684737f15cf6baa5ddcb2ecc67f66849476ce97493fac",
+        "exitCode": 1,
+        "result": "failed",
+        "treeConfirmed": true
+      },
+      "stage": "initial-check"
+    },
+    {
+      "facts": {
+        "dispatch": "not-yet-confirmed"
+      },
+      "stage": "worker-turn-reserved"
+    },
+    {
+      "facts": {
+        "adapterDiagnostic": {
+          "idShape": "absent",
+          "identityShapes": {
+            "thread.id": "absent",
+            "threadId": "absent",
+            "turn.id": "absent",
+            "turnId": "absent"
+          },
+          "methodSha256": "fc90be8d31a9f1bb24948acd35f025e91f103bcde03fb735388a7169f1262d24",
+          "paramsShape": "object",
+          "reason": "unsupported-global",
+          "stage": "notification",
+          "version": 1
+        },
+        "delivered": false,
+        "dispatch": "sent",
+        "fault": "protocol",
+        "review": "pending-independent-review",
+        "status": "uncertain"
+      },
+      "stage": "worker-result"
+    }
+  ],
+  "synthetic": false
+}
