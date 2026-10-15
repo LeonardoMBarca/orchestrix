@@ -27,6 +27,7 @@ Current status takes precedence over older reports' “next” or “pending” 
 | [Technology Stack](./TECH_STACK.md) | Rust Core/Desktop baseline, unresolved choices and progressive platform validation. Proposed components are not all implemented. |
 | [Desktop App and Project Workspace](./DESKTOP_APP_AND_PROJECT_WORKSPACE.md) | Desktop + Core, projects/repositories, chat entry and supporting file/editor/diff behavior; no presumed IDE evolution. |
 | [Context Ownership](./CONTEXT_OWNERSHIP.md) | Providers own conversational context; Orchestrix owns durable project context and focused Context Packs. |
+| [Capacity and Continuity](./design/capacity-and-continuity.md) | Preventive capacity evidence, local reserves, contextual priorities, deterministic controls and continuity; requirement IDs distinguish the current daemon/recovery batch from future scheduling/transfer. |
 | [Orchestration Control Center](./ORCHESTRATION_CONTROL_CENTER.md) | Single-runtime support, configurable execution, profiles, routing, concurrency, review and approvals. [Policy example](./examples/orchestration-policy.example.yaml) illustrates versionable controls. |
 | [Model and Reasoning Policy](./REASONING_AND_MODEL_POLICY.md) | Intent, capabilities, requested/effective settings, overrides and explanations. |
 | [Routing Strategies](./design/routing-strategies.md) | Efficiency/Performance/Balanced/Custom, specialized presets and deterministic V1 selection for one or multiple accounts. |

@@ -8,6 +8,8 @@ The core rule is:
 
 > Providers own conversational context. Orchestrix owns durable project context.
 
+[Continuity requirements CONT-01/02/03](design/capacity-and-continuity.md) make this separation explicit under quota loss: checkpoints and a basic deterministic Context Pack cannot depend on a final synthesis call. Preserve observable decisions, sources, revisions and gaps. A replacement account/provider receives reconstructed context in a new session; it does not inherit native conversation memory. Future role transfer requires one authorized authority generation and rejects late decisions from its predecessor.
+
 This separation prevents the Orchestrix Core from reimplementing provider-specific conversation management while still allowing project knowledge to survive across agents, sessions, models, and providers.
 
 ## Runtime-owned conversational context

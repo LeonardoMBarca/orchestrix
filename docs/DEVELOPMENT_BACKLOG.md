@@ -169,6 +169,8 @@ Criar worktree e branch por tentativa a partir de base conhecida. Persistir orig
 
 ### OX-007 Supervisor e adapter
 
+**Complemento planejado CAP-01:** observações oficiais de capacidade por conexão/revisão/CapacityGroup, recurso/janela, unidade, origem, validade e confiança seguem a [especificação central](./design/capacity-and-continuity.md). Não amplia retroativamente o aceite abaixo nem presume telemetria não exposta.
+
 **Concluído no recorte Windows/Codex `0.162.0-alpha.17.2` — 14/10:** [adapter Rust e supervisor Windows](../crates/orchestrix-core/src/runtime/mod.rs), refresh/cache/coordenador e vínculos duráveis estão implementados no [contrato](./contracts/manual-worker.md). Após as regressões R8, a [prova live R9 em `66918b1`](./research/manual-worker-increment.md#r9-authorized-live-acceptance) passou edição/check, reinício/retomada da mesma thread com contexto e cancelamento com início/ACK/terminal interrupted, Job vazio e streams fechados. Uma assinatura, execução serial e três turnos autorizados consumidos, sem retries ou fallback pago. A auditoria técnica confirmou o aceite com as provas offline de falhas/escalada e atualização controlada de capacidades. Host dirige o refresh; daemon não foi antecipado. Evidências anteriores Uncertain permanecem históricas, sem reconciliação automática. Não se certificam outros provedores/sistemas, entitlement individual por catálogo ou garantia remota por `--no-daemon`.
 
 Implementar o primeiro adapter validado em OX-001 ou OX-002 e supervisão de stdin/stdout/stderr, processo, timeout e cancelamento. Selecionar a conexão explicitamente, sanitizar ambiente, aplicar redaction aos outputs antes de gravação e validar modo de cobrança. Testar árvore de processos no Windows.
@@ -180,6 +182,8 @@ Integrar leituras de diagnóstico sem iniciar trabalho de modelo, hooks ou ferra
 Implementar a atualização periódica/event-driven das leituras autorizadas conforme [diagnósticos](./design/connection-diagnostics.md#atualização-periódica-e-orientada-a-eventos--requisito-planejado): rodadas coalescidas por escopo/revisão, frequência/concorrência/budgets limitados, backoff e revalidação direcionada por erro/reconexão. Sem inferência/tools/probes cobrados automáticos. **Aceite adicional planejado:** relógio/fixtures comprovam coalescência, espera progressiva, cancelamento e descarte tardio; supervisão/processos satisfazem a [matriz do sistema anunciado](./TECH_STACK.md#platform-boundaries-and-progressive-delivery), sem inferir macOS/Linux da prova Windows.
 
 ### OX-008 Política e contexto
+
+**Complementos CAP-02/03:** margens, reservas locais de conclusão e prioridades por objetivo/fase/dependência usarão a mesma política; cenários de janelas compartilhadas, unknown, histerese e revisão obrigatória versus implementação opcional estão na [especificação central](./design/capacity-and-continuity.md). A execução dessas reservas/prioridades pertence a M3/M4, preservando o aceite determinístico inicial abaixo.
 
 **Concluído no recorte determinístico inicial — 14/10:** [política e Context Pack puros](../crates/orchestrix-core/src/policy/mod.rs) implementam schema 1, precedência, estratégias/presets, validade por escopo, explicações e manifesto de fontes/orçamento/omissões. O worker persiste a decisão e os diagnósticos utilizados sem alterar tentativas anteriores. [Contrato](./contracts/manual-worker.md), [verificações](./research/manual-worker-increment.md) e [limites atuais](./DEVELOPMENT_STATUS.md) preservam unknowns/fallback explícito no runtime real; isso não certifica otimização entre modelos ou novos workflows especializados.
 
@@ -203,11 +207,15 @@ Adicionar evaluators para comandos configurados de teste, build e lint, com cwd,
 
 ### OX-010 API local e daemon
 
+**Lote autorizado em execução, CONT-01:** reutilizar worker, manifestos, autorizações e Store. API/CLI versionadas com submit, snapshot/status, eventos/cursor, suspensão/retomada, cancelamento e encerramento limitado. Dois clientes, perda de resposta e reconexão não duplicam trabalho. Controles locais atendem com provedor esgotado/indisponível, sem modelo. Critérios complementares em [capacidade e continuidade](./design/capacity-and-continuity.md); aceite depende de evidências reais do lote, não desta formalização.
+
 Definir commands, queries, snapshots, envelope de eventos e cursor sem tipos Tauri no domínio. Criar daemon com instância única, transporte restrito ao usuário e cliente CLI de diagnóstico. Registrar ADR de transporte e encerramento.
 
 **Aceite:** cliente consulta e suspende novas admissões sem Desktop; segundo cliente não cria segundo scheduler; reconexão recupera snapshot/eventos com sequência consistente; política de fechar janela é distinta de encerrar daemon. A suspensão mínima impede novos trabalhos e preserva tentativas ativas; não confirma pausa de turno ou término de worker. Transporte rejeita acesso não autorizado no limite suportado pelo sistema operacional.
 
 ### OX-011 Recuperação
+
+**Lote autorizado após dependências, CONT-01/02:** reconciliar intenção/spawn/registro/envio/confirmação antes de admitir; distinguir nunca enviado, conhecido e incerto sem identificar processo só por PID. Preservar aprovações/artefatos e fornecer ação explícita de intervenção sem fabricar sucesso ou descartar trabalho. Reconstruir Context Pack básico de fatos duráveis sem síntese/modelo. Quota/auth antigas não ganham validade na restauração; reset informado exige rechecagem.
 
 Reconciliar tentativas, worktrees, artefatos, locks e identidade de processos antes de retomar admissões. Testar interrupção do Core em pontos críticos, incluindo a janela entre spawn e registro de processo.
 
@@ -253,6 +261,8 @@ Mostrar mudanças de arquivo e de capacidades com fonte/versão, distinguindo hi
 
 ### OX-016 Control Center inicial
 
+**CAP-01/02/03 / CONT-01:** exibir fontes, validade, lacunas, avisos e motivos de restrição/espera conforme a [especificação](./design/capacity-and-continuity.md). Separar grandezas e consumo local/externo; configurar margens e prioridades dentro da política, sem percentuais inventados ou promessa de reserva no fornecedor. As engines futuras mantêm seus marcos.
+
 Editar presets e preferências de conexão, modelo, reasoning, revisão, contexto e limites. Mostrar configuração solicitada/efetiva, validação e mudança de versão. Sem telemetria real, cota aparece como desconhecida.
 
 Conservar os [diagnósticos de conexão](./design/connection-diagnostics.md), suas datas/origens e recheck em Accounts, com distinção entre suporte, disponibilidade, configuração e execução observada. Exibir Ultra/reasoning, velocidade, multi-agent nativo e permissões separadamente; não classificar dados desconhecidos como falha de uma conta. Leituras administrativas de uso/crédito e futuros probes ativos seguem autorizações/limites específicos, sem fallback cobrado sob Subscription Only.
@@ -278,6 +288,8 @@ Demonstrar também uso serial com uma conta, escolha de recursos justificável p
 **Aceite:** abrir projeto → criar tarefa → implementar → verificar → revisar → corrigir → aprovar integração sem copiar prompts. Demonstrar também falha de teste, cancelamento e reinício. Registrar avaliação de uso ampliada, QA visual, teclado, temas e adaptação com dados variados; corrigir problemas críticos. Registrar limitações e medir tempo e intervenções, sem alegar ganho de produtividade antes de comparação.
 
 ## 5 Backlog seguinte
+
+**M3/M4 — capacidade e continuidade:** os critérios CAP-02/03 e CONT-03 da [especificação central](./design/capacity-and-continuity.md) cobrem reservas por papel em grupos/janelas, prioridades por contexto, histerese/espera e transferência efetiva com uma geração de autoridade, contexto reconstruído e rejeição de decisões tardias. Validar uma assinatura, pressão de cota com revisão obrigatória e ausência de alternativa elegível. Não rodiziar contas para contornar restrições; Subscription Only permanece sem fallback pago.
 
 | Ordem | Capacidade | Critério principal |
 | --- | --- | --- |

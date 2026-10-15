@@ -696,6 +696,8 @@ UNKNOWN
 
 It must never fabricate exact remaining capacity.
 
+The [capacity and continuity specification](design/capacity-and-continuity.md) defines the complementary requirements CAP-01/02/03 and CONT-01/02/03. Subscription windows, frequency/concurrency, model limits, context budgets and API credits remain separate. Configure warnings, conservative unknown handling, local completion reserves and contextual priorities with visible sources/validity; local reserves cannot prevent external account usage. Required reviews/corrections may take priority over optional new implementation. Local controls and durable basic context remain available when a provider is exhausted. Actual reserve scheduling and orchestrator transfer retain their M3/M4 gates.
+
 ---
 
 ## 21. Integration policy
