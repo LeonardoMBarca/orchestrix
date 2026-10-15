@@ -18,6 +18,7 @@ docs/research/evidence/manual-worker-live-remote-status-blocked.json text eol=lf
 docs/research/evidence/manual-worker-live-remote-status-inspection.json text eol=lf
 docs/research/evidence/manual-worker-live-success.json text eol=lf
 docs/research/evidence/manual-worker-live-success-inspection.json text eol=lf
+docs/research/evidence/independent-review-live-success.json text eol=lf
 # Preserve the read-only inspection's original CRLF bytes and check real whitespace.
 docs/research/evidence/manual-worker-live-reservation-inspection.json -text whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol
 # Portable Core sources and generated conformance bytes must survive Windows checkout.

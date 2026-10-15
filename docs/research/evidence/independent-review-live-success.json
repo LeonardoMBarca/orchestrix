@@ -1,0 +1,385 @@
+{
+  "accepted": true,
+  "authorizationSha256": "32056ead082f4284b4c2961efa41bce48da36d312a3f348800acf73098749c7a",
+  "billing": "subscription-only",
+  "initialImplementation": "deliberately-partial-zero-case",
+  "limits": {
+    "automaticRetries": 0,
+    "jobSeconds": 300,
+    "maxTurns": 4,
+    "reviewChainMs": 1800000,
+    "serial": true,
+    "turnSeconds": 90
+  },
+  "paidFallback": "forbidden",
+  "platform": "windows",
+  "proof": "independent-review-correction",
+  "reservedTurns": 4,
+  "runtimeVersion": "0.162.0-alpha.17.2",
+  "schemaVersion": 1,
+  "selection": {
+    "fallback": "compatible",
+    "modelPolicy": "runtime-default",
+    "reasoning": "runtime-default"
+  },
+  "steps": [
+    {
+      "facts": {
+        "arithmeticFailureObserved": true,
+        "completeScriptSha256": "5538ed56207b96ccec770fc5f591e4d853d0a43689431c4cf12afdf3a2189400",
+        "executableSha256": "b0f9c78c7cf93554724684737f15cf6baa5ddcb2ecc67f66849476ce97493fac",
+        "exitCode": 1,
+        "originalSourceSha256": "3c0aebc410449f29a2fb1a27abac61d53f5d460f3599678bc1a8037e5cdaadc5",
+        "result": "failed",
+        "scriptSha256": "2407f1eafe0ab7ed7bcaadf97eba75f3ef02728769f19bf14a6a847e730df189"
+      },
+      "stage": "initial-positive-check"
+    },
+    {
+      "facts": {
+        "dispatch": "not-yet-confirmed"
+      },
+      "stage": "implementation-turn-reserved"
+    },
+    {
+      "facts": {
+        "adapterDiagnostic": null,
+        "artifactRevision": "135334642c6e1d0650c363525604da05f26e6c2ccfa5e355c3b9e30747023b1c",
+        "delivered": false,
+        "dispatch": "sent",
+        "effective": {
+          "approval": {
+            "evidence": {
+              "observedAt": null,
+              "reference": "resolved-configuration",
+              "scope": "attempt",
+              "source": "configuration"
+            },
+            "state": "known",
+            "value": "never"
+          },
+          "model": {
+            "evidence": {
+              "observedAt": null,
+              "reference": "resolved-configuration",
+              "scope": "attempt",
+              "source": "configuration"
+            },
+            "state": "known",
+            "value": "model-dedfefd51120f28386c9dba78e46feb403523e23d67980cd"
+          },
+          "network": {
+            "evidence": {
+              "observedAt": null,
+              "reference": "resolved-configuration",
+              "scope": "attempt",
+              "source": "configuration"
+            },
+            "state": "known",
+            "value": "disabled"
+          },
+          "reasoning": {
+            "evidence": {
+              "observedAt": null,
+              "reference": "resolved-configuration",
+              "scope": "attempt",
+              "source": "configuration"
+            },
+            "state": "known",
+            "value": "maximum"
+          },
+          "sandbox": {
+            "evidence": {
+              "observedAt": null,
+              "reference": "resolved-configuration",
+              "scope": "attempt",
+              "source": "configuration"
+            },
+            "state": "known",
+            "value": "workspace-write"
+          }
+        },
+        "fault": null,
+        "requested": {
+          "approval": "never",
+          "modelId": null,
+          "modelPolicy": "runtime-default",
+          "network": "disabled",
+          "presetRef": null,
+          "reasoning": "runtime-default",
+          "sandbox": "workspace-write",
+          "strategy": "balanced"
+        },
+        "status": "verified",
+        "synthetic": false
+      },
+      "stage": "implementation-result"
+    },
+    {
+      "facts": {
+        "dispatch": "not-yet-confirmed"
+      },
+      "stage": "independent-review-turn-reserved"
+    },
+    {
+      "facts": {
+        "artifactRevision": "135334642c6e1d0650c363525604da05f26e6c2ccfa5e355c3b9e30747023b1c",
+        "delivered": false,
+        "effective": {
+          "approval": {
+            "evidence": {
+              "observedAt": null,
+              "reference": "resolved-configuration",
+              "scope": "attempt",
+              "source": "configuration"
+            },
+            "state": "known",
+            "value": "never"
+          },
+          "model": {
+            "evidence": {
+              "observedAt": null,
+              "reference": "resolved-configuration",
+              "scope": "attempt",
+              "source": "configuration"
+            },
+            "state": "known",
+            "value": "model-dedfefd51120f28386c9dba78e46feb403523e23d67980cd"
+          },
+          "network": {
+            "evidence": {
+              "observedAt": null,
+              "reference": "resolved-configuration",
+              "scope": "attempt",
+              "source": "configuration"
+            },
+            "state": "known",
+            "value": "disabled"
+          },
+          "reasoning": {
+            "evidence": {
+              "observedAt": null,
+              "reference": "resolved-configuration",
+              "scope": "attempt",
+              "source": "configuration"
+            },
+            "state": "known",
+            "value": "maximum"
+          },
+          "sandbox": {
+            "evidence": {
+              "observedAt": null,
+              "reference": "resolved-configuration",
+              "scope": "attempt",
+              "source": "configuration"
+            },
+            "state": "known",
+            "value": "read-only"
+          }
+        },
+        "findingCount": 1,
+        "policyRevision": "422e6c60bfc97b6d8b333cd2185b826e092f2f2d1bc957e9334851f5852ab879",
+        "requested": {
+          "approval": "never",
+          "modelId": null,
+          "modelPolicy": "runtime-default",
+          "network": "disabled",
+          "presetRef": null,
+          "reasoning": "runtime-default",
+          "sandbox": "read-only",
+          "strategy": "balanced"
+        },
+        "status": "rejected",
+        "synthetic": false
+      },
+      "stage": "independent-review-result"
+    },
+    {
+      "facts": {
+        "dispatch": "not-yet-confirmed"
+      },
+      "stage": "correction-turn-reserved"
+    },
+    {
+      "facts": {
+        "adapterDiagnostic": null,
+        "artifactRevision": "be70a4b5eee74d2551513d94493628d832af654a0b072115cc1ba1f4dfa0ef28",
+        "delivered": false,
+        "dispatch": "sent",
+        "effective": {
+          "approval": {
+            "evidence": {
+              "observedAt": null,
+              "reference": "resolved-configuration",
+              "scope": "attempt",
+              "source": "configuration"
+            },
+            "state": "known",
+            "value": "never"
+          },
+          "model": {
+            "evidence": {
+              "observedAt": null,
+              "reference": "resolved-configuration",
+              "scope": "attempt",
+              "source": "configuration"
+            },
+            "state": "known",
+            "value": "model-dedfefd51120f28386c9dba78e46feb403523e23d67980cd"
+          },
+          "network": {
+            "evidence": {
+              "observedAt": null,
+              "reference": "resolved-configuration",
+              "scope": "attempt",
+              "source": "configuration"
+            },
+            "state": "known",
+            "value": "disabled"
+          },
+          "reasoning": {
+            "evidence": {
+              "observedAt": null,
+              "reference": "resolved-configuration",
+              "scope": "attempt",
+              "source": "configuration"
+            },
+            "state": "known",
+            "value": "maximum"
+          },
+          "sandbox": {
+            "evidence": {
+              "observedAt": null,
+              "reference": "resolved-configuration",
+              "scope": "attempt",
+              "source": "configuration"
+            },
+            "state": "known",
+            "value": "workspace-write"
+          }
+        },
+        "fault": null,
+        "requested": {
+          "approval": "never",
+          "modelId": null,
+          "modelPolicy": "runtime-default",
+          "network": "disabled",
+          "presetRef": null,
+          "reasoning": "runtime-default",
+          "sandbox": "workspace-write",
+          "strategy": "balanced"
+        },
+        "status": "verified",
+        "synthetic": false
+      },
+      "stage": "correction-result"
+    },
+    {
+      "facts": {
+        "arithmeticSuccessObserved": true,
+        "artifactRevision": "be70a4b5eee74d2551513d94493628d832af654a0b072115cc1ba1f4dfa0ef28",
+        "exitCode": 0,
+        "result": "passed",
+        "scriptSha256": "5538ed56207b96ccec770fc5f591e4d853d0a43689431c4cf12afdf3a2189400",
+        "streamsClosed": true,
+        "treeConfirmed": true
+      },
+      "stage": "authorized-final-arithmetic-control"
+    },
+    {
+      "facts": {
+        "dispatch": "not-yet-confirmed"
+      },
+      "stage": "corrected-independent-review-turn-reserved"
+    },
+    {
+      "facts": {
+        "artifactRevision": "be70a4b5eee74d2551513d94493628d832af654a0b072115cc1ba1f4dfa0ef28",
+        "delivered": false,
+        "effective": {
+          "approval": {
+            "evidence": {
+              "observedAt": null,
+              "reference": "resolved-configuration",
+              "scope": "attempt",
+              "source": "configuration"
+            },
+            "state": "known",
+            "value": "never"
+          },
+          "model": {
+            "evidence": {
+              "observedAt": null,
+              "reference": "resolved-configuration",
+              "scope": "attempt",
+              "source": "configuration"
+            },
+            "state": "known",
+            "value": "model-dedfefd51120f28386c9dba78e46feb403523e23d67980cd"
+          },
+          "network": {
+            "evidence": {
+              "observedAt": null,
+              "reference": "resolved-configuration",
+              "scope": "attempt",
+              "source": "configuration"
+            },
+            "state": "known",
+            "value": "disabled"
+          },
+          "reasoning": {
+            "evidence": {
+              "observedAt": null,
+              "reference": "resolved-configuration",
+              "scope": "attempt",
+              "source": "configuration"
+            },
+            "state": "known",
+            "value": "maximum"
+          },
+          "sandbox": {
+            "evidence": {
+              "observedAt": null,
+              "reference": "resolved-configuration",
+              "scope": "attempt",
+              "source": "configuration"
+            },
+            "state": "known",
+            "value": "read-only"
+          }
+        },
+        "findingCount": 0,
+        "policyRevision": "3b858a9360d3d2a37a03792fef3db1e4af7b3feaafe591763884c1c6fd5fb373",
+        "requested": {
+          "approval": "never",
+          "modelId": null,
+          "modelPolicy": "runtime-default",
+          "network": "disabled",
+          "presetRef": null,
+          "reasoning": "runtime-default",
+          "sandbox": "read-only",
+          "strategy": "balanced"
+        },
+        "status": "accepted",
+        "synthetic": false
+      },
+      "stage": "corrected-independent-review-result"
+    },
+    {
+      "facts": {
+        "application": "pending-OX-014",
+        "artifactRevision": "be70a4b5eee74d2551513d94493628d832af654a0b072115cc1ba1f4dfa0ef28",
+        "attempts": 2,
+        "delivered": false,
+        "finalArithmeticControl": "four-cases-passed",
+        "independentReviews": 2,
+        "originalCheckoutUnchanged": true,
+        "positiveChecksPerAttempt": 1,
+        "sameRunTask": true
+      },
+      "stage": "durable-proof-accepted"
+    }
+  ],
+  "synthetic": false,
+  "workerChecks": "two-positive-cases-only"
+}
