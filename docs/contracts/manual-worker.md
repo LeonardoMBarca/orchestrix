@@ -2,6 +2,8 @@
 
 This is the initial OX-007/008/009 implementation contract. [Current status](../DEVELOPMENT_STATUS.md) owns acceptance; synthetic runtime tests do not certify a provider or another operating system.
 
+[R9 live acceptance](../research/manual-worker-increment.md#r9-authorized-live-acceptance) records the production Rust worker with Codex `0.162.0-alpha.17.2` on Windows, one subscription, serial execution and a compatible Git fixture. Its verified artifact remains pending independent review/application. CLI task execution has separate synthetic-provider evidence; CLI status reopened the live result without inference.
+
 ## Ownership and interfaces
 
 - `policy/` is pure: schema 1, deterministic resolution and Context Pack compilation. It performs no process, filesystem, provider or SQLite operations.

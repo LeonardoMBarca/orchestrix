@@ -1,0 +1,276 @@
+{
+  "schemaVersion": 4,
+  "sourceRevision": "66918b193bb9c6b0ae1a211c6e8176a7516c8a6e",
+  "sourceSeal": "b348a70ea85161e7be5947f231a16a74252b2f9ede529421cdc54f487df4557e",
+  "reportSha256": "da6ec38e643b58bad4d828bbe899fcc0cb22db65cef84982d9e40621653c9ac2",
+  "authorizationSha256": "f674a8332d82e9365965ef8ec058d0170585c5e400f5ca08201ad254efa1c146",
+  "platform": "windows",
+  "provider": "codex-app-server",
+  "runtimeVersion": "0.162.0-alpha.17.2",
+  "synthetic": false,
+  "sentTurns": 3,
+  "automaticRetries": 0,
+  "workerRef": "live-arithmetic-worker",
+  "runRef": "run-dfcf053307f4a9249dadf377",
+  "attemptRef": "attempt-dfcf053307f4a9249dadf377",
+  "connectionRef": "live-codex-subscription",
+  "connectionRevision": 1,
+  "sessionRef": "session-dfcf053307f4a9249dadf377",
+  "counts": {
+    "manual_workers": 1,
+    "attempts": 1,
+    "sessions": 1,
+    "git_worktrees": 1,
+    "captured_artifacts": 1
+  },
+  "workerStatus": "verified",
+  "taskState": "NeedsReview",
+  "delivered": false,
+  "review": "pending-independent-review",
+  "nativeBindingRetainedPrivately": true,
+  "firstWorker": {
+    "dispatch": "sent",
+    "fault": null,
+    "adapterDiagnostic": null,
+    "startObserved": true,
+    "terminalConfirmed": true,
+    "terminal": {
+      "error": null,
+      "outcome": "completed"
+    },
+    "process": {
+      "helper": {
+        "code": null,
+        "exited": false,
+        "signal": "unknown",
+        "stdioClosed": false,
+        "streams": null
+      },
+      "runtime": {
+        "code": 0,
+        "exited": true,
+        "signal": "none",
+        "stdioClosed": true,
+        "streams": {
+          "faulted": false,
+          "stderr": true,
+          "stdin": true,
+          "stdout": true
+        }
+      },
+      "tree": {
+        "activeCount": 0,
+        "evidenceRef": "rust-owned-job",
+        "ownership": "confirmed",
+        "source": "owned-job",
+        "termination": "confirmed"
+      }
+    },
+    "effective": {
+      "approval": {
+        "evidence": {
+          "observedAt": null,
+          "reference": "resolved-configuration",
+          "scope": "attempt",
+          "source": "configuration"
+        },
+        "state": "known",
+        "value": "never"
+      },
+      "model": {
+        "evidence": {
+          "observedAt": null,
+          "reference": "resolved-configuration",
+          "scope": "attempt",
+          "source": "configuration"
+        },
+        "state": "known",
+        "value": "model-dedfefd51120f28386c9dba78e46feb403523e23d67980cd"
+      },
+      "network": {
+        "evidence": {
+          "observedAt": null,
+          "reference": "resolved-configuration",
+          "scope": "attempt",
+          "source": "configuration"
+        },
+        "state": "known",
+        "value": "disabled"
+      },
+      "reasoning": {
+        "evidence": {
+          "observedAt": null,
+          "reference": "resolved-configuration",
+          "scope": "attempt",
+          "source": "configuration"
+        },
+        "state": "known",
+        "value": "maximum"
+      },
+      "sandbox": {
+        "evidence": {
+          "observedAt": null,
+          "reference": "resolved-configuration",
+          "scope": "attempt",
+          "source": "configuration"
+        },
+        "state": "known",
+        "value": "workspace-write"
+      }
+    },
+    "eventTypes": [
+      "configuration.observation-recorded",
+      "attempt.admission-observed",
+      "attempt.start-observed",
+      "output.observed",
+      "attempt.terminal-observed",
+      "process.exited",
+      "process.streams-observed",
+      "process.tree-observed"
+    ]
+  },
+  "policy": {
+    "schemaVersion": 1,
+    "policyRevision": 1,
+    "strategy": "balanced",
+    "fallback": "compatible",
+    "fallbackReasons": [
+      "explicit-compatible-fallback:runtime-default-model-and-reasoning"
+    ],
+    "concurrency": 1,
+    "nativeDelegation": false,
+    "configurationDefinition": {
+      "kind": "configuration",
+      "id": "configuration-dfcf053307f4a9249dadf377",
+      "version": 1
+    },
+    "bodyMatchesIntent": true,
+    "diagnostics": [
+      {
+        "id": "diagnostic-dfcf053307f4a9249dadf377",
+        "version": 1,
+        "scope": {
+          "kind": "connection",
+          "reference": null
+        },
+        "outcome": "success",
+        "complete": true,
+        "checkedAt": "2026-10-15T00:34:55.083Z",
+        "validUntil": "2026-10-15T00:35:55.083Z",
+        "modelCount": 7
+      },
+      {
+        "id": "admission-dfcf053307f4a9249dadf377",
+        "version": 2,
+        "scope": {
+          "kind": "connection",
+          "reference": null
+        },
+        "outcome": "success",
+        "complete": true,
+        "checkedAt": "2026-10-15T00:35:25.039Z",
+        "validUntil": "2026-10-15T00:36:25.039Z",
+        "modelCount": 7
+      }
+    ]
+  },
+  "context": {
+    "definition": {
+      "kind": "context",
+      "id": "context-dfcf053307f4a9249dadf377",
+      "version": 1
+    },
+    "manifestRef": "147baea026bc6d183aa8183a6e79be1b48dd90ab1adb4c499bd537ac5c3a3ccb",
+    "manifestRefMatchesFullPack": true,
+    "budget": {
+      "actualPromptBytes": 2190,
+      "estimateMethod": "utf8-bytes-divided-by-four-rounded-up-not-provider-tokenization",
+      "estimatedTokens": 548,
+      "limits": {
+        "max_bytes": 32768,
+        "max_estimated_tokens": null,
+        "max_file_bytes": 16384,
+        "max_files": 32,
+        "max_sources": 32
+      }
+    },
+    "omissions": [],
+    "files": [
+      {
+        "path": "sum.cjs",
+        "contentHash": "1d571e080871eaacf3291d9c0a79688a37183ef8f6ee148e10d6144d90a71226",
+        "bytes": 68,
+        "source": {
+          "reference": "source-0",
+          "revision": "1d571e080871eaacf3291d9c0a79688a37183ef8f6ee148e10d6144d90a71226"
+        },
+        "authorizationRef": "read-arithmetic-fixture",
+        "required": true
+      }
+    ],
+    "sources": [
+      {
+        "identity": {
+          "reference": "user-instruction-0",
+          "revision": "5db5e52c883180b2dc091a2d94dc45d757f93ddac1b3c02fa7de498a4fb15cd2"
+        },
+        "kind": "user-instructions",
+        "contentHash": "5db5e52c883180b2dc091a2d94dc45d757f93ddac1b3c02fa7de498a4fb15cd2",
+        "bytes": 163,
+        "required": true
+      },
+      {
+        "identity": {
+          "reference": "user-instruction-1",
+          "revision": "2d44f4b048f91d5a73302e1a6d8d665a020b4af1fd223a0f47d21282824b240d"
+        },
+        "kind": "user-instructions",
+        "contentHash": "2d44f4b048f91d5a73302e1a6d8d665a020b4af1fd223a0f47d21282824b240d",
+        "bytes": 140,
+        "required": true
+      }
+    ]
+  },
+  "artifact": {
+    "id": "git_2a26a2249692437b4fb9e9e753f2c05757a0a79ac767210b",
+    "attemptRef": "attempt-dfcf053307f4a9249dadf377",
+    "baseOid": "dad00645c1467d118552d57ffe5406708c565cee",
+    "revision": "2f4bea43f706e741f2b1691e4ca3a726b24477c592470ed3eca00639ba839f1b",
+    "patchSha256": "76871345ff693e39710fb8a37b43386b1a87db641a7a53917d96c2710f81e85d",
+    "files": [
+      {
+        "path": "sum.cjs",
+        "baseSha256": "1d571e080871eaacf3291d9c0a79688a37183ef8f6ee148e10d6144d90a71226",
+        "indexSha256": "1d571e080871eaacf3291d9c0a79688a37183ef8f6ee148e10d6144d90a71226",
+        "worktreeSha256": "e37012661fd9e85c7b4245001b835647cafd0fc6fc86df512b9864eb7231686f",
+        "mode": "100644"
+      }
+    ]
+  },
+  "checks": [
+    {
+      "id": "arithmetic-cases",
+      "artifactRevision": "2f4bea43f706e741f2b1691e4ca3a726b24477c592470ed3eca00639ba839f1b",
+      "commandHash": "857bd0041599a5da34838fb88c49bdc8413e1c4b40f3ddb8542f75a2dcfc63eb",
+      "executableHash": "b0f9c78c7cf93554724684737f15cf6baa5ddcb2ecc67f66849476ce97493fac",
+      "authorizationMatchesLiveScope": true,
+      "cwdMatchesOwnedWorktree": true,
+      "timeoutMs": 10000,
+      "result": "passed",
+      "exitCode": 0,
+      "elapsedMs": 590,
+      "outputSha256": "b125b2dc1577a6b03a143a197e4260112d9e94124759014c8360dcefa3413aa2",
+      "outputTruncated": false,
+      "treeConfirmed": true,
+      "streamsClosed": true
+    }
+  ],
+  "verificationLinkedToExactArtifact": true,
+  "originalArithmeticFileUnchanged": true,
+  "arithmeticFile": {
+    "sourceSha256": "1d571e080871eaacf3291d9c0a79688a37183ef8f6ee148e10d6144d90a71226",
+    "worktreeSha256": "e37012661fd9e85c7b4245001b835647cafd0fc6fc86df512b9864eb7231686f"
+  },
+  "postProofCliStatus": "verified",
+  "resumeAutomatically": false
+}

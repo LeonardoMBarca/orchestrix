@@ -80,6 +80,7 @@ Sources retain their original results, failures, dates and limits. Offline repla
 
 | Record | What it demonstrated at that revision / later update |
 | --- | --- |
+| [Integrated Manual Worker — OX-007/008/009](./research/manual-worker-increment.md) | Deterministic policy/context, Windows supervisor, Codex adapter and durable worker/check path. R9 records live edit/check, restart/context continuity and cancellation; previous offline and uncertain results retain their source revisions. Verified remains pending artifact review/application. |
 | [SQLite Persistence — OX-005 Acceptance](./research/ox-005-persistence-increment.md) | Real file-backed durable domain, migrations, idempotency, rollback/lost reply, concurrent callers and subprocess continuation. Synthetic runtime facts do not establish production execution. |
 | [Domain — OX-004 Acceptance](./research/ox-004-domain-increment.md) | Guarded identities/states and conversations in memory; OX-005 adds the separate persistence boundary without turning that older record into a storage proof. |
 | [Portable Runtime Input — OX-003 Acceptance](./research/portable-runtime-input-increment.md) | Profile revision 1 and scoped acceptance: 245 cases/935 operations, six Rust, eleven bridge and 320 JS checks. Totals belong to that increment; status identifies subsequent work. |
