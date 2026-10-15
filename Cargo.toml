@@ -1,5 +1,5 @@
 [workspace]
-members = ["crates/orchestrix-core", "crates/orchestrix-process"]
+members = ["crates/orchestrix-core", "crates/orchestrix-process", "apps/desktop/src-tauri"]
 resolver = "3"
 
 [workspace.package]

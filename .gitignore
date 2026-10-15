@@ -220,3 +220,5 @@ __marimo__/
 # Local generation/audit scratch work and dependency caches
 /artifacts/
 node_modules/
+/apps/desktop/src-tauri/binaries/
+/apps/desktop/src-tauri/gen/

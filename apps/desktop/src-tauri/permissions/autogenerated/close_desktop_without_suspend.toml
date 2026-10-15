@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-close-desktop-without-suspend"
+description = "Enables the close_desktop_without_suspend command without any pre-configured scope."
+commands.allow = ["close_desktop_without_suspend"]
+
+[[permission]]
+identifier = "deny-close-desktop-without-suspend"
+description = "Denies the close_desktop_without_suspend command without any pre-configured scope."
+commands.deny = ["close_desktop_without_suspend"]

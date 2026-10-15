@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-desktop-poll"
+description = "Enables the desktop_poll command without any pre-configured scope."
+commands.allow = ["desktop_poll"]
+
+[[permission]]
+identifier = "deny-desktop-poll"
+description = "Denies the desktop_poll command without any pre-configured scope."
+commands.deny = ["desktop_poll"]
