@@ -27,6 +27,8 @@ Packaging targets current-user NSIS with the installed WebView2 runtime; it does
 
 Versions are pinned in the manifests/lockfiles: Tauri/API 2.12.4, Tauri CLI 2.12.3, tauri-build 2.7.3, dialog 2.8.3, React 19.3.1, TypeScript 7.0.2 and Vite 8.3.4. Read the [current project status](../../docs/DEVELOPMENT_STATUS.md) for executed evidence and remaining acceptance.
 
+The Desktop executable links the host as a Rust `rlib`. It does not build unused C/JNI/mobile `staticlib` or `cdylib` exports; the installer contains the executable and its two Core/supervisor sidecars.
+
 ## Boundaries
 
 React → narrow native commands → typed local API client → daemon → Core. The renderer never opens SQLite, receives provider credentials or starts an agent. The Core and `orchestrix-supervisor` executables are staged as sidecars and resolved beside the Desktop binary. The daemon owns serial execution and remains independent of window lifetime.
