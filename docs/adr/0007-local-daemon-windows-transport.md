@@ -1,6 +1,6 @@
 # ADR-0007 — Local daemon and user-restricted Windows transport
 
-- **Status:** Proposed; implementation/acceptance tracked in current status
+- **Status:** Accepted for the Windows/serial local scope, validated 2026-10-15; [evidence](../research/local-daemon-recovery-increment.md)
 - **Date:** 2026-10-14
 - **Owners:** Orchestrix Core
 - **Related issues:** OX-010, OX-011, CONT-01/02

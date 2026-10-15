@@ -1,6 +1,6 @@
 # ADR-0008 — Recoverable owned-process closure evidence
 
-- **Status:** Proposed pending the final legacy-compatibility correction; S5/crash [evidence](../research/local-daemon-recovery-increment.md) is preserved
+- **Status:** Accepted for the Windows owned runtime/check scope, including legacy compatibility, validated 2026-10-15; [evidence](../research/local-daemon-recovery-increment.md)
 - **Date:** 2026-10-14
 - **Owners:** Orchestrix Core / Windows process boundary
 - **Related issues:** OX-011, CONT-01/02

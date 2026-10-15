@@ -19,7 +19,8 @@ Core runtime
 → Rust
 
 Async runtime / process orchestration
-→ Tokio
+→ bounded Rust threads and Windows process/IPC boundary currently
+→ Tokio remains a proposed option, not a current dependency
 
 Local persistence
 → SQLite
@@ -38,8 +39,10 @@ Agent runtime integration
 → stdin / stdout / stderr
 → JSON / JSONL / NDJSON / JSON-RPC depending on runtime
 
-Desktop IPC
-→ Tauri commands/events initially
+Local Core API
+→ versioned application commands/snapshots/events
+→ current-user Windows named pipe (ADR-0007)
+→ future Tauri host connects to that API
 ```
 
 ## Platform boundaries and progressive delivery
@@ -52,7 +55,7 @@ Domain and runtime wire types must not require Windows handles, Job Objects, OS 
 
 | Intended system | Required validation before claiming support | Current evidence |
 | --- | --- | --- |
-| Windows | Portable Core conformance; owned process/descendant cancellation/crash/timeout and stream drain; Git/worktree paths with spaces/Unicode; file permissions/concurrent edits; credential host; reproducible install/upgrade/uninstall and desktop keyboard/scale behavior. | Experimental Codex app-server/CLI and native Job tests only; no production Rust Core/Desktop/package validated. |
+| Windows | Portable Core conformance; owned process/descendant cancellation/crash/timeout and stream drain; Git/worktree paths with spaces/Unicode; file permissions/concurrent edits; credential host; reproducible install/upgrade/uninstall and desktop keyboard/scale behavior. | Rust Core/manual Codex worker accepted in the scoped [R9 proof](./research/manual-worker-increment.md#r9-authorized-live-acceptance); daemon/recovery extension tracked in [current status](./DEVELOPMENT_STATUS.md). Desktop, credentials UI and package are not validated. |
 | macOS | Same contract fixture expectations; owned process-group/descendant cleanup appropriate to the host; case-sensitive/insensitive paths and file permissions; authorized credential storage; editor/shortcuts; reproducible native package and required signing/install/update behavior. | Not yet validated. |
 | Linux | Same contract fixture expectations; owned process-group/descendant cleanup appropriate to the host; paths, permissions/symlinks/watchers; authorized credential storage including unavailable-secret-store behavior; desktop integration; reproducible package/install/update for the explicitly supported distributions. | Not yet validated. |
 
@@ -60,7 +63,7 @@ Record tested OS/version/architecture and, for Linux, distribution; runtime/vers
 
 ## Why Tauri 2
 
-Orchestrix is a Desktop application whose proposed Core benefits from Rust's process/concurrency guarantees. A production Rust Core is not implemented yet. Tauri provides a natural bridge between a web-based frontend and a native Rust backend without forcing the product to become an Electron application.
+Orchestrix is a Desktop application whose Rust Core implements the first manual worker. The production Tauri Desktop remains planned. Tauri provides a natural bridge between a web-based frontend and a native Rust backend without forcing the product to become an Electron application. The separate [daemon API](./contracts/local-daemon.md) owns execution and operational persistence; the future window is its client, not another scheduler.
 
 The intended architecture is:
 
@@ -333,7 +336,7 @@ Open decisions:
 ```text
 frontend state management
 code/diff viewer implementation
-exact Core↔Desktop transport abstraction
+Tauri frontend bridge to the versioned local Core API
 ```
 
 The stack should evolve through explicit ADRs when choices become architectural commitments.

@@ -44,6 +44,7 @@ Current status takes precedence over older reports' “next” or “pending” 
 | [Persistence Boundary](./contracts/persistence.md) | OX-005 transaction, idempotency, restoration, schema and privacy contract; implementation validation remains separate from the specification. |
 | [Git Worktrees and Capture](./contracts/git-worktrees.md) | OX-006 owned worktrees, pinned bases, exact artifact provenance, recoverable Git/SQL effects and conservative cleanup. [Increment evidence](./research/ox-006-git-increment.md). |
 | [Manual Worker, Policy and Runtime](./contracts/manual-worker.md) | OX-007/008/009 interfaces, deterministic policy/context, authorized metadata refresh, Windows supervision, serial durable worker, evaluators and CLI. Current status distinguishes synthetic evidence from live provider acceptance. |
+| [Local Daemon and Recovery](./contracts/local-daemon.md) | OX-010/011 versioned API, user-restricted transport, command/event recovery, deterministic controls, scoped closure evidence, intervention and basic Context Pack. |
 | [API Connection Contract](./design/api-connection-contract.md) | Two-stage subscription/API connection flow, provider-specific credentials and host boundary. |
 | [Connection Diagnostics](./design/connection-diagnostics.md) | Available/unavailable/unknown evidence, scoped checks and recheck. Periodic/event-driven refresh is specified future work; active probes/production authentication retain their gates. |
 
@@ -72,6 +73,8 @@ Accepted ADRs govern architectural choices. Read supersession notices rather tha
 - [ADR-0004 — Context Ownership](./adr/0004-context-ownership.md)
 - [ADR-0005 — Desktop Product Scope and Platform Boundaries](./adr/0005-desktop-product-scope-and-platform-boundaries.md)
 - [ADR-0006 — Synchronous SQLite Persistence](./adr/0006-synchronous-sqlite-persistence.md)
+- [ADR-0007 — Local Daemon and Windows Transport](./adr/0007-local-daemon-windows-transport.md)
+- [ADR-0008 — Recoverable Owned-Process Closure](./adr/0008-recoverable-process-ownership.md)
 
 ## Historical research and implementation evidence
 
@@ -81,6 +84,7 @@ Sources retain their original results, failures, dates and limits. Offline repla
 
 | Record | What it demonstrated at that revision / later update |
 | --- | --- |
+| [Local Daemon and Recovery — OX-010/011](./research/local-daemon-recovery-increment.md) | Versioned API/CLI, deterministic local controls, command/event recovery, owned closure receipts, explicit intervention and basic continuity. Windows processes/Git/SQLite with synthetic runtime; no new live provider proof. |
 | [Integrated Manual Worker — OX-007/008/009](./research/manual-worker-increment.md) | Deterministic policy/context, Windows supervisor, Codex adapter and durable worker/check path. R9 records live edit/check, restart/context continuity and cancellation; previous offline and uncertain results retain their source revisions. Verified remains pending artifact review/application. |
 | [SQLite Persistence — OX-005 Acceptance](./research/ox-005-persistence-increment.md) | Real file-backed durable domain, migrations, idempotency, rollback/lost reply, concurrent callers and subprocess continuation. Synthetic runtime facts do not establish production execution. |
 | [Domain — OX-004 Acceptance](./research/ox-004-domain-increment.md) | Guarded identities/states and conversations in memory; OX-005 adds the separate persistence boundary without turning that older record into a storage proof. |
