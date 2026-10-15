@@ -22,8 +22,9 @@ Versioned SQL migrations are retained separately in [schema.rs](../../crates/orc
 | 2 | Shared-capacity groups; saved-conversation drafts; document/diagnostic records checkpoint; immutable attempt context/configuration/diagnostic snapshot bindings; relational projections of versioned definitions, their references and diagnostic observations. Definition/diagnostic update/delete triggers preserve their histories. |
 | 3 | Immutable worktree intents linked to registered attempts, ordered operation observations/state, and immutable exact artifact manifests/content/patch hashes. Earlier migration definitions remain unchanged. External Git effects use separate short intent and confirmation transactions. |
 | 4 | Immutable manual-worker intents, exact policy/context/check bindings and append-only worker observations. Atomic reservation links definitions/diagnostics/project/connection/session/Run/Task/attempt; process/Git/check effects stay outside SQLite transactions. See [manual worker](./manual-worker.md). |
+| 5 | Stable daemon identity/generation/admission state, immutable command journal/completions and append-only API events. Domain event references enter this feed in the same transaction; snapshot/cursor and command replay are defined by the [local daemon contract](./local-daemon.md). |
 
-Run/conversation checkpoints retain the full validated aggregate; relational rows provide identity, ownership and lookup constraints. Loading must validate the checkpoint and its relationships rather than trusting either JSON or SQL projections in isolation. Audit/event schema version is currently **1**, while database schema version is **3**; these numbers have different compatibility meanings.
+Run/conversation checkpoints retain the full validated aggregate; relational rows provide identity, ownership and lookup constraints. Loading must validate the checkpoint and its relationships rather than trusting either JSON or SQL projections in isolation. Audit/event schema version is currently **1**, while database schema version is **5**; these numbers have different compatibility meanings.
 
 Data values use SQL parameters. Fixed migration/DDL text may use SQL batches; user content never becomes an SQL identifier or concatenated query fragment. Foreign keys, unique identity constraints and necessary lookup indexes complement validated domain loading. Database constraints remain necessary even though the application checks identities first.
 
@@ -45,7 +46,7 @@ Within one write transaction, processing performs these steps:
 
 Two connections therefore observe a unique command result or a conflict, rather than both accepting the same operation. A technical error before commit drops all staged changes. The store does not mutate caller-owned state while the transaction is pending; rollback cannot leave a live object pretending the database accepted a transition. A response lost **after** commit is handled by replaying the same key/content and recovering the committed result.
 
-This reserves durable intent/state only. Neither a unique Attempt ID nor a committed command proves exactly one external runtime execution. The separate [worker/runtime infrastructure](./manual-worker.md) owns dispatch and process evidence; automatic restart reconciliation remains a later ticket.
+This reserves durable intent/state only. Neither a unique Attempt ID nor a committed command proves exactly one external runtime execution. The separate [worker/runtime infrastructure](./manual-worker.md) owns dispatch and process evidence; [daemon recovery](./local-daemon.md) reconciles those facts without automatic redispatch.
 
 ## Business outcomes versus storage errors
 
@@ -74,7 +75,7 @@ Restoration preserves:
 - Observer descriptor/request, limits, original accepted byte/event accounting, sequence, observed events, fault/fatal/closed state and attempt sealing. Serializing normalized events must not reset or recalculate the original transport byte budget.
 - Versioned context/configuration and complete mode/profile snapshots. Revising a definition appends a greater version; old attempts retain their original definitions and references.
 
-Restored execution is the **last known fact**, not proof that a process is still running. Loading does not start a worker, resume a provider thread, establish current authentication or grant billing/permission authority. An uncertain attempt remains uncertain until the future trusted runtime/supervisor boundary supplies owned evidence. Process exit, an empty process tree and interrupt acknowledgement remain distinct from a remote terminal.
+Restored execution is the **last known fact**, not proof that a process is still running. Loading does not start a worker, resume a provider thread, establish current authentication or grant billing/permission authority. Reconciliation requires evidence from the trusted runtime/supervisor boundary. Keeper receipts are read outside transactions; their stored format/binding/fence validation during restoration is pure. Process exit, an empty process tree and interrupt acknowledgement remain distinct from a remote terminal.
 
 ## Conversations, definitions and diagnostics
 

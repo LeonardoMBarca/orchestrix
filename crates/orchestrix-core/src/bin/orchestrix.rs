@@ -17,6 +17,9 @@ fn run() -> Result<(), String> {
     let action = args.next().unwrap_or_else(|| "help".into());
     if ["help", "--help", "-h"].contains(&action.as_str()) {
         println!(
+            "Local daemon API v1 (Windows, user-restricted):\ndaemon --database ABSOLUTE_PATH\napi --database ABSOLUTE_PATH --request VERSIONED_REQUEST.json\nsnapshot --database ABSOLUTE_PATH\nsuspend|resume|shutdown --database ABSOLUTE_PATH --command-id UNIQUE_ID\ncancel --database ABSOLUTE_PATH --command-id UNIQUE_ID --id WORKER_ID\n\nDaemon starts with admissions suspended; resume is explicit. API clients never open SQLite. Disconnect does not cancel work. Reuse the same command ID to inspect a lost response; never change its content."
+        );
+        println!(
             "Orchestrix manual worker\n\nrun --database ABSOLUTE_PATH --task MANIFEST.json --codex ABSOLUTE_EXE --codex-home ABSOLUTE_DIR --runtime-version PINNED --allow-live yes\nrun --database ABSOLUTE_PATH --task MANIFEST.json --synthetic-runtime FIXTURE_EXE --codex-home FIXTURE_HOME [--scenario success]\nstatus --database ABSOLUTE_PATH --id WORKER_ID\nquery --query QUERY.json [--database ABSOLUTE_PATH]\ndiscover --codex ABSOLUTE_EXE --codex-home ABSOLUTE_DIR --runtime-version PINNED --directory ABSOLUTE_DIR --authorized-read yes\n\nOptional run: --cancel-after-ms 1..90000. Existing IDs are inspected, never automatically executed again.\nCommands must be individually authorized in the task manifest; no scripts are discovered or run implicitly."
         );
         return Ok(());
@@ -43,6 +46,8 @@ fn run() -> Result<(), String> {
         "--query",
         "--authorized-read",
         "--directory",
+        "--request",
+        "--command-id",
     ];
     if flags.keys().any(|k| !allowed.contains(&k.as_str())) {
         return Err("unknown-option".into());
@@ -53,6 +58,47 @@ fn run() -> Result<(), String> {
             .cloned()
             .ok_or_else(|| format!("missing-{key}"))
     };
+    if action == "daemon" {
+        return orchestrix_core::daemon::serve(&PathBuf::from(required("--database")?));
+    }
+    if ["api", "snapshot", "suspend", "resume", "cancel", "shutdown"].contains(&action.as_str()) {
+        use orchestrix_core::daemon::{API_VERSION, Client, Operation, Request};
+        let request = if action == "api" {
+            read_json::<Request>(&PathBuf::from(required("--request")?))?
+        } else {
+            let operation = match action.as_str() {
+                "snapshot" => Operation::Snapshot,
+                "suspend" => Operation::Suspend {
+                    command_id: required("--command-id")?,
+                },
+                "resume" => Operation::Resume {
+                    command_id: required("--command-id")?,
+                },
+                "cancel" => Operation::Cancel {
+                    command_id: required("--command-id")?,
+                    worker_id: required("--id")?,
+                },
+                "shutdown" => Operation::Shutdown {
+                    command_id: required("--command-id")?,
+                },
+                _ => unreachable!(),
+            };
+            Request {
+                api_version: API_VERSION,
+                operation,
+            }
+        };
+        let response = Client::new(&PathBuf::from(required("--database")?))?.request(&request)?;
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&response).map_err(|_| "serialization")?
+        );
+        return if response.ok {
+            Ok(())
+        } else {
+            Err("daemon-rejected-command".into())
+        };
+    }
     if action == "discover" {
         if required("--authorized-read")? != "yes" || flags.contains_key("--allow-live") {
             return Err("read-only-opt-in-required".into());
@@ -88,6 +134,29 @@ fn run() -> Result<(), String> {
     if action == "query" {
         let query =
             read_json::<orchestrix_core::mechanical::Query>(&PathBuf::from(required("--query")?))?;
+        let _owner = if let Some(path) = flags.get("--database") {
+            match orchestrix_core::daemon::owner_lease(&PathBuf::from(path)) {
+                Ok(lease) => Some(lease),
+                Err(_) => {
+                    let response = orchestrix_core::daemon::Client::new(&PathBuf::from(path))?
+                        .request(&orchestrix_core::daemon::Request {
+                            api_version: orchestrix_core::daemon::API_VERSION,
+                            operation: orchestrix_core::daemon::Operation::Query { query },
+                        })?;
+                    if !response.ok {
+                        return Err("daemon-query-rejected".into());
+                    }
+                    println!(
+                        "{}",
+                        serde_json::to_string_pretty(&response.result)
+                            .map_err(|_| "serialization")?
+                    );
+                    return Ok(());
+                }
+            }
+        } else {
+            None
+        };
         let mut store = flags
             .get("--database")
             .map(|p| Store::open(PathBuf::from(p)))
@@ -103,6 +172,27 @@ fn run() -> Result<(), String> {
     }
     let database = PathBuf::from(required("--database")?);
     if action == "status" {
+        let _owner = match orchestrix_core::daemon::owner_lease(&database) {
+            Ok(lease) => lease,
+            Err(_) => {
+                let response = orchestrix_core::daemon::Client::new(&database)?.request(
+                    &orchestrix_core::daemon::Request {
+                        api_version: orchestrix_core::daemon::API_VERSION,
+                        operation: orchestrix_core::daemon::Operation::Status {
+                            worker_id: required("--id")?,
+                        },
+                    },
+                )?;
+                if !response.ok {
+                    return Err("daemon-status-rejected".into());
+                }
+                println!(
+                    "{}",
+                    serde_json::to_string_pretty(&response.result).map_err(|_| "serialization")?
+                );
+                return Ok(());
+            }
+        };
         if !database.is_file() {
             return Err("database-not-found".into());
         }
@@ -119,6 +209,9 @@ fn run() -> Result<(), String> {
         return Err("unknown-command".into());
     }
     let task = read_json::<ManualTaskRequest>(&PathBuf::from(required("--task")?))?;
+    // Legacy standalone execution is explicitly exclusive with an operational daemon.
+    // The daemon and this old entry point cannot each own a scheduler for the database.
+    let _owner = orchestrix_core::daemon::owner_lease(&database)?;
     // Keep SQLite and its WAL/SHM outside directories exposed to the worker/checks.
     let parent = database
         .parent()

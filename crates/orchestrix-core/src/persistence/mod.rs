@@ -1,6 +1,7 @@
 //! Synchronous SQLite boundary. The domain has no database or process types.
 //! Every mutation uses detached state and a single, bounded writer transaction.
 mod commands;
+mod daemon;
 mod git;
 mod schema;
 mod state;
@@ -10,6 +11,7 @@ use crate::domain::{DomainError, LocalRef};
 use crate::persistence_privacy::{PrivacyError, sanitize_json};
 use crate::persistence_records::{RecordError, SnapshotInput};
 pub use commands::{Command, RunAction};
+pub use daemon::{DaemonCommandReceipt, DaemonCursor, DaemonEvent, DaemonState};
 use rusqlite::{Connection, OptionalExtension, TransactionBehavior, params};
 pub use schema::SCHEMA_VERSION;
 use serde::{Deserialize, Serialize};

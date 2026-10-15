@@ -2,6 +2,8 @@
 
 This is the initial OX-007/008/009 implementation contract. [Current status](../DEVELOPMENT_STATUS.md) owns acceptance; synthetic runtime tests do not certify a provider or another operating system.
 
+OX-010/011 extend its ownership, schema and recovery through the [local daemon contract](./local-daemon.md) and [ADR-0008](../adr/0008-recoverable-process-ownership.md). The original live report below still proves its recorded revision, not a new live test of this extension.
+
 [R9 live acceptance](../research/manual-worker-increment.md#r9-authorized-live-acceptance) records the production Rust worker with Codex `0.162.0-alpha.17.2` on Windows, one subscription, serial execution and a compatible Git fixture. Its verified artifact remains pending independent review/application. CLI task execution has separate synthetic-provider evidence; CLI status reopened the live result without inference.
 
 ## Ownership and interfaces
@@ -45,9 +47,9 @@ Pinned global `remoteControl/status/changed` is discarded as information, with s
 
 ## Process evidence and uncertain work
 
-The Windows child starts suspended and joins an unnamed non-breakaway Job before resuming. Only stdin/stdout/stderr handles are inherited. Independent bounded pumps prevent blocked stdout/stderr from stalling the caller; input writes have an acknowledgement deadline. Limits include 300 s Job lifetime, 90 s turn, 15 s metadata/request and bounded frames/output. Cooperative interruption escalates to termination of the owned Job. Job exhaustion, root exit, stream closure and provider terminal are independent facts; none invents another.
+The Windows child is atomically associated with a non-breakaway Job through its process-creation Job-list attribute before its first thread runs. Only stdin/stdout/stderr handles are inherited. Standalone adapter/metadata calls retain an anonymous Job; worker execution and authorized checks now share the recoverable keeper-owned scope. Independent bounded pumps prevent blocked stdout/stderr from stalling the caller; input writes have an acknowledgement deadline. Limits include 300 s Job lifetime, 90 s turn, 15 s metadata/request and bounded frames/output. The keeper also caps the combined runtime/check scope at 300 s. Cooperative interruption escalates to termination of the owned Job. Job exhaustion, root exit, stream closure and provider terminal are independent facts; none invents another.
 
-Reservation is one SQLite command covering project/connection/session, definitions/diagnostics, ready task and attempt. Schema 4 adds immutable worker intents and append-only observations; migrations 1–3 remain unchanged. Admission is serial per installation/database, including reserved, dispatched and uncertain work across sessions. An uncertain worker blocks new admissions until explicit reconciliation, which remains OX-011; this is not a scheduler or a claim about other databases.
+Reservation is one SQLite command covering project/connection/session, definitions/diagnostics, ready task and attempt. Schema 4 adds immutable worker intents and append-only observations; migrations 1–3 remain unchanged. Schema 5 adds the separate daemon journal/event feed. Admission is serial per installation/database, including reserved, dispatched and uncertain work across sessions. An uncertain worker blocks new admissions until [explicit reconciliation/intervention](./local-daemon.md#recovery-and-intervention); this is not a scheduler or a claim about other databases.
 
 Reservation composes bounded documents: intent, each typed checkpoint, snapshot, definition and diagnostic retains the ordinary 4,096-node/32-depth privacy profile. The full command still has a 1 MiB serialized ceiling and an exact aggregate privacy scan. Repeated descriptors across these records do not share a single document's node budget. No catalog is truncated, no redaction is silently accepted and ordinary document/observation limits are unchanged.
 

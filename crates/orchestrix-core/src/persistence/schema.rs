@@ -2,7 +2,7 @@ use super::{StoreError, StoreResult};
 use rusqlite::{Connection, TransactionBehavior};
 use std::time::Duration;
 
-pub const SCHEMA_VERSION: i64 = 4;
+pub const SCHEMA_VERSION: i64 = 5;
 const APPLICATION_ID: i64 = 0x4f585354;
 
 // Kept as separate, immutable migrations so an existing v1 database can advance.
@@ -159,6 +159,11 @@ pub(super) fn initialize(connection: &mut Connection) -> StoreResult<()> {
     if current == 3 {
         transaction.execute_batch(V4)?;
         transaction.pragma_update(None, "user_version", 4)?;
+        current = 4;
+    }
+    if current == 4 {
+        transaction.execute_batch(super::daemon::MIGRATION_V5)?;
+        transaction.pragma_update(None, "user_version", 5)?;
     }
     transaction.commit()?;
     Ok(())
@@ -188,4 +193,12 @@ pub(super) fn create_v3(path: &std::path::Path) {
     let connection = Connection::open(path).unwrap();
     connection.execute_batch(V3).unwrap();
     connection.pragma_update(None, "user_version", 3).unwrap();
+}
+
+#[cfg(test)]
+pub(super) fn create_v4(path: &std::path::Path) {
+    create_v3(path);
+    let connection = Connection::open(path).unwrap();
+    connection.execute_batch(V4).unwrap();
+    connection.pragma_update(None, "user_version", 4).unwrap();
 }

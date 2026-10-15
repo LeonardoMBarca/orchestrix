@@ -45,8 +45,11 @@ impl WorkerIntent {
 #[serde(rename_all = "kebab-case")]
 pub enum WorkerStatus {
     Reserved,
+    Preparing,
+    SupervisorReady,
     DispatchPlanned,
     RuntimeObserved,
+    Checking,
     Verified,
     NeedsWork,
     NoChecks,
@@ -55,13 +58,28 @@ pub enum WorkerStatus {
     Uncertain,
     Blocked,
     Invalidated,
+    InspectionRequired,
+    SetAside,
 }
 impl WorkerStatus {
     pub fn terminal(self) -> bool {
         !matches!(
             self,
-            Self::Reserved | Self::DispatchPlanned | Self::RuntimeObserved
+            Self::Reserved
+                | Self::Preparing
+                | Self::SupervisorReady
+                | Self::DispatchPlanned
+                | Self::RuntimeObserved
+                | Self::Checking
         )
+    }
+    /// An explicit inspection acknowledgement is not permission to admit work.
+    pub fn blocks_admission(self) -> bool {
+        !self.terminal()
+            || matches!(
+                self,
+                Self::Uncertain | Self::InspectionRequired | Self::Blocked
+            )
     }
 }
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
@@ -88,7 +106,9 @@ impl WorkerRecord {
             && self.observations.len() <= 64
             && exact_safe(&json!(self), 4 * 1_048_576)
             && self.observations.iter().all(|o| {
-                let valid = transition(previous, o.status) && exact_safe(&o.details, 65_536);
+                let valid = (transition(previous, o.status)
+                    || (previous == o.status && o.details["recoveryVersion"] == 1))
+                    && exact_safe(&o.details, 65_536);
                 previous = o.status;
                 valid
             })
@@ -110,6 +130,9 @@ impl WorkerRecord {
                 "dispatch",
                 "fault",
                 "worktreeOperation",
+                "recovery",
+                "nextAction",
+                "authorizationRef",
             ] {
                 if let Some(value) = last.details.get(key) {
                     details.insert(key.into(), value.clone());
@@ -124,6 +147,20 @@ pub(crate) fn transition(from: WorkerStatus, to: WorkerStatus) -> bool {
     match from {
         WorkerStatus::Reserved => matches!(
             to,
+            WorkerStatus::Preparing
+                | WorkerStatus::DispatchPlanned
+                | WorkerStatus::Blocked
+                | WorkerStatus::Uncertain
+        ),
+        WorkerStatus::Preparing => matches!(
+            to,
+            WorkerStatus::SupervisorReady
+                | WorkerStatus::DispatchPlanned
+                | WorkerStatus::Blocked
+                | WorkerStatus::Uncertain
+        ),
+        WorkerStatus::SupervisorReady => matches!(
+            to,
             WorkerStatus::DispatchPlanned | WorkerStatus::Blocked | WorkerStatus::Uncertain
         ),
         WorkerStatus::DispatchPlanned => matches!(
@@ -132,7 +169,8 @@ pub(crate) fn transition(from: WorkerStatus, to: WorkerStatus) -> bool {
         ),
         WorkerStatus::RuntimeObserved => matches!(
             to,
-            WorkerStatus::Verified
+            WorkerStatus::Checking
+                | WorkerStatus::Verified
                 | WorkerStatus::NeedsWork
                 | WorkerStatus::NoChecks
                 | WorkerStatus::Failed
@@ -141,6 +179,18 @@ pub(crate) fn transition(from: WorkerStatus, to: WorkerStatus) -> bool {
                 | WorkerStatus::Invalidated
         ),
         WorkerStatus::Verified => to == WorkerStatus::Invalidated,
+        WorkerStatus::Checking => matches!(
+            to,
+            WorkerStatus::Verified
+                | WorkerStatus::NeedsWork
+                | WorkerStatus::Uncertain
+                | WorkerStatus::Invalidated
+        ),
+        WorkerStatus::Uncertain | WorkerStatus::Blocked => matches!(
+            to,
+            WorkerStatus::InspectionRequired | WorkerStatus::SetAside
+        ),
+        WorkerStatus::InspectionRequired => to == WorkerStatus::SetAside,
         _ => false,
     }
 }
@@ -167,12 +217,16 @@ pub enum WorkerCommand {
         status: WorkerStatus,
         details: Value,
     },
+    RecordRecovery {
+        id: String,
+        details: Value,
+    },
 }
 impl WorkerCommand {
     pub(crate) fn id(&self) -> &str {
         match self {
             Self::Reserve(r) => &r.intent.id,
-            Self::Observe { id, .. } => id,
+            Self::Observe { id, .. } | Self::RecordRecovery { id, .. } => id,
         }
     }
     pub(crate) fn body(&self) -> Value {
@@ -194,6 +248,7 @@ impl WorkerCommand {
                 status,
                 details,
             } => json!(["worker.observe", id, status, details]),
+            Self::RecordRecovery { id, details } => json!(["worker.reconcile", id, details]),
         }
     }
     pub(crate) fn bounded(&self) -> bool {
@@ -220,7 +275,7 @@ impl WorkerCommand {
                         .chain(r.diagnostics.iter().map(|d| json!(d))),
                 )
             }
-            Self::Observe { .. } => exact_safe(&body, 1_048_576),
+            Self::Observe { .. } | Self::RecordRecovery { .. } => exact_safe(&body, 1_048_576),
         }
     }
     pub(crate) fn fingerprint(&self) -> Value {

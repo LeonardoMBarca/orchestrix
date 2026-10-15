@@ -1,6 +1,6 @@
 # Orchestrix Core — runtime, domain, persistence and local Git
 
-OX-003 provides the Rust consumer of portable runtime contract 1.1: validation, admission checks and observation of one owned attempt. The runtime contract, domain and policy remain independent of OS process handles, provider messages and database types. Infrastructure modules implement local effects separately, without Node, Tauri, an autonomous planner or a daemon.
+OX-003 provides the Rust consumer of portable runtime contract 1.1: validation, admission checks and observation of one owned attempt. The runtime contract, domain and policy remain independent of OS process handles, provider messages and database types. Infrastructure modules implement local effects separately, without Node, Tauri or an autonomous planner. The [local daemon/recovery contract](../../docs/contracts/local-daemon.md) extends the manual worker without introducing another execution engine.
 
 OX-004 adds the [pure domain](src/domain/mod.rs): typed identities, projects/repositories, connections/shared capacity, conversations/session references, versioned modes/profiles, attempts, tasks and Runs. It consumes the same runtime observer and keeps execution outcome, output production, artifact acceptance, internal integration and final application separate. [Domain contract/API rules](../../docs/contracts/domain-and-states.md) and [original acceptance evidence](../../docs/research/ox-004-domain-increment.md) describe guarded operations. The domain module remains independent of SQL and actual process/Git/check services.
 
@@ -21,6 +21,7 @@ Requires Rust/Cargo and the platform's linker/toolchain. The development Windows
 ```powershell
 cargo check --workspace --all-targets --locked
 cargo test --workspace --locked
+cargo build --workspace --locked
 cargo build --workspace --examples --locked
 cd tools/runtime-harness
 npm.cmd run check:conformance
@@ -28,6 +29,8 @@ npm.cmd run test:rust-core
 ```
 
 After dependency download, these Cargo commands also work with `--offline`. The minimal rustup install used for this increment does not require an IDE or new system components; existing MSVC/SDK were reused.
+
+The CLI and `orchestrix-supervisor` helper must be built/deployed together. Integration tests build the binaries through Cargo; a consumer embedding the worker must package the trusted sibling helper explicitly. Missing support blocks launch rather than reducing containment guarantees.
 
 ## Durable commands and restoration
 
@@ -77,6 +80,10 @@ The portable parser does not establish credential identity/entitlement, active e
 
 The [manual-worker contract](../../docs/contracts/manual-worker.md) defines schema 1, cache validity, native effort translation, exact check binding, short SQLite operations, schema 4 and the initial Windows/serial profile. [Manual task manifest](../../docs/examples/manual-task.example.json), `cargo run --bin orchestrix -- help` and [integrated tests](tests/manual_worker.rs) provide the minimal entry. `run` explicitly opts into live Codex or a labelled synthetic runtime; `status` never starts a runtime. Source/worktree directories and SQLite authority are separate. A per-database OS host lease prevents concurrent hosts and lets status inspect active work without declaring a false crash. An interrupted host releases the lease, but an uncertain attempt is never retried automatically.
 
+OX-010/011 add [daemon/API/CLI](src/daemon.rs), schema 5 [command journal and event feed](src/persistence/daemon.rs), [reconciliation/continuity](src/recovery.rs) and a [trusted Rust keeper](src/recovery_guardian.rs). The Windows named-pipe transport restricts access to the current user and bounds frames/I/O. A daemon owns operational access and one serial worker; clients share the API intended for the future Desktop. Startup reconciles before binding and starts suspended. Suspend, cancel, snapshots, events, continuity and intervention require no model. Reads explicitly distinguish historical evidence from current verification.
+
+The keeper holds the exact Job before runtime launch; authorized checks share that scope. After host death/finish/deadline, it seals new process admission before terminating members and certifying zero active processes. Its private receipt proves local closure only. Exact-revision intervention may set eligible incidents aside while preserving native uncertainty, artifacts and command identity; it never redispatches the old task. Missing/corrupt evidence remains blocked. Git retains OX-006 limitations; a local receipt is neither a provider terminal nor power-loss proof. [Daemon tests](tests/local_daemon.rs) and [crash recovery tests](tests/worker_recovery.rs) use real Windows processes/Git/SQLite with synthetic runtime; [current status](../../docs/DEVELOPMENT_STATUS.md) records their acceptance separately from the earlier live Codex proof.
+
 The [input profile](../../docs/contracts/runtime-input-profile.md) defines strict Gregorian/offset timestamps, finite binary64 JSON numbers and Unicode scalar strings. Normalized UTC milliseconds are idempotent; invalid/ambiguous legacy strings never become evidence. This is scoped conformance, not equivalence with every permissive `Date.parse` or arbitrary JavaScript input. Lexical validation includes ignored/overwritten fields; projection validates/skips compatible deep unknown data, including the existing 500-level regressions. Typed invalid-field priorities and numeric rounding match the compared inputs. The example's outer host-bundle decoder remains bounded and is not a production transport. Frame/collection bounds do not certify global memory usage, durability or cross-platform runtime support.
 
-See [contract](../../docs/contracts/runtime-contract-v1.md), [portable input acceptance](../../docs/research/portable-runtime-input-increment.md), [preceding Rust evidence](../../docs/research/rust-runtime-contract-increment.md) and the [backlog](../../docs/DEVELOPMENT_BACKLOG.md). Independent review, final integration/application, recovery reconciliation, daemon and Desktop retain their own dependencies; local fixtures do not complete M0 or certify live provider controls.
+See [contract](../../docs/contracts/runtime-contract-v1.md), [portable input acceptance](../../docs/research/portable-runtime-input-increment.md), [preceding Rust evidence](../../docs/research/rust-runtime-contract-increment.md) and the [backlog](../../docs/DEVELOPMENT_BACKLOG.md). Independent artifact review, final integration/application and Desktop retain their own dependencies; local fixtures do not complete M0 or certify live provider controls. Preventive capacity reserves, contextual multiagent scheduling and actual orchestrator transfer remain planned under [CAP/CONT requirements](../../docs/design/capacity-and-continuity.md).

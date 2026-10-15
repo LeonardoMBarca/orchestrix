@@ -88,6 +88,43 @@ pub fn evaluate(
     artifact: &str,
     cancel: &CancellationToken,
 ) -> Result<CheckReport, &'static str> {
+    evaluate_owned(spec, cwd, artifact, cancel, None, || {})
+}
+
+/// Run in the worker's recoverable scope. The caller must keep its guardian
+/// alive until the check and its owned-process cleanup have completed.
+pub fn evaluate_in_scope(
+    spec: &CheckSpec,
+    cwd: &Path,
+    artifact: &str,
+    cancel: &CancellationToken,
+    scope: &orchestrix_process::named_job::JobScope,
+) -> Result<CheckReport, &'static str> {
+    evaluate_owned(spec, cwd, artifact, cancel, Some(scope), || {})
+}
+
+/// Host observation seam after the owned process is actually created. It does
+/// not supply authority, alter check criteria or declare a check passed.
+#[doc(hidden)]
+pub fn evaluate_in_scope_with_started<F: FnOnce()>(
+    spec: &CheckSpec,
+    cwd: &Path,
+    artifact: &str,
+    cancel: &CancellationToken,
+    scope: &orchestrix_process::named_job::JobScope,
+    started: F,
+) -> Result<CheckReport, &'static str> {
+    evaluate_owned(spec, cwd, artifact, cancel, Some(scope), started)
+}
+
+fn evaluate_owned<F: FnOnce()>(
+    spec: &CheckSpec,
+    cwd: &Path,
+    artifact: &str,
+    cancel: &CancellationToken,
+    scope: Option<&orchestrix_process::named_job::JobScope>,
+    started: F,
+) -> Result<CheckReport, &'static str> {
     spec.validate()?;
     let file = std::fs::File::open(&spec.executable).map_err(|_| "check-path")?;
     let mut binary = Vec::new();
@@ -111,7 +148,7 @@ pub fn evaluate(
             .to_string()
             .as_bytes(),
     );
-    let mut process = OwnedProcess::spawn(SpawnSpec {
+    let launch = SpawnSpec {
         executable: spec.executable.clone(),
         arguments: spec.arguments.iter().map(OsString::from).collect(),
         cwd: cwd.into(),
@@ -121,8 +158,13 @@ pub fn evaluate(
             max_output_bytes: 65_536,
             max_write_bytes: 1024,
         },
-    })
+    };
+    let mut process = match scope {
+        Some(scope) => OwnedProcess::spawn_identified(launch, scope),
+        None => OwnedProcess::spawn(launch),
+    }
     .map_err(|_| "check-launch")?;
+    started();
     process.close_input();
     let start = Instant::now();
     let (mut out, mut err) = (Vec::new(), Vec::new());

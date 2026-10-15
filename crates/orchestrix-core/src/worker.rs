@@ -89,12 +89,61 @@ impl From<RuntimeError> for WorkerError {
 type Result<T> = std::result::Result<T, WorkerError>;
 
 pub struct ManualWorker;
+/// Explicit lifecycle seam for controlled process-crash proofs. Normal execution
+/// uses a no-op observer; callbacks do not authorize effects or alter recovery.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum WorkerCheckpoint {
+    Reserved,
+    WorktreeCreated,
+    SupervisorIntentPersisted,
+    SupervisorReady,
+    SupervisorRecorded,
+    RuntimeConnected,
+    DispatchIntentPersisted,
+    DispatchConfirmed,
+    TerminalObserved,
+    RuntimeObserved,
+    ArtifactCaptured,
+    Checking,
+    CheckStarted,
+    KeeperLostAfterRuntimeConnect,
+}
 impl ManualWorker {
     pub fn run(
         store: &mut Store,
         input: &ManualTaskRequest,
         launch: RuntimeLaunch,
         cancel: &CancellationToken,
+    ) -> Result<WorkerRecord> {
+        Self::run_with_checkpoint(store, input, launch, cancel, |_| {})
+    }
+    #[doc(hidden)]
+    pub fn run_with_checkpoint<F: FnMut(WorkerCheckpoint)>(
+        store: &mut Store,
+        input: &ManualTaskRequest,
+        launch: RuntimeLaunch,
+        cancel: &CancellationToken,
+        checkpoint: F,
+    ) -> Result<WorkerRecord> {
+        Self::run_observed(store, input, launch, cancel, checkpoint, false)
+    }
+    #[doc(hidden)]
+    pub fn run_with_keeper_failure<F: FnMut(WorkerCheckpoint)>(
+        store: &mut Store,
+        input: &ManualTaskRequest,
+        launch: RuntimeLaunch,
+        cancel: &CancellationToken,
+        checkpoint: F,
+    ) -> Result<WorkerRecord> {
+        Self::run_observed(store, input, launch, cancel, checkpoint, true)
+    }
+    fn run_observed<F: FnMut(WorkerCheckpoint)>(
+        store: &mut Store,
+        input: &ManualTaskRequest,
+        launch: RuntimeLaunch,
+        cancel: &CancellationToken,
+        mut checkpoint: F,
+        keeper_failure: bool,
     ) -> Result<WorkerRecord> {
         let body = serde_json::to_value(input).map_err(|_| WorkerError("manifest"))?;
         if !exact_safe(&body, 1_048_576)
@@ -115,7 +164,7 @@ impl ManualWorker {
             .load()?
             .workers()
             .values()
-            .any(|w| !w.status().terminal() || w.status() == WorkerStatus::Uncertain)
+            .any(|w| w.status().blocks_admission())
         {
             return Err(WorkerError("serial-admission-blocked"));
         }
@@ -145,6 +194,14 @@ impl ManualWorker {
         }
         let repository = git::paths::canonical_directory(&input.repository_directory)?;
         let authorized = git::paths::canonical_directory(&input.authorized_worktree_directory)?;
+        git::paths::reject_links(store.path())?;
+        if git::paths::strict_descendant(&repository, store.path())
+            || git::paths::strict_descendant(&authorized, store.path())
+        {
+            return Err(WorkerError(
+                "database-must-be-outside-repository-and-worktrees",
+            ));
+        }
         if input.base_commit.len() != 40 && input.base_commit.len() != 64 {
             return Err(WorkerError("base-commit"));
         }
@@ -335,6 +392,7 @@ impl ManualWorker {
             }))),
         )?;
         // Any interruption after this point leaves a durable attempt and will not automatically dispatch again.
+        checkpoint(WorkerCheckpoint::Reserved);
         let outcome = Self::execute(
             store,
             input,
@@ -346,6 +404,8 @@ impl ManualWorker {
             &authorized,
             suffix,
             &metadata,
+            &mut checkpoint,
+            keeper_failure,
         );
         if let Err(error) = outcome {
             let current = record(store, &input.id)?;
@@ -383,6 +443,8 @@ impl ManualWorker {
         authorized: &Path,
         suffix: &str,
         expected_metadata: &RuntimeMetadata,
+        checkpoint: &mut impl FnMut(WorkerCheckpoint),
+        keeper_failure: bool,
     ) -> Result<()> {
         let initial = record(store, &input.id)?;
         let service = WorktreeService::new()?;
@@ -404,14 +466,46 @@ impl ManualWorker {
                 base_commit: input.base_commit.clone(),
             },
         )?;
+        checkpoint(WorkerCheckpoint::WorktreeCreated);
         let path = PathBuf::from(&worktree.intent.path);
+        let helper = crate::recovery_guardian::default_helper()?;
+        let binding = crate::recovery_guardian::GuardianBinding::prepare(
+            store.path(),
+            &initial.intent.attempt_id,
+            &helper,
+        )?;
+        // No turn is sent before DispatchPlanned. A crash during connect may
+        // lose local process evidence, but cannot invent a submitted task.
+        observe(
+            store,
+            &input.id,
+            WorkerStatus::Preparing,
+            json!({"worktreeOperation":worktree.intent.operation_id,"turnDispatch":"not-entered","guardian":binding,"runtimeSpawnRequiresSupervisorReady":true}),
+        )?;
+        checkpoint(WorkerCheckpoint::SupervisorIntentPersisted);
+        let mut guardian = crate::recovery_guardian::Guardian::start(binding, &helper)?;
+        checkpoint(WorkerCheckpoint::SupervisorReady);
+        observe(
+            store,
+            &input.id,
+            WorkerStatus::SupervisorReady,
+            json!({"worktreeOperation":worktree.intent.operation_id,"ownedJobKeeperReady":true}),
+        )?;
+        checkpoint(WorkerCheckpoint::SupervisorRecorded);
         let mut adapter = CodexAdapter::connect(
-            launch.with_cwd(path.clone()),
+            launch
+                .with_cwd(path.clone())
+                .with_job_scope(guardian.job()?),
             &input.connection_id,
             input.connection_revision,
             now()?,
             cancel,
         )?;
+        if keeper_failure {
+            guardian.stop_for_fault()?;
+            checkpoint(WorkerCheckpoint::KeeperLostAfterRuntimeConnect);
+        }
+        checkpoint(WorkerCheckpoint::RuntimeConnected);
         if !expected_metadata.same_identity(adapter.metadata())
             || expected_metadata.descriptor.as_json() != adapter.metadata().descriptor.as_json()
             || expected_metadata.controls != adapter.metadata().controls
@@ -461,10 +555,14 @@ impl ManualWorker {
             WorkerStatus::DispatchPlanned,
             json!({"worktreeOperation":worktree.intent.operation_id,"synthetic":adapter.metadata().synthetic,"admissionDiagnostic":admission_id}),
         )?;
+        checkpoint(WorkerCheckpoint::DispatchIntentPersisted);
         let mut sequence = 0usize;
         let report=adapter.execute(AttemptExecution{request,prompt,base_instructions:"Follow only the authorized Context Pack. Do not delegate. Preserve the user's source repository.".into(),developer_instructions:"Use the owned worktree only. Do not execute tests or scripts: the host runs explicitly authorized checks after capture.".into(),resume:None},cancel,|frame,origin|{
             sequence+=1;
-            commit(store,&input.id,&format!("event-{sequence}"),Command::run(RunId::new(&initial.intent.run_id).map_err(|_|RuntimeError::observation_failed())?,RunAction::Observe{task:TaskId::new(&initial.intent.task_id).map_err(|_|RuntimeError::observation_failed())?,frame:frame.to_string(),origin})).map_err(|_|RuntimeError::observation_failed())
+            commit(store,&input.id,&format!("event-{sequence}"),Command::run(RunId::new(&initial.intent.run_id).map_err(|_|RuntimeError::observation_failed())?,RunAction::Observe{task:TaskId::new(&initial.intent.task_id).map_err(|_|RuntimeError::observation_failed())?,frame:frame.to_string(),origin})).map_err(|_|RuntimeError::observation_failed())?;
+            if frame["type"] == "attempt.admission-observed" { checkpoint(WorkerCheckpoint::DispatchConfirmed); }
+            if frame["type"] == "attempt.terminal-observed" { checkpoint(WorkerCheckpoint::TerminalObserved); }
+            Ok(())
         })?;
         let tree_stopped = report
             .tree
@@ -479,6 +577,7 @@ impl ManualWorker {
             WorkerStatus::RuntimeObserved,
             json!({"dispatch":report.dispatch,"fault":report.fault.as_ref().map(RuntimeError::code),"treeStopped":tree_stopped,"streamsClosed":drained,"synthetic":report.synthetic,"adapterBinding":report.binding.as_ref().map(|b|b.checkpoint()),"adapterDiagnostic":report.adapter_diagnostic,"worktreeOperation":worktree.intent.operation_id}),
         )?;
+        checkpoint(WorkerCheckpoint::RuntimeObserved);
         let current = record(store, &input.id)?;
         let state = store.load()?;
         let attempt_state = state.runs()[&RunId::new(&current.intent.run_id)?]
@@ -520,6 +619,7 @@ impl ManualWorker {
             &worktree.intent.operation_id,
             "runtime-artifact",
         )?;
+        checkpoint(WorkerCheckpoint::ArtifactCaptured);
         if attempt_state != AttemptState::Succeeded {
             return observe(
                 store,
@@ -562,6 +662,13 @@ impl ManualWorker {
         let mut checks = vec![];
         let mut all_passed = true;
         let mut invalidated = false;
+        observe(
+            store,
+            &input.id,
+            WorkerStatus::Checking,
+            json!({"worktreeOperation":worktree.intent.operation_id,"artifactRevision":artifact.revision,"checksStarted":false}),
+        )?;
+        checkpoint(WorkerCheckpoint::Checking);
         for (n, spec) in input.checks.iter().enumerate() {
             let before =
                 git::capture(&executor, &path, &worktree.intent, CaptureLimits::default())?;
@@ -569,8 +676,15 @@ impl ManualWorker {
                 invalidated = true;
                 break;
             }
-            let mut check =
-                evaluate(spec, &path, &artifact.revision, cancel).map_err(WorkerError)?;
+            let mut check = evaluate_in_scope_with_started(
+                spec,
+                &path,
+                &artifact.revision,
+                cancel,
+                &guardian.job()?,
+                || checkpoint(WorkerCheckpoint::CheckStarted),
+            )
+            .map_err(WorkerError)?;
             let after = git::capture(&executor, &path, &worktree.intent, CaptureLimits::default());
             let stable = after
                 .as_ref()
@@ -642,14 +756,14 @@ impl ManualWorker {
         let Some(_lease) = lease(store)? else {
             return Ok(current);
         };
+        Self::inspect_owned(store, id)
+    }
+    /// Caller holds the worker host lease; recovery must not release it between
+    /// reconciliation and exact artifact inspection.
+    pub(crate) fn inspect_owned(store: &mut Store, id: &str) -> Result<WorkerRecord> {
+        let current = record(store, id)?;
         if !current.status().terminal() {
-            transport_lost(store, &current, "host-reopened-without-terminal")?;
-            observe(
-                store,
-                id,
-                WorkerStatus::Uncertain,
-                json!({"reason":"host-reopened-without-terminal","inspectionRequired":true}),
-            )?;
+            crate::recovery::reconcile_one(store, id)?;
         } else if current.status() == WorkerStatus::Verified {
             let last = current
                 .observations
@@ -692,7 +806,7 @@ impl ManualWorker {
         record(store, id)
     }
 }
-fn lease(store: &Store) -> Result<Option<orchestrix_process::lease::HostLease>> {
+pub(crate) fn lease(store: &Store) -> Result<Option<orchestrix_process::lease::HostLease>> {
     let path = store.path();
     let mut filename = path
         .file_name()
@@ -730,7 +844,12 @@ fn commit(store: &mut Store, id: &str, key: &str, command: Command) -> Result<()
     }
     Ok(())
 }
-fn observe(store: &mut Store, id: &str, status: WorkerStatus, details: Value) -> Result<()> {
+pub(crate) fn observe(
+    store: &mut Store,
+    id: &str,
+    status: WorkerStatus,
+    details: Value,
+) -> Result<()> {
     let record = record(store, id)?;
     if status == WorkerStatus::Invalidated && record.status() == WorkerStatus::Invalidated {
         return Ok(());
@@ -747,7 +866,11 @@ fn observe(store: &mut Store, id: &str, status: WorkerStatus, details: Value) ->
         }),
     )
 }
-fn transport_lost(store: &mut Store, record: &WorkerRecord, reason: &str) -> Result<()> {
+pub(crate) fn transport_lost(
+    store: &mut Store,
+    record: &WorkerRecord,
+    _reason: &str,
+) -> Result<()> {
     let state = store.load()?;
     let task = state.runs()[&RunId::new(&record.intent.run_id)?]
         .task(&TaskId::new(&record.intent.task_id)?)?;
@@ -768,7 +891,9 @@ fn transport_lost(store: &mut Store, record: &WorkerRecord, reason: &str) -> Res
                 RunId::new(&record.intent.run_id)?,
                 RunAction::TransportLost {
                     task: TaskId::new(&record.intent.task_id)?,
-                    reason: reason.into(),
+                    // The contextual host reason belongs to the worker
+                    // observation; normalized observer vocabulary is finite.
+                    reason: "transport-loss".into(),
                 },
             ),
         )?;

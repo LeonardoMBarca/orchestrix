@@ -265,7 +265,7 @@ fn populated_v3_migrates_to_worker_schema_without_rewriting_existing_project() {
             .connection
             .pragma_query_value(None, "user_version", |r| r.get::<_, i64>(0))
             .unwrap(),
-        4
+        SCHEMA_VERSION
     );
 }
 
@@ -295,6 +295,63 @@ fn worker_migration_failure_is_atomic_and_preserves_version_three() {
     assert_eq!(
         db.query_row(
             "SELECT count(*) FROM sqlite_master WHERE name='worker_observations'",
+            [],
+            |r| r.get::<_, i64>(0)
+        )
+        .unwrap(),
+        0
+    );
+}
+
+#[test]
+fn version_four_gains_stable_daemon_identity_and_atomic_domain_event_feed() {
+    let temp = TempDb::new();
+    schema::create_v4(&temp.path);
+    let mut store = Store::open(&temp.path).unwrap();
+    let initial = store.daemon_state().unwrap();
+    assert!(initial.suspended);
+    assert_eq!(initial.cursor.sequence, 0);
+    store
+        .execute(&add("after-v4-migration", 0, "preserved-project"))
+        .unwrap();
+    let (events, cursor, more) = store.daemon_events(&initial.cursor, 128).unwrap().unwrap();
+    assert!(!events.is_empty());
+    assert!(!more);
+    assert_eq!(events[0].kind, "domain-change");
+    assert_eq!(events[0].body["revision"], 1);
+    assert_eq!(cursor.database, initial.cursor.database);
+    drop(store);
+    let reopened = Store::open(&temp.path).unwrap();
+    assert_eq!(reopened.daemon_state().unwrap().cursor, cursor);
+    assert_eq!(reopened.load().unwrap().projects().len(), 1);
+}
+
+#[test]
+fn daemon_migration_failure_is_atomic_and_preserves_version_four() {
+    let temp = TempDb::new();
+    schema::create_v4(&temp.path);
+    let db = Connection::open(&temp.path).unwrap();
+    db.execute_batch(
+        "CREATE TABLE daemon_meta(sentinel TEXT); INSERT INTO daemon_meta VALUES('preserve')",
+    )
+    .unwrap();
+    drop(db);
+    assert!(Store::open(&temp.path).is_err());
+    let db = Connection::open(&temp.path).unwrap();
+    assert_eq!(
+        db.pragma_query_value(None, "user_version", |r| r.get::<_, i64>(0))
+            .unwrap(),
+        4
+    );
+    assert_eq!(
+        db.query_row("SELECT sentinel FROM daemon_meta", [], |r| r
+            .get::<_, String>(0))
+            .unwrap(),
+        "preserve"
+    );
+    assert_eq!(
+        db.query_row(
+            "SELECT count(*) FROM sqlite_master WHERE name='daemon_events'",
             [],
             |r| r.get::<_, i64>(0)
         )

@@ -1,6 +1,7 @@
 //! Portable domain/policy with separate persistence, Git, runtime and manual-worker infrastructure.
 #![forbid(unsafe_code)]
 
+pub mod daemon;
 pub mod domain;
 pub mod evaluator;
 pub mod git;
@@ -10,6 +11,8 @@ pub mod persistence;
 pub mod persistence_privacy;
 pub mod persistence_records;
 pub mod policy;
+pub mod recovery;
+pub mod recovery_guardian;
 pub mod runtime;
 pub mod runtime_contract;
 pub mod worker;

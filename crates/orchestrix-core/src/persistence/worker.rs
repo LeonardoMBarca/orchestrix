@@ -9,6 +9,15 @@ pub(super) fn validate(state: &SavedState) -> StoreResult<()> {
         if id != &i.id || !record.validate() {
             return Err(StoreError::InvalidState);
         }
+        for observation in record
+            .observations
+            .iter()
+            .filter(|o| o.details["recoveryVersion"] == 1)
+        {
+            if !crate::recovery::valid_local_proof(record, &observation.details) {
+                return Err(StoreError::InvalidState);
+            }
+        }
         let run = state
             .runs
             .get(&RunId::new(&i.run_id)?)
@@ -94,6 +103,18 @@ pub(super) fn validate(state: &SavedState) -> StoreResult<()> {
             }
         }
         match record.status() {
+            WorkerStatus::SetAside
+                if !crate::recovery::set_aside_evidence(state, record)
+                    || record.observations.last().is_none_or(|o| {
+                        o.details["authorizationRef"]
+                            .as_str()
+                            .is_none_or(|s| LocalRef::new(s).is_err())
+                            || o.details["resumeAutomatically"] != false
+                            || o.details["remoteResultUnchanged"] != true
+                    }) =>
+            {
+                return Err(StoreError::InvalidState);
+            }
             WorkerStatus::Cancelled if attempt.state() != AttemptState::Cancelled => {
                 return Err(StoreError::InvalidState);
             }
@@ -172,7 +193,7 @@ pub(super) fn apply(state: &mut SavedState, command: &WorkerCommand) -> StoreRes
             if state
                 .workers
                 .values()
-                .any(|w| !w.status().terminal() || w.status() == WorkerStatus::Uncertain)
+                .any(|w| w.status().blocks_admission())
             {
                 return Err(DomainError::InvalidTransition.into());
             }
@@ -287,6 +308,22 @@ pub(super) fn apply(state: &mut SavedState, command: &WorkerCommand) -> StoreRes
             }
             record.observations.push(WorkerObservation {
                 status: *status,
+                details: details.clone(),
+            });
+        }
+        WorkerCommand::RecordRecovery { id, details } => {
+            let record = state
+                .workers
+                .get_mut(id)
+                .ok_or(DomainError::UnknownEntity)?;
+            if record.observations.len() >= 64
+                || !exact_safe(details, 65_536)
+                || !crate::recovery::valid_local_proof(record, details)
+            {
+                return Err(DomainError::InvalidReference.into());
+            }
+            record.observations.push(WorkerObservation {
+                status: record.status(),
                 details: details.clone(),
             });
         }

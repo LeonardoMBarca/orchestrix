@@ -49,6 +49,7 @@ pub struct RuntimeLaunch {
     cwd: PathBuf,
     version: String,
     fixture_arguments: Option<Vec<OsString>>,
+    job_scope: Option<orchestrix_process::named_job::JobScope>,
     pub process_limits: ProcessLimits,
     pub request_timeout: Duration,
     pub turn_timeout: Duration,
@@ -63,6 +64,7 @@ impl RuntimeLaunch {
             cwd,
             version,
             fixture_arguments: None,
+            job_scope: None,
             process_limits: ProcessLimits::default(),
             request_timeout: Duration::from_secs(15),
             turn_timeout: Duration::from_secs(90),
@@ -90,6 +92,18 @@ impl RuntimeLaunch {
     pub fn with_cwd(mut self, cwd: PathBuf) -> Self {
         self.cwd = cwd;
         self
+    }
+    /// Host-owned scope persisted before the adapter may create any process.
+    pub fn with_job_scope(mut self, scope: orchestrix_process::named_job::JobScope) -> Self {
+        self.job_scope = Some(scope);
+        self
+    }
+    fn owned_process(&self, spec: SpawnSpec) -> RuntimeResult<OwnedProcess> {
+        Ok(if let Some(scope) = &self.job_scope {
+            OwnedProcess::spawn_identified(spec, scope)?
+        } else {
+            OwnedProcess::spawn(spec)?
+        })
     }
     fn validate(&self) -> RuntimeResult<()> {
         if (!self.is_synthetic() && !SUPPORTED_CODEX_VERSIONS.contains(&self.version.as_str()))
@@ -175,7 +189,7 @@ impl RuntimeLaunch {
         let mut environment = runtime_environment();
         environment.retain(|(key, _)| !key.to_string_lossy().eq_ignore_ascii_case("CODEX_HOME"));
         environment.push(("CODEX_HOME".into(), self.codex_home.as_os_str().into()));
-        Ok(Rpc::new(OwnedProcess::spawn(SpawnSpec {
+        Ok(Rpc::new(self.owned_process(SpawnSpec {
             executable: self.executable.clone(),
             arguments,
             cwd: self.cwd.clone(),
@@ -331,6 +345,7 @@ impl CodexAdapter {
         if !discovery.ready && !discovery.mcp_names.is_empty() {
             // Disable inherited MCP resources in this child only, before any thread exists.
             rpc.process.terminate(Duration::from_secs(3))?;
+            drop(rpc);
             rpc = launch.spawn(&discovery.mcp_names)?;
             initialize(&mut rpc, &launch, cancel)?;
             discovery = discover(&mut rpc, &launch, connection_id, revision, now_ms, cancel)?;
@@ -1362,7 +1377,7 @@ fn runtime_environment() -> Vec<(OsString, OsString)> {
         .collect()
 }
 fn verify_binary_version(launch: &RuntimeLaunch, cancel: &CancellationToken) -> RuntimeResult<()> {
-    let mut process = OwnedProcess::spawn(SpawnSpec {
+    let mut process = launch.owned_process(SpawnSpec {
         executable: launch.executable.clone(),
         arguments: vec!["--version".into()],
         cwd: launch.cwd.clone(),
