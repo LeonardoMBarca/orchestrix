@@ -2,6 +2,7 @@
 #![forbid(unsafe_code)]
 
 pub mod daemon;
+pub mod desktop;
 pub mod domain;
 pub mod evaluator;
 pub mod git;
@@ -13,6 +14,8 @@ pub mod persistence_records;
 pub mod policy;
 pub mod recovery;
 pub mod recovery_guardian;
+pub mod review;
+pub mod review_records;
 pub mod runtime;
 pub mod runtime_contract;
 pub mod worker;

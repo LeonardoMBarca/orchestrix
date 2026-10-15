@@ -184,6 +184,77 @@ struct Daemon {
     child: Child,
     client: Client,
 }
+
+#[test]
+fn desktop_two_clients_replay_resync_and_reopen_use_the_same_durable_conversation() {
+    use orchestrix_core::desktop::DesktopRequest;
+    let fixture = Fixture::new();
+    let daemon = fixture.start();
+    let op = |request| Operation::Desktop {
+        request: Box::new(request),
+    };
+    let bootstrap = daemon.ok(op(DesktopRequest::Bootstrap));
+    assert_eq!(bootstrap["conversations"], serde_json::json!([]));
+    let original = DesktopRequest::CreateProject {
+        command_id: "desktop-project".into(),
+        expected_revision: 0,
+        id: "desktop-project".into(),
+        name: "Parser".into(),
+        directory: fixture.repository.to_string_lossy().to_string(),
+    };
+    daemon.ok(op(original.clone()));
+    let replay = daemon.ok(op(original));
+    assert_eq!(replay["replayed"], true);
+    let snapshot = daemon.ok(op(DesktopRequest::Bootstrap));
+    let revision = snapshot["revision"].as_u64().unwrap();
+    let second = Client::new(&fixture.database).unwrap();
+    let message = DesktopRequest::SendMessage {
+        command_id: "desktop-message".into(),
+        expected_revision: revision,
+        conversation_id: "chat-one".into(),
+        project_id: Some("desktop-project".into()),
+        content: "Investigate the parser".into(),
+    };
+    daemon.ok(op(message.clone()));
+    let replay = second
+        .request(&Request {
+            api_version: API_VERSION,
+            operation: op(message),
+        })
+        .unwrap();
+    assert!(replay.ok);
+    assert_eq!(replay.result["replayed"], true);
+    let stale = second
+        .request(&Request {
+            api_version: API_VERSION,
+            operation: op(DesktopRequest::SendMessage {
+                command_id: "stale-message".into(),
+                expected_revision: revision,
+                conversation_id: "chat-one".into(),
+                project_id: None,
+                content: "Stale client".into(),
+            }),
+        })
+        .unwrap();
+    assert_eq!(stale.error.as_deref(), Some("stale-revision-resync"));
+    let cursor: DaemonCursor = serde_json::from_value(bootstrap["eventCursor"].clone()).unwrap();
+    let events = daemon.ok(Operation::Events { cursor, limit: 128 });
+    assert_eq!(events["resyncRequired"], false);
+    assert!(events["events"].as_array().unwrap().len() >= 2);
+    let page = daemon.ok(op(DesktopRequest::Conversation {
+        conversation_id: "chat-one".into(),
+        after_ordinal: 0,
+        limit: 16,
+    }));
+    assert_eq!(page["messages"].as_array().unwrap().len(), 1);
+    daemon.stop();
+    let reopened = fixture.start();
+    let state = reopened.ok(op(DesktopRequest::Bootstrap));
+    assert_eq!(state["projects"][0]["name"], "Parser");
+    assert_eq!(state["conversations"].as_array().unwrap().len(), 1);
+    assert_eq!(state["admissionsSuspended"], true);
+    reopened.stop();
+}
 impl Daemon {
     fn send(&self, operation: Operation) -> orchestrix_core::daemon::Response {
         self.client

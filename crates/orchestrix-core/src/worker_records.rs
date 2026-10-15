@@ -23,6 +23,18 @@ pub struct WorkerIntent {
     /// exact legacy representation and grants no launch-free/closure guarantee.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub launch_protocol: Option<WorkerLaunchProtocol>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub correction: Option<CorrectionOrigin>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct CorrectionOrigin {
+    pub review_id: String,
+    pub source_worker_id: String,
+    pub artifact_id: String,
+    pub artifact_revision: String,
+    pub authorization_ref: String,
 }
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]

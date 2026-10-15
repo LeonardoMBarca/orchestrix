@@ -25,6 +25,40 @@ pub struct Request {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "kebab-case", deny_unknown_fields)]
 pub enum Operation {
+    CommandReceipt {
+        command_id: String,
+        fingerprint: String,
+    },
+    Desktop {
+        request: Box<crate::desktop::DesktopRequest>,
+    },
+    RequestReview {
+        command_id: String,
+        request: Box<crate::review_records::ReviewRequest>,
+        runtime: RuntimeChoice,
+    },
+    Correct {
+        command_id: String,
+        request: Box<crate::review_records::CorrectionRequest>,
+        runtime: RuntimeChoice,
+    },
+    RevalidateArtifact {
+        command_id: String,
+        worker_id: String,
+    },
+    SetAsideReview {
+        command_id: String,
+        review_id: String,
+        expected_revision: u64,
+        authorization_ref: String,
+    },
+    SubmitConversation {
+        command_id: String,
+        authorization_ref: String,
+        conversation_id: String,
+        task: Box<ManualTaskRequest>,
+        runtime: RuntimeChoice,
+    },
     Snapshot,
     Workers {
         cursor: DaemonCursor,
@@ -184,6 +218,7 @@ fn canonical_database_path(database: &Path) -> Result<PathBuf, String> {
     Ok(parent.join(database.file_name().ok_or("database-file")?))
 }
 struct Active {
+    cancellable: bool,
     worker_id: String,
     command_id: String,
     cancel: CancellationToken,
@@ -232,6 +267,13 @@ impl ControlDiagnostics {
 }
 fn operation_tag(operation: &Operation) -> &'static str {
     match operation {
+        Operation::Desktop { .. } => "desktop",
+        Operation::CommandReceipt { .. } => "command-receipt",
+        Operation::RequestReview { .. } => "review",
+        Operation::Correct { .. } => "correct",
+        Operation::SubmitConversation { .. } => "submit-conversation",
+        Operation::RevalidateArtifact { .. } => "revalidate-artifact",
+        Operation::SetAsideReview { .. } => "set-aside-review",
         Operation::Snapshot => "snapshot",
         Operation::Workers { .. } => "workers",
         Operation::Query { .. } => "query",
@@ -303,6 +345,7 @@ pub fn serve(database: &Path) -> Result<(), String> {
     store.daemon_start().map_err(|_| "daemon-start")?;
     // Recovery is deterministic. This startup never redispatches an accepted command.
     let _recovery = crate::recovery::reconcile(&mut store).map_err(|_| "reconciliation")?;
+    crate::review::ReviewPipeline::reconcile(&mut store).map_err(|_| "review-reconciliation")?;
     for (id, kind, _) in store.daemon_pending().map_err(|_| "pending-commands")? {
         store.daemon_finish(&id,&json!({"state":"interrupted-before-response","kind":kind,"resumeAutomatically":false,"inspectionRequired":true})).map_err(|_|"pending-reconciliation")?;
     }
@@ -324,12 +367,15 @@ pub fn serve(database: &Path) -> Result<(), String> {
             let joined = completed.thread.join().is_ok();
             let result = match outcome {
                 Ok(summary) if joined => {
-                    json!({"state":"finished","workerId":summary["workerId"],"status":summary["status"],"artifactRevision":summary["details"]["artifactRevision"],"resultQuery":"status","delivered":false})
+                    json!({"state":"finished","workerId":completed.worker_id,"status":summary["status"],"artifactRevision":summary["details"].get("artifactRevision").unwrap_or(&summary["artifact_revision"]),"resultQuery":"inspect","delivered":false})
                 }
                 Err(code) if joined => {
                     let reserved = store
                         .daemon_worker_exists(&completed.worker_id)
-                        .map_err(|_| "completion-inspection")?;
+                        .map_err(|_| "completion-inspection")?
+                        || store
+                            .daemon_review_exists(&completed.worker_id)
+                            .map_err(|_| "completion-inspection")?;
                     json!({"state":if reserved{"inspection-required"}else{"rejected-before-reservation"},"reason":code,"workerId":completed.worker_id,"reservationPersisted":reserved,"resumeAutomatically":false,"nextAction":if reserved{"inspect-recovery"}else{"inspect-connection-and-submit-a-new-authorized-command"}})
                 }
                 _ => {
@@ -422,10 +468,22 @@ fn handle_inner(
     shutdown: &mut Option<Shutdown>,
 ) -> Result<Value, String> {
     match &operation {
+        Operation::CommandReceipt {
+            command_id,
+            fingerprint,
+        } => {
+            return store
+                .daemon_receipt(command_id, fingerprint)
+                .map(|receipt| json!({"found":receipt.is_some(),"receipt":receipt}))
+                .map_err(|_| "command-id-conflict".into());
+        }
+        Operation::Desktop { request } => return crate::desktop::handle(store, request),
         Operation::Snapshot => {
             let mut snapshot = store.daemon_snapshot().map_err(|_| "snapshot")?;
             snapshot["activeWorkerId"] = json!(active.as_ref().map(|a| &a.worker_id));
+            snapshot["activeCancellable"] = json!(active.as_ref().is_some_and(|a| a.cancellable));
             snapshot["shuttingDown"] = json!(shutdown.is_some());
+            snapshot["features"] = json!(["desktop-v1", "review-v1"]);
             return Ok(snapshot);
         }
         Operation::Workers {
@@ -473,10 +531,23 @@ fn handle_inner(
             };
         }
         Operation::Recovery => {
-            return serde_json::to_value(
+            let mut result = serde_json::to_value(
                 crate::recovery::snapshot(store).map_err(|_| "recovery-inspection")?,
             )
-            .map_err(|_| "recovery-schema".into());
+            .map_err(|_| "recovery-schema")?;
+            let state = store.load().map_err(|_| "database")?;
+            let reviews: Vec<_> = state
+                .reviews()
+                .values()
+                .filter(|r| r.status().blocks_admission())
+                .map(|r| r.summary())
+                .collect();
+            if !reviews.is_empty() {
+                result["has_blocking_cases"] = json!(true);
+                result["ready_for_admission"] = json!(false);
+            }
+            result["reviews"] = json!(reviews);
+            return Ok(result);
         }
         Operation::Continuity { worker_id, budget } => {
             let pack = crate::recovery::compile_continuity(store, worker_id, *budget)
@@ -494,6 +565,11 @@ fn handle_inner(
     );
     let command_id = match &operation {
         Operation::Submit { command_id, .. }
+        | Operation::SubmitConversation { command_id, .. }
+        | Operation::RevalidateArtifact { command_id, .. }
+        | Operation::SetAsideReview { command_id, .. }
+        | Operation::RequestReview { command_id, .. }
+        | Operation::Correct { command_id, .. }
         | Operation::Suspend { command_id }
         | Operation::Resume { command_id }
         | Operation::Cancel { command_id, .. }
@@ -511,7 +587,248 @@ fn handle_inner(
     if shutdown.is_some() {
         return Err("daemon-shutting-down".into());
     }
+    let (operation, conversation_id) = match operation {
+        Operation::SubmitConversation {
+            command_id,
+            authorization_ref,
+            conversation_id,
+            task,
+            runtime,
+        } => {
+            let state = store.load().map_err(|_| "database")?;
+            let conversation = state
+                .conversations()
+                .conversation(
+                    &crate::domain::ConversationId::new(&conversation_id)
+                        .map_err(|_| "conversation-id")?,
+                )
+                .ok_or("conversation-not-found")?;
+            if conversation.project_id().map(|p| p.as_str()) != Some(&task.project_id) {
+                return Err("attach-conversation-to-task-project-first".into());
+            }
+            (
+                Operation::Submit {
+                    command_id,
+                    authorization_ref,
+                    task,
+                    runtime,
+                },
+                Some(conversation_id),
+            )
+        }
+        other => (other, None),
+    };
     match operation {
+        Operation::SetAsideReview {
+            command_id,
+            review_id,
+            expected_revision,
+            authorization_ref,
+        } => {
+            if active.is_some() {
+                return Err("worker-active-recovery-not-permitted".into());
+            }
+            let receipt = store
+                .daemon_begin(
+                    &command_id,
+                    &fingerprint,
+                    "set-aside-review",
+                    Some(&review_id),
+                    None,
+                )
+                .map_err(|_| "command-journal")?;
+            match crate::review::ReviewPipeline::set_aside(
+                store,
+                &review_id,
+                expected_revision,
+                &authorization_ref,
+            ) {
+                Ok(record) => {
+                    store.daemon_finish(&command_id,&json!({"state":"review-set-aside","reviewId":record.intent.id,"remoteOutcomeUnchanged":true,"resumeAutomatically":false})).map_err(|_|"command-completion")?;
+                    receipt_json(receipt)
+                }
+                Err(e) => {
+                    store
+                        .daemon_finish(
+                            &command_id,
+                            &json!({"state":"review-intervention-rejected","reason":e.0}),
+                        )
+                        .map_err(|_| "command-completion")?;
+                    Err(e.0.into())
+                }
+            }
+        }
+        Operation::RevalidateArtifact {
+            command_id,
+            worker_id,
+        } => {
+            if active.is_some() {
+                return Err("worker-active-revalidation-deferred".into());
+            }
+            let receipt = store
+                .daemon_begin(
+                    &command_id,
+                    &fingerprint,
+                    "revalidate-artifact",
+                    Some(&worker_id),
+                    None,
+                )
+                .map_err(|_| "command-journal")?;
+            let id = worker_id.clone();
+            let path = database.to_owned();
+            let cancel = CancellationToken::new();
+            let (tx, rx) = mpsc::sync_channel(1);
+            let spawned = std::thread::Builder::new()
+                .name("orchestrix-artifact-revalidation".into())
+                .spawn(move || {
+                    let result = Store::open(&path)
+                        .map_err(|_| "database".to_owned())
+                        .and_then(|mut store| {
+                            ManualWorker::inspect(&mut store, &id)
+                                .map(|r| r.summary())
+                                .map_err(|e| e.0.into())
+                        });
+                    let _ = tx.send(result);
+                });
+            let thread = worker_thread_result(store, &command_id, &worker_id, spawned)?;
+            *active = Some(Active {
+                worker_id,
+                command_id,
+                cancel,
+                thread,
+                done: rx,
+                cancellable: false,
+            });
+            receipt_json(receipt)
+        }
+        Operation::RequestReview {
+            command_id,
+            request,
+            runtime,
+        } => {
+            if store.daemon_state().map_err(|_| "database")?.suspended {
+                return Err("admissions-suspended".into());
+            }
+            if active.is_some() {
+                return Err("serial-worker-active".into());
+            }
+            let state = store.load().map_err(|_| "database")?;
+            if state
+                .reviews()
+                .values()
+                .any(|r| r.status().blocks_admission())
+                || state
+                    .workers()
+                    .values()
+                    .any(|w| w.status().blocks_admission())
+            {
+                return Err("recovery-inspection-required".into());
+            }
+            drop(state);
+            let launch = runtime.launch_in(database.parent().ok_or("database-parent")?)?;
+            let receipt = store
+                .daemon_begin(&command_id, &fingerprint, "review", Some(&request.id), None)
+                .map_err(|_| "command-journal")?;
+            let worker_id = request.id.clone();
+            let path = database.to_owned();
+            let cancel = CancellationToken::new();
+            let token = cancel.clone();
+            let (tx, rx) = mpsc::sync_channel(1);
+            let spawned = std::thread::Builder::new()
+                .name("orchestrix-independent-review".into())
+                .spawn(move || {
+                    let result = Store::open(&path)
+                        .map_err(|_| "database".to_owned())
+                        .and_then(|mut store| {
+                            crate::review::ReviewPipeline::review(
+                                &mut store, &request, launch, &token,
+                            )
+                            .map(|r| r.summary())
+                            .map_err(|e| e.0.into())
+                        });
+                    let _ = tx.send(result);
+                });
+            let thread = worker_thread_result(store, &command_id, &worker_id, spawned)?;
+            *active = Some(Active {
+                worker_id,
+                command_id,
+                cancel,
+                thread,
+                done: rx,
+                cancellable: true,
+            });
+            receipt_json(receipt)
+        }
+        Operation::Correct {
+            command_id,
+            request,
+            runtime,
+        } => {
+            if store.daemon_state().map_err(|_| "database")?.suspended {
+                return Err("admissions-suspended".into());
+            }
+            if active.is_some() {
+                return Err("serial-worker-active".into());
+            }
+            if store
+                .load()
+                .map_err(|_| "database")?
+                .reviews()
+                .values()
+                .any(|r| r.status().blocks_admission())
+            {
+                return Err("review-recovery-inspection-required".into());
+            }
+            let launch = runtime.launch(&request.task)?;
+            validate_database_separation(database, &request.task)?;
+            let receipt = store
+                .daemon_begin(
+                    &command_id,
+                    &fingerprint,
+                    "correct",
+                    Some(&request.id),
+                    None,
+                )
+                .map_err(|_| "command-journal")?;
+            let worker_id = request.id.clone();
+            let path = database.to_owned();
+            let cancel = CancellationToken::new();
+            let token = cancel.clone();
+            let (tx, rx) = mpsc::sync_channel(1);
+            let spawned = std::thread::Builder::new()
+                .name("orchestrix-bounded-correction".into())
+                .spawn(move || {
+                    let result = Store::open(&path)
+                        .map_err(|_| "database".to_owned())
+                        .and_then(|mut store| {
+                            let result = crate::review::ReviewPipeline::correct(
+                                &mut store, &request, launch, &token,
+                            )
+                            .map_err(|e| e.0.to_owned());
+                            if let Some(record) = store
+                                .load()
+                                .map_err(|_| "conversation-link-state")?
+                                .workers()
+                                .get(&request.id)
+                                .cloned()
+                            {
+                                link_correction_conversations(&mut store, &record)?;
+                            }
+                            result.map(|r| r.summary())
+                        });
+                    let _ = tx.send(result);
+                });
+            let thread = worker_thread_result(store, &command_id, &worker_id, spawned)?;
+            *active = Some(Active {
+                worker_id,
+                command_id,
+                cancel,
+                thread,
+                done: rx,
+                cancellable: true,
+            });
+            receipt_json(receipt)
+        }
         Operation::Submit {
             command_id,
             authorization_ref,
@@ -529,6 +846,15 @@ fn handle_inner(
             }
             if active.is_some() {
                 return Err("serial-worker-active".into());
+            }
+            if store
+                .load()
+                .map_err(|_| "database")?
+                .reviews()
+                .values()
+                .any(|r| r.status().blocks_admission())
+            {
+                return Err("review-recovery-inspection-required".into());
             }
             if crate::recovery::snapshot(store)
                 .map_err(|_| "recovery-inspection")?
@@ -577,6 +903,36 @@ fn handle_inner(
                                 } else {
                                     ManualWorker::run(&mut worker_store, &task, launch, &token)
                                 };
+                                if let Some(conversation) = conversation_id.as_ref()
+                                    && let Some(record) = worker_store
+                                        .load()
+                                        .map_err(|_| "conversation-link-state")?
+                                        .workers()
+                                        .get(&task.id)
+                                        .cloned()
+                                {
+                                    use crate::domain::{AttemptId, ConversationId, RunId, TaskId};
+                                    crate::worker::commit(
+                                        &mut worker_store,
+                                        &task.id,
+                                        "conversation-link",
+                                        crate::persistence::Command::LinkWork {
+                                            conversation: ConversationId::new(conversation)
+                                                .map_err(|_| "conversation-id")?,
+                                            run: RunId::new(&record.intent.run_id)
+                                                .map_err(|_| "run-id")?,
+                                            task: Some(
+                                                TaskId::new(&record.intent.task_id)
+                                                    .map_err(|_| "task-id")?,
+                                            ),
+                                            attempt: Some(
+                                                AttemptId::new(&record.intent.attempt_id)
+                                                    .map_err(|_| "attempt-id")?,
+                                            ),
+                                        },
+                                    )
+                                    .map_err(|_| "conversation-link")?;
+                                }
                                 result
                                     .map(|record| record.summary())
                                     .map_err(|e| e.0.to_owned())
@@ -586,6 +942,7 @@ fn handle_inner(
                 });
             let thread = worker_thread_result(store, &command_id, &worker_id, spawned)?;
             *active = Some(Active {
+                cancellable: true,
                 worker_id,
                 command_id,
                 cancel,
@@ -607,6 +964,16 @@ fn handle_inner(
             receipt_json(r)
         }
         Operation::Resume { command_id } => {
+            if active.is_none()
+                && store
+                    .load()
+                    .map_err(|_| "database")?
+                    .reviews()
+                    .values()
+                    .any(|r| r.status().blocks_admission())
+            {
+                return Err("review-recovery-inspection-required".into());
+            }
             if active.is_none() {
                 let summary = crate::recovery::snapshot(store).map_err(|_| "reconciliation")?;
                 if summary.has_blocking_cases {
@@ -632,6 +999,9 @@ fn handle_inner(
                 .as_ref()
                 .filter(|a| a.worker_id == worker_id)
                 .ok_or("worker-not-active-owned-by-daemon")?;
+            if !a.cancellable {
+                return Err("deterministic-inspection-not-cancellable".into());
+            }
             let r = store
                 .daemon_begin(&command_id, &fingerprint, "cancel", Some(&worker_id), None)
                 .map_err(|_| "command-journal")?;
@@ -728,6 +1098,47 @@ fn handle_inner(
 fn receipt_json(receipt: DaemonCommandReceipt) -> Result<Value, String> {
     serde_json::to_value(receipt).map_err(|_| "response-schema".into())
 }
+fn link_correction_conversations(
+    store: &mut Store,
+    record: &crate::worker_records::WorkerRecord,
+) -> Result<(), String> {
+    use crate::domain::{AttemptId, RunId, TaskId};
+    let run = RunId::new(&record.intent.run_id).map_err(|_| "run-id")?;
+    let task = TaskId::new(&record.intent.task_id).map_err(|_| "task-id")?;
+    let attempt = AttemptId::new(&record.intent.attempt_id).map_err(|_| "attempt-id")?;
+    let conversations = store
+        .load()
+        .map_err(|_| "conversation-link-state")?
+        .conversations()
+        .conversations()
+        .filter(|c| {
+            c.work_references()
+                .iter()
+                .any(|w| w.run_id() == &run && w.task_id() == Some(&task))
+                && !c
+                    .work_references()
+                    .iter()
+                    .any(|w| w.attempt_id() == Some(&attempt))
+        })
+        .map(|c| c.id().clone())
+        .collect::<Vec<_>>();
+    for conversation in conversations {
+        let suffix = content_hash(conversation.as_str().as_bytes());
+        crate::worker::commit(
+            store,
+            &record.intent.id,
+            &format!("conversation-link-{}", &suffix[..24]),
+            crate::persistence::Command::LinkWork {
+                conversation,
+                run: run.clone(),
+                task: Some(task.clone()),
+                attempt: Some(attempt.clone()),
+            },
+        )
+        .map_err(|_| "conversation-link")?;
+    }
+    Ok(())
+}
 fn worker_thread_result(
     store: &mut Store,
     command_id: &str,
@@ -744,6 +1155,9 @@ fn worker_thread_result(
 }
 impl RuntimeChoice {
     fn launch(self, task: &ManualTaskRequest) -> Result<RuntimeLaunch, String> {
+        self.launch_in(&task.repository_directory)
+    }
+    fn launch_in(self, directory: &Path) -> Result<RuntimeLaunch, String> {
         match self {
             Self::Codex {
                 executable,
@@ -757,7 +1171,7 @@ impl RuntimeChoice {
                 Ok(RuntimeLaunch::codex(
                     executable,
                     home,
-                    task.repository_directory.clone(),
+                    directory.to_owned(),
                     version,
                 ))
             }
@@ -776,6 +1190,12 @@ impl RuntimeChoice {
                     "rate-limit",
                     "catalog-seven",
                     "shutdown-stall",
+                    "review-implementation",
+                    "review-correction",
+                    "review-accept",
+                    "review-reject",
+                    "review-invalid",
+                    "review-mutate",
                 ]
                 .contains(&scenario.as_str())
                 {
@@ -792,7 +1212,7 @@ impl RuntimeChoice {
                         },
                     ],
                     home,
-                    task.repository_directory.clone(),
+                    directory.to_owned(),
                 );
                 launch.turn_timeout = Duration::from_secs(6);
                 launch.interrupt_grace = Duration::from_millis(300);

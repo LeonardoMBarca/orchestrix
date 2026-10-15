@@ -41,6 +41,29 @@ pub struct GitExecutor {
     private: PathBuf,
 }
 impl GitExecutor {
+    /// Read only, fixed built-in for a host-granted repository. No arbitrary arguments.
+    pub fn inspect_head(&self, repository: &Path) -> GitResult<String> {
+        let output = self
+            .run_bounded(
+                repository,
+                &strings(&["rev-parse", "--verify", "HEAD^{commit}"]),
+                None,
+                DEADLINE,
+                256,
+            )?
+            .checked()?;
+        let oid = std::str::from_utf8(&output)
+            .map_err(|_| GitError::Unsupported)?
+            .trim();
+        if !matches!(oid.len(), 40 | 64)
+            || !oid
+                .bytes()
+                .all(|c| c.is_ascii_hexdigit() && !c.is_ascii_uppercase())
+        {
+            return Err(GitError::Unsupported);
+        }
+        Ok(oid.to_owned())
+    }
     pub fn new() -> GitResult<Self> {
         let binary = find_git()?;
         let parent = canonical_directory(&env::temp_dir())?;

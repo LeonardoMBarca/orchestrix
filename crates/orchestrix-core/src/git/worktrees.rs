@@ -441,7 +441,18 @@ impl WorktreeService {
             || project.repository().location() != &request.directory_reference
             || attempt.inputs().project.as_ref() != Some(&request.project)
             || attempt.inputs().worktree != request.worktree_reference
-            || attempt.inputs().base.as_str() != request.base_commit
+            || (attempt.inputs().base.as_str() != request.base_commit
+                && !state.workers().values().any(|w| {
+                    w.intent.attempt_id == attempt.id().as_str()
+                        && w.intent.base_oid == request.base_commit
+                        && w.intent.correction.as_ref().is_some_and(|origin| {
+                            attempt.inputs().correction_of.as_ref().is_some_and(|a| {
+                                a.id().as_str() == origin.artifact_id
+                                    && a.revision().as_str() == origin.artifact_revision
+                                    && attempt.inputs().base == *a.revision()
+                            })
+                        })
+                }))
         {
             return Err(GitError::Ownership);
         }

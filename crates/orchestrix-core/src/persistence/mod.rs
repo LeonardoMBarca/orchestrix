@@ -2,7 +2,9 @@
 //! Every mutation uses detached state and a single, bounded writer transaction.
 mod commands;
 mod daemon;
+mod desktop;
 mod git;
+mod review;
 mod schema;
 mod state;
 mod worker;
@@ -190,6 +192,11 @@ impl Store {
             return Err(StoreError::Privacy(
                 crate::persistence_privacy::PrivacyError::Limit,
             ));
+        }
+        if let Command::Review(command) = &request.command
+            && !command.bounded()
+        {
+            return Err(StoreError::InvalidState);
         }
         let body = request.command.body();
         // Check supported input bounds before hashing; only the digest is stored.

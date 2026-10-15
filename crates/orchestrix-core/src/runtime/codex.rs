@@ -85,6 +85,10 @@ impl RuntimeLaunch {
     pub fn is_synthetic(&self) -> bool {
         self.fixture_arguments.is_some()
     }
+    /// The structured-result schema was inspected on this pinned native profile.
+    pub fn structured_results_supported(&self) -> bool {
+        self.is_synthetic() || self.version == "0.162.0-alpha.17.2"
+    }
     pub fn cwd(&self) -> &Path {
         &self.cwd
     }
@@ -230,6 +234,13 @@ impl RuntimeMetadata {
                 == other.descriptor.as_json()["runtimeVersion"]
             && self.synthetic == other.synthetic
     }
+    /// Historical connection identity is checked without exposing native account data.
+    pub fn matches_binding(&self, binding: &SessionBinding) -> bool {
+        self.account_fingerprint == binding.account_fingerprint
+            && self.descriptor.as_json()["connection"]["id"] == binding.connection_id
+            && self.descriptor.as_json()["connection"]["revision"] == binding.revision
+            && self.descriptor.as_json()["runtimeVersion"] == binding.runtime_version
+    }
 }
 /// Adapter-owned mapping. The domain only sees local connection/session/attempt IDs.
 #[derive(Clone)]
@@ -255,6 +266,15 @@ impl std::fmt::Debug for SessionBinding {
 impl SessionBinding {
     pub fn checkpoint(&self) -> Value {
         json!({"version":1,"connectionId":self.connection_id,"connectionRevision":self.revision,"sessionId":self.session_id,"nativeThread":self.native_thread,"accountFingerprint":self.account_fingerprint,"runtimeVersion":self.runtime_version})
+    }
+    /// Separate native and local sessions on the same explicitly bound connection.
+    pub fn independent_of(&self, source: &Self) -> bool {
+        self.connection_id == source.connection_id
+            && self.revision == source.revision
+            && self.account_fingerprint == source.account_fingerprint
+            && self.runtime_version == source.runtime_version
+            && self.session_id != source.session_id
+            && self.native_thread != source.native_thread
     }
     pub fn restore(value: &Value) -> RuntimeResult<Self> {
         if value.as_object().is_none_or(|map| map.len() != 7)
@@ -300,6 +320,9 @@ pub struct RuntimeReport {
     /// This is not a normalized domain event or evidence of a native terminal.
     pub adapter_diagnostic: Option<Value>,
     pub dispatch: &'static str,
+    /// Bounded final assistant result requested through the official output schema channel.
+    /// Never includes reasoning, tool output or a conversation transcript.
+    pub structured_output: Option<String>,
     pub tree: Option<TreeState>,
     pub streams: StreamState,
     pub synthetic: bool,
@@ -374,6 +397,37 @@ impl CodexAdapter {
         &mut self,
         execution: AttemptExecution,
         cancel: &CancellationToken,
+        sink: F,
+    ) -> RuntimeResult<RuntimeReport>
+    where
+        F: FnMut(&Value, EventOrigin) -> RuntimeResult<()>,
+    {
+        self.execute_result(execution, None, cancel, sink)
+    }
+    /// Structured results still require host-side schema and evidence validation.
+    pub fn execute_structured<F>(
+        &mut self,
+        execution: AttemptExecution,
+        output_schema: Value,
+        cancel: &CancellationToken,
+        sink: F,
+    ) -> RuntimeResult<RuntimeReport>
+    where
+        F: FnMut(&Value, EventOrigin) -> RuntimeResult<()>,
+    {
+        if !self.launch.structured_results_supported() {
+            return Err(RuntimeError::new("unsupported", "not-sent"));
+        }
+        if !output_schema.is_object() || output_schema.to_string().len() > 16_384 {
+            return Err(RuntimeError::new("policy", "not-sent"));
+        }
+        self.execute_result(execution, Some(output_schema), cancel, sink)
+    }
+    fn execute_result<F>(
+        &mut self,
+        execution: AttemptExecution,
+        output_schema: Option<Value>,
+        cancel: &CancellationToken,
         mut sink: F,
     ) -> RuntimeResult<RuntimeReport>
     where
@@ -389,8 +443,16 @@ impl CodexAdapter {
             Limits::default(),
         )?;
         let mut binding = None;
-        let attempt_result =
-            self.execute_inner(&execution, cancel, &mut observer, &mut binding, &mut sink);
+        let mut structured_output = None;
+        let attempt_result = self.execute_inner(
+            &execution,
+            output_schema.as_ref(),
+            &mut structured_output,
+            cancel,
+            &mut observer,
+            &mut binding,
+            &mut sink,
+        );
         let mut fault = attempt_result.err();
         if let Some(error) = &fault
             && observer.snapshot()["fatal"] != true
@@ -461,14 +523,18 @@ impl CodexAdapter {
             fault,
             adapter_diagnostic,
             dispatch,
+            structured_output,
             tree,
             streams,
             synthetic: self.launch.is_synthetic(),
         })
     }
+    #[allow(clippy::too_many_arguments)]
     fn execute_inner<F>(
         &mut self,
         execution: &AttemptExecution,
+        output_schema: Option<&Value>,
+        structured_output: &mut Option<String>,
         cancel: &CancellationToken,
         observer: &mut RuntimeObserver,
         binding: &mut Option<SessionBinding>,
@@ -588,6 +654,9 @@ impl CodexAdapter {
             sink,
         )?;
         let mut turn_params = json!({"threadId":native_thread,"input":[{"type":"text","text":execution.prompt,"text_elements":[]}],"sandboxPolicy":configuration["sandbox"],"approvalPolicy":"never","approvalsReviewer":"user"});
+        if let Some(schema) = output_schema {
+            turn_params["outputSchema"] = schema.clone();
+        }
         if let Some(effort) = effort {
             turn_params["effort"] = json!(effort);
         }
@@ -802,7 +871,7 @@ impl CodexAdapter {
             }
             let relevant = matches!(
                 method,
-                "turn/started" | "turn/completed" | "item/agentMessage/delta"
+                "turn/started" | "turn/completed" | "item/agentMessage/delta" | "item/completed"
             );
             if params["threadId"] != native_thread {
                 // A contradictory execution frame is a protocol ownership
@@ -877,6 +946,27 @@ impl CodexAdapter {
                             Some(&message),
                         ));
                     }
+                }
+                "item/completed"
+                    if output_schema.is_some() && params["item"]["type"] == "agentMessage" =>
+                {
+                    let item = &params["item"];
+                    if item.get("phase").is_some_and(|phase| phase == "commentary") {
+                        continue;
+                    }
+                    let text = item["text"]
+                        .as_str()
+                        .filter(|text| !text.is_empty() && text.len() <= 65_536)
+                        .ok_or_else(|| RuntimeError::new("protocol", "sent"))?;
+                    if structured_output.is_some()
+                        || item
+                            .get("phase")
+                            .is_some_and(|phase| !phase.is_null() && phase != "final_answer")
+                    {
+                        return Err(RuntimeError::new("protocol", "sent"));
+                    }
+                    output_bytes = output_bytes.max(text.len() as u64);
+                    *structured_output = Some(text.to_owned());
                 }
                 "turn/completed" => {
                     let outcome = params["turn"]["status"]

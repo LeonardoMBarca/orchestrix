@@ -40,6 +40,8 @@ pub enum Command {
     Records(crate::persistence_records::RecordsCommand),
     Git(crate::git_records::GitCommand),
     Worker(crate::worker_records::WorkerCommand),
+    Review(crate::review_records::ReviewCommand),
+    Desktop(crate::desktop::DesktopCommand),
 }
 
 pub enum RunAction {
@@ -124,6 +126,19 @@ impl Command {
         &self,
         state: &SavedState,
     ) -> (Option<String>, Option<String>, Option<String>) {
+        if let Self::Review(command) = self {
+            return state
+                .reviews
+                .get(command.id())
+                .map(|r| {
+                    (
+                        Some(r.intent.run_id.clone()),
+                        Some(r.intent.task_id.clone()),
+                        Some(r.intent.source_attempt_id.clone()),
+                    )
+                })
+                .unwrap_or_default();
+        }
         if let Self::Git(command) = self {
             return state
                 .worktrees
@@ -239,6 +254,8 @@ impl Command {
             Self::Records(value) => json!(["records", value]),
             Self::Git(value) => value.fingerprint_body(),
             Self::Worker(value) => value.fingerprint(),
+            Self::Review(value) => value.body(),
+            Self::Desktop(value) => json!(["desktop", value]),
         }
     }
     pub(super) fn name(&self) -> &'static str {
@@ -257,6 +274,8 @@ impl Command {
             Self::Records(_) => "records",
             Self::Git(value) => value.name(),
             Self::Worker(_) => "worker",
+            Self::Review(_) => "review",
+            Self::Desktop(_) => "desktop",
         }
     }
     pub(super) fn observed_failure(&self, error: &DomainError) -> bool {
@@ -276,7 +295,14 @@ impl Command {
             ) | (RunAction::Observe { .. }, DomainError::Runtime(_))
         )
     }
-    pub(super) fn apply(&self, state: &mut SavedState) -> StoreResult<Value> {
+    pub(crate) fn apply(&self, state: &mut SavedState) -> StoreResult<Value> {
+        if let Self::Review(command) = self {
+            super::review::apply(state, command)?;
+            return Ok(Value::Null);
+        }
+        if let Self::Desktop(command) = self {
+            return command.apply(state);
+        }
         if let Self::Worker(command) = self {
             super::worker::apply(state, command)?;
             return Ok(Value::Null);
@@ -486,6 +512,9 @@ impl Command {
             }
             Self::Git(_) => unreachable!("Git commands handled before domain commands"),
             Self::Worker(_) => unreachable!("Worker commands handled before domain commands"),
+            Self::Review(_) | Self::Desktop(_) => {
+                unreachable!("infrastructure commands handled first")
+            }
         }
         Ok(Value::Null)
     }

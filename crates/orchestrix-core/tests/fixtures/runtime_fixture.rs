@@ -304,6 +304,10 @@ fn main() {
                     std::io::stdout().flush().unwrap();
                     continue;
                 }
+                if scenario == "review-hang" {
+                    std::fs::write(auth_home.join("review-started"), b"started").unwrap();
+                    continue;
+                }
                 if scenario == "hang" || scenario == "lost-reply" || scenario == "ignore-interrupt"
                 {
                     continue;
@@ -342,7 +346,11 @@ fn main() {
                 }
                 if matches!(
                     scenario,
-                    "success" | "check-failed" | "catalog-seven" | "remote-status-global"
+                    "success"
+                        | "check-failed"
+                        | "catalog-seven"
+                        | "remote-status-global"
+                        | "review-implementation"
                 ) && prompt.contains("fixture-edit")
                 {
                     let path = cwd.join("fixture.txt");
@@ -358,9 +366,62 @@ fn main() {
                         .unwrap();
                     }
                 }
-                send(
-                    json!({"method":"item/agentMessage/delta","params":{"threadId":thread,"turnId":turn_id,"delta":"Synthetic runtime finished."}}),
-                );
+                if scenario == "review-implementation" {
+                    std::fs::write(
+                        cwd.join("implementation.txt"),
+                        "preserve prior implementation\n",
+                    )
+                    .unwrap();
+                }
+                if scenario == "review-correction" {
+                    assert!(prompt.contains("finding-one"));
+                    assert!(prompt.contains("Correct the exact rejected artifact"));
+                    assert_eq!(
+                        std::fs::read_to_string(cwd.join("fixture.txt")).unwrap(),
+                        "after\n"
+                    );
+                    assert_eq!(
+                        std::fs::read_to_string(cwd.join("implementation.txt")).unwrap(),
+                        "preserve prior implementation\n"
+                    );
+                    std::fs::write(cwd.join("correction.txt"), "finding-one addressed\n").unwrap();
+                }
+                if params.get("outputSchema").is_some() && scenario.starts_with("review-") {
+                    assert_eq!(sandbox["type"], "readOnly");
+                    std::fs::write(auth_home.join("review-sandbox"), sandbox.to_string()).unwrap();
+                    std::fs::write(
+                        auth_home.join("review-schema"),
+                        params["outputSchema"].to_string(),
+                    )
+                    .unwrap();
+                    let marker = "REVIEW_ARTIFACT_REVISION=";
+                    let revision = prompt
+                        .split(marker)
+                        .nth(1)
+                        .unwrap()
+                        .chars()
+                        .take(64)
+                        .collect::<String>();
+                    let rejected = scenario == "review-reject";
+                    let result = if scenario == "review-invalid" {
+                        "unstructured approval is not evidence".to_owned()
+                    } else {
+                        json!({"schema_version":1,"artifact_revision":revision,"verdict":if rejected{"rejected"}else{"accepted"},"summary":"Synthetic independent review result","findings":if rejected{json!([{"id":"finding-one","severity":"medium","path":"fixture.txt","artifact_revision":revision,"line_start":1,"line_end":1,"explanation":"Exercise a correction of the exact artifact","evidence":"fixture.txt line 1 contains after"}])}else{json!([])}}).to_string()
+                    };
+                    if scenario == "review-mutate" {
+                        std::fs::write(cwd.join("fixture.txt"), "unauthorized write\n").unwrap();
+                    }
+                    send(
+                        json!({"method":"item/agentMessage/delta","params":{"threadId":thread,"turnId":turn_id,"itemId":"final-result","delta":result}}),
+                    );
+                    send(
+                        json!({"method":"item/completed","params":{"threadId":thread,"turnId":turn_id,"item":{"type":"agentMessage","id":"final-result","phase":"final_answer","text":result}}}),
+                    );
+                } else {
+                    send(
+                        json!({"method":"item/agentMessage/delta","params":{"threadId":thread,"turnId":turn_id,"delta":"Synthetic runtime finished."}}),
+                    );
+                }
                 send(
                     json!({"method":"turn/completed","params":{"threadId":thread,"turn":{"id":turn_id,"status":"completed","error":null}}}),
                 );

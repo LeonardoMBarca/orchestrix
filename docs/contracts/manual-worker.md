@@ -4,6 +4,22 @@ This is the initial OX-007/008/009 implementation contract. [Current status](../
 
 OX-010/011 extend its ownership, schema and recovery through the [local daemon contract](./local-daemon.md) and [ADR-0008](../adr/0008-recoverable-process-ownership.md). The original live report below still proves its recorded revision, not a new live test of this extension.
 
+OX-013 adds [`review.rs`](../../crates/orchestrix-core/src/review.rs) and [`review_records.rs`](../../crates/orchestrix-core/src/review_records.rs) to this same pipeline. It does not add a scheduler, a second frontend worker engine or OX-014 application. Acceptance and any new live proof remain separate in current status.
+
+## Independent review and bounded correction
+
+Review requires a currently verified exact artifact, its objective/criteria, immutable diff/content and check evidence. It uses a distinct local session/attempt and confirms a distinct native thread and matching connection identity. The reviewer profile mandates read-only, network disabled and the existing native-delegation restrictions. Conflicting mandatory settings block admission. One account and serial execution suffice; model family/effort is not imposed by the development session.
+
+The structured-result path is pinned to the Codex `0.162.0-alpha.17.2` official schema and the explicit synthetic fixture. `turn/start.outputSchema` requests the bounded final assistant result; only correlated completed final-answer items populate it. The host validates a closed JSON schema, exact artifact revision, verdict/findings consistency, file/line references and evidence. It does not store reasoning or treat free text as a technical verdict. The older ordinary-worker adapter profile does not implicitly gain this reviewed result channel.
+
+Accepted/Rejected requires confirmed native read-only/network settings, independent identity, successful terminal, owned tree closure and closed streams. These conditions are revalidated on restoration of every technical final observation, including a later invalidated one. Invalid output, protocol failure, cancellation, timeout and missing quota are separate outcomes and grant no approval. Directory watches plus exact recapture detect changes during/after verification/review. Editing an old worktree cannot withdraw checks or approval from a newer correction artifact.
+
+Read-only in this native profile enforces denied writes and disabled network through the runtime's confirmed sandbox. It does not establish OS read confinement to only the Context Pack/worktree, nor override the existing local-user threat boundary. An unsupported version or an unconfirmed mandatory restriction blocks the combination.
+
+Explicit correction creates a new attempt in the same Run/Task, with `correction_of` pointing to the rejected artifact. The Git commit-base remains the pinned commit OID; a content-manifest revision is never passed as a Git commit. The worker materializes the exact supported source bytes in its own clean worktree, preserves history and checks the materialization before dispatch. The initial correction profile rejects source artifacts with index changes relative to base; it does not silently lose staged state. Historical captures remain immutable.
+
+The first review fixes the Task's review/correction count and elapsed-time budget. Counts include admitted attempts; failed/uncertain work is not automatically retried. The pipeline enforces at most three corrections/four reviews and a configured deadline of at most one hour, within the existing 90-second turn and 300-second owned-scope bounds. Exhaustion blocks further admissions: this increment has no budget-amendment/reset operation, and another command ID cannot enlarge the original allowance. A corrected artifact must pass its authorized checks and receive a new independent review; prior approval does not transfer. Technical Approved is not final integration, application or delivery.
+
 [R9 live acceptance](../research/manual-worker-increment.md#r9-authorized-live-acceptance) records the production Rust worker with Codex `0.162.0-alpha.17.2` on Windows, one subscription, serial execution and a compatible Git fixture. Its verified artifact remains pending independent review/application. CLI task execution has separate synthetic-provider evidence; CLI status reopened the live result without inference.
 
 ## Ownership and interfaces

@@ -332,7 +332,7 @@ impl Store {
     }
 }
 
-fn historical_worker(
+pub(super) fn historical_worker(
     connection: &rusqlite::Connection,
     id: &str,
 ) -> StoreResult<Option<WorkerRecord>> {
@@ -465,6 +465,7 @@ mod tests {
                 context: json!({}),
                 authorized_checks: json!([]),
                 launch_protocol: None,
+                correction: None,
             };
             assert!(intent.validate());
             connection

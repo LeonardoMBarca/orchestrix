@@ -125,7 +125,7 @@ impl ManualWorker {
         cancel: &CancellationToken,
         checkpoint: F,
     ) -> Result<WorkerRecord> {
-        Self::run_observed(store, input, launch, cancel, checkpoint, false)
+        Self::run_observed(store, input, launch, cancel, checkpoint, false, None)
     }
     #[doc(hidden)]
     pub fn run_with_keeper_failure<F: FnMut(WorkerCheckpoint)>(
@@ -135,8 +135,18 @@ impl ManualWorker {
         cancel: &CancellationToken,
         checkpoint: F,
     ) -> Result<WorkerRecord> {
-        Self::run_observed(store, input, launch, cancel, checkpoint, true)
+        Self::run_observed(store, input, launch, cancel, checkpoint, true, None)
     }
+    pub(crate) fn run_correction(
+        store: &mut Store,
+        input: &ManualTaskRequest,
+        launch: RuntimeLaunch,
+        cancel: &CancellationToken,
+        origin: CorrectionOrigin,
+    ) -> Result<WorkerRecord> {
+        Self::run_observed(store, input, launch, cancel, |_| {}, false, Some(origin))
+    }
+    #[allow(clippy::too_many_arguments)]
     fn run_observed<F: FnMut(WorkerCheckpoint)>(
         store: &mut Store,
         input: &ManualTaskRequest,
@@ -144,6 +154,7 @@ impl ManualWorker {
         cancel: &CancellationToken,
         mut checkpoint: F,
         keeper_failure: bool,
+        correction: Option<CorrectionOrigin>,
     ) -> Result<WorkerRecord> {
         let body = serde_json::to_value(input).map_err(|_| WorkerError("manifest"))?;
         if !exact_safe(&body, 1_048_576)
@@ -152,7 +163,14 @@ impl ManualWorker {
         {
             return Err(WorkerError("manifest"));
         }
-        let request_hash = content_hash(body.to_string().as_bytes());
+        let request_hash = content_hash(
+            if let Some(origin) = &correction {
+                json!([body, origin]).to_string()
+            } else {
+                body.to_string()
+            }
+            .as_bytes(),
+        );
         if let Some(old) = store.load()?.workers().get(&input.id) {
             if old.intent.request_hash != request_hash {
                 return Err(WorkerError("request-id-conflict"));
@@ -165,6 +183,11 @@ impl ManualWorker {
             .workers()
             .values()
             .any(|w| w.status().blocks_admission())
+            || store
+                .load()?
+                .reviews()
+                .values()
+                .any(|r| r.status().blocks_admission())
         {
             return Err(WorkerError("serial-admission-blocked"));
         }
@@ -241,6 +264,12 @@ impl ManualWorker {
             crate::runtime::MetadataRead::Ready { metadata, .. } => metadata,
             _ => return Err(WorkerError("metadata-refresh-pending")),
         };
+        if let Some(origin) = &correction {
+            let old = record(store, &origin.source_worker_id)?;
+            if !metadata.matches_binding(&crate::review::source_binding(&old)?) {
+                return Err(WorkerError("correction-connection-identity-changed"));
+            }
+        }
         let runtime_observation = observed(&metadata, &diagnostic_id)?;
         let decision = policy::resolve(
             &input.policy,
@@ -252,8 +281,20 @@ impl ManualWorker {
         if selection.concurrency != 1 || selection.service_tier.is_some() {
             return Err(WorkerError("unsupported-initial-worker-control"));
         }
-        let run_id = RunId::new(format!("run-{suffix}"))?;
-        let task_id = TaskId::new(format!("task-{suffix}"))?;
+        let source = correction
+            .as_ref()
+            .map(|origin| record(store, &origin.source_worker_id))
+            .transpose()?;
+        let run_id = RunId::new(
+            source
+                .as_ref()
+                .map_or_else(|| format!("run-{suffix}"), |r| r.intent.run_id.clone()),
+        )?;
+        let task_id = TaskId::new(
+            source
+                .as_ref()
+                .map_or_else(|| format!("task-{suffix}"), |r| r.intent.task_id.clone()),
+        )?;
         let attempt_id = AttemptId::new(format!("attempt-{suffix}"))?;
         let session_id = RuntimeSessionId::new(format!("session-{suffix}"))?;
         let context_id = format!("context-{suffix}");
@@ -299,10 +340,26 @@ impl ManualWorker {
                 },
                 mode,
                 profile,
-                base: RevisionId::new(&input.base_commit)?,
+                base: RevisionId::new(
+                    correction
+                        .as_ref()
+                        .map_or(input.base_commit.as_str(), |o| o.artifact_revision.as_str()),
+                )?,
                 worktree: LocalRef::new(format!("worktree-{suffix}"))?,
                 project: Some(project.id().clone()),
-                correction_of: None,
+                correction_of: if let Some(origin) = &correction {
+                    let state = store.load()?;
+                    let task = state.runs()[&run_id].task(&task_id)?;
+                    let artifact = task.artifact().ok_or(WorkerError("correction-source"))?;
+                    if artifact.id().as_str() != origin.artifact_id
+                        || artifact.revision().as_str() != origin.artifact_revision
+                    {
+                        return Err(WorkerError("correction-source"));
+                    }
+                    Some(artifact.clone())
+                } else {
+                    None
+                },
             },
         )?;
         let mut run = Run::new(
@@ -319,6 +376,9 @@ impl ManualWorker {
             vec![],
         )?)?;
         run.make_ready(&task_id)?;
+        if correction.is_some() {
+            run = Run::restore_checkpoint(&store.load()?.runs()[&run_id].checkpoint())?;
+        }
         let definitions = vec![
             definition(
                 DefinitionKind::Mode,
@@ -369,6 +429,7 @@ impl ManualWorker {
             context: context.as_json().clone(),
             authorized_checks: json!(input.checks),
             launch_protocol: Some(WorkerLaunchProtocol::GuardedRuntimeAndChecksV1),
+            correction,
         };
         let diagnostics = vec![diagnostic_input(
             store,
@@ -467,6 +528,9 @@ impl ManualWorker {
                 base_commit: input.base_commit.clone(),
             },
         )?;
+        if let Some(origin) = &initial.intent.correction {
+            crate::review::materialize_correction(store, &worktree, origin)?;
+        }
         checkpoint(WorkerCheckpoint::WorktreeCreated);
         let path = PathBuf::from(&worktree.intent.path);
         let helper = crate::recovery_guardian::default_helper()?;
@@ -633,7 +697,7 @@ impl ManualWorker {
                 json!({"artifactRevision":artifact.revision,"synthetic":report.synthetic,"worktreeOperation":worktree.intent.operation_id}),
             );
         }
-        let version = artifact_version(&artifact)?;
+        let version = artifact_version(&artifact, &worktree.intent.domain_base)?;
         commit(
             store,
             &input.id,
@@ -792,7 +856,14 @@ impl ManualWorker {
                 let state = store.load()?;
                 let artifact = state.runs()[&RunId::new(&current.intent.run_id)?]
                     .task(&TaskId::new(&current.intent.task_id)?)?
-                    .artifact()
+                    .attempts()
+                    .iter()
+                    .find(|a| a.id().as_str() == current.intent.attempt_id)
+                    .and_then(|a| {
+                        a.artifacts()
+                            .iter()
+                            .find(|a| a.revision().as_str() == artifact_revision)
+                    })
                     .cloned()
                     .ok_or(WorkerError("artifact"))?;
                 invalidate_evidence(store, &current, &artifact, "changed-after-verification")?;
@@ -833,7 +904,7 @@ fn record(store: &Store, id: &str) -> Result<WorkerRecord> {
         .cloned()
         .ok_or(WorkerError("unknown-worker"))
 }
-fn commit(store: &mut Store, id: &str, key: &str, command: Command) -> Result<()> {
+pub(crate) fn commit(store: &mut Store, id: &str, key: &str, command: Command) -> Result<()> {
     let result = store.execute(&Request {
         scope: LocalRef::new(id)?,
         key: LocalRef::new(key)?,
@@ -919,6 +990,33 @@ fn invalidate_evidence(
         details["reason"] = json!(reason);
         observe(store, &record.intent.id, WorkerStatus::Invalidated, details)?;
     }
+    let invalidated_reviews = store
+        .load()?
+        .reviews()
+        .values()
+        .filter(|review| {
+            review.intent.worker_id == record.intent.id
+                && review.intent.artifact_revision == artifact.revision().as_str()
+                && matches!(
+                    review.status(),
+                    crate::review_records::ReviewStatus::Accepted
+                        | crate::review_records::ReviewStatus::Rejected
+                )
+        })
+        .map(|review| (review.intent.id.clone(), review.observations.len()))
+        .collect::<Vec<_>>();
+    for (id, n) in invalidated_reviews {
+        commit(
+            store,
+            &id,
+            &format!("review-observation-{n}"),
+            Command::Review(crate::review_records::ReviewCommand::Observe {
+                id: id.clone(),
+                status: crate::review_records::ReviewStatus::Invalidated,
+                details: json!({"reason":reason,"artifactRevision":artifact.revision().as_str(),"historicalEvidencePreserved":true}),
+            }),
+        )?;
+    }
     let state = store.load()?;
     let task = state.runs()[&RunId::new(&record.intent.run_id)?]
         .task(&TaskId::new(&record.intent.task_id)?)?;
@@ -948,11 +1046,11 @@ fn invalidate_evidence(
         ),
     )
 }
-fn artifact_version(a: &CapturedArtifact) -> Result<ArtifactVersion> {
+fn artifact_version(a: &CapturedArtifact, domain_base: &str) -> Result<ArtifactVersion> {
     Ok(ArtifactVersion::new(
         ArtifactId::new(&a.id)?,
         RevisionId::new(&a.revision)?,
-        RevisionId::new(&a.base_oid)?,
+        RevisionId::new(domain_base)?,
     ))
 }
 fn capture_store(
@@ -979,7 +1077,7 @@ fn definition(kind: DefinitionKind, id: &str, version: u64, body: Value) -> Defi
         references: vec![],
     }
 }
-fn now() -> Result<u64> {
+pub(crate) fn now() -> Result<u64> {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map_err(|_| WorkerError("clock"))?
@@ -987,7 +1085,7 @@ fn now() -> Result<u64> {
         .try_into()
         .map_err(|_| WorkerError("clock"))
 }
-fn observed(m: &RuntimeMetadata, evidence_ref: &str) -> Result<ObservedRuntime> {
+pub(crate) fn observed(m: &RuntimeMetadata, evidence_ref: &str) -> Result<ObservedRuntime> {
     let d = m.descriptor.as_json();
     let mut facts = vec![
         "identity".to_owned(),
@@ -1086,7 +1184,7 @@ fn context(
     )?)
 }
 
-fn diagnostic_input(
+pub(crate) fn diagnostic_input(
     store: &Store,
     metadata: &RuntimeMetadata,
     observation: &ObservedRuntime,

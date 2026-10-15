@@ -30,9 +30,15 @@ pub(super) fn validate(state: &SavedState) -> StoreResult<()> {
             .ok_or(StoreError::InvalidState)?;
         if run.project().map(ProjectId::as_str) != Some(&i.project_id)
             || run.repository().map(RepositoryId::as_str) != Some(&i.repository_id)
-            || attempt.inputs().base.as_str() != i.base_oid
+            || attempt.inputs().base.as_str()
+                != i.correction
+                    .as_ref()
+                    .map_or(i.base_oid.as_str(), |c| c.artifact_revision.as_str())
         {
             return Err(StoreError::InvalidState);
+        }
+        if let Some(origin) = &i.correction {
+            super::review::validate_correction(state, record, origin)?;
         }
         let snapshot = state
             .snapshots
@@ -191,9 +197,13 @@ pub(super) fn apply(state: &mut SavedState, command: &WorkerCommand) -> StoreRes
         WorkerCommand::Reserve(r) => {
             // Initial production profile is serial per installation/database, including unresolved effects.
             if state
-                .workers
+                .reviews
                 .values()
-                .any(|w| w.status().blocks_admission())
+                .any(|r| r.status().blocks_admission())
+                || state
+                    .workers
+                    .values()
+                    .any(|w| w.status().blocks_admission())
             {
                 return Err(DomainError::InvalidTransition.into());
             }
@@ -205,7 +215,8 @@ pub(super) fn apply(state: &mut SavedState, command: &WorkerCommand) -> StoreRes
                 || r.project.id().as_str() != r.intent.project_id
                 || r.project.repository().id().as_str() != r.intent.repository_id
                 || r.run.tasks().len() != 1
-                || r.run.task(&TaskId::new(&r.intent.task_id)?)?.state() != TaskState::Ready
+                || (r.intent.correction.is_none()
+                    && r.run.task(&TaskId::new(&r.intent.task_id)?)?.state() != TaskState::Ready)
             {
                 return Err(DomainError::Ownership.into());
             }
@@ -252,21 +263,34 @@ pub(super) fn apply(state: &mut SavedState, command: &WorkerCommand) -> StoreRes
             )?)
             .apply(&mut staged)?;
             let ready_task = r.run.task(&TaskId::new(&r.intent.task_id)?)?;
-            let empty = Run::new(
-                r.run.id().clone(),
-                Some(&r.project),
-                RevisionId::new(&r.intent.base_oid)?,
-                DeliveryRequirement::FinalApplication,
-            )?;
-            Command::create_run(empty).apply(&mut staged)?;
-            let task = Task::new(
-                ready_task.id().clone(),
-                ready_task.objective(),
-                ready_task.kind(),
-                ready_task.acceptance_criteria().to_vec(),
-                vec![],
-            )?;
-            Command::run(r.run.id().clone(), RunAction::AddTask(task)).apply(&mut staged)?;
+            if let Some(origin) = &r.intent.correction {
+                let existing = staged
+                    .runs
+                    .get(r.run.id())
+                    .ok_or(DomainError::UnknownEntity)?;
+                if existing.checkpoint() != r.run.checkpoint()
+                    || ready_task.state() != TaskState::NeedsWork
+                {
+                    return Err(DomainError::StaleEvidence.into());
+                }
+                super::review::admit_correction(&staged, &r.intent, origin)?;
+            } else {
+                let empty = Run::new(
+                    r.run.id().clone(),
+                    Some(&r.project),
+                    RevisionId::new(&r.intent.base_oid)?,
+                    DeliveryRequirement::FinalApplication,
+                )?;
+                Command::create_run(empty).apply(&mut staged)?;
+                let task = Task::new(
+                    ready_task.id().clone(),
+                    ready_task.objective(),
+                    ready_task.kind(),
+                    ready_task.acceptance_criteria().to_vec(),
+                    vec![],
+                )?;
+                Command::run(r.run.id().clone(), RunAction::AddTask(task)).apply(&mut staged)?;
+            }
             Command::run(
                 r.run.id().clone(),
                 RunAction::Ready(ready_task.id().clone()),
@@ -386,7 +410,9 @@ pub(super) fn load(connection: &SqlConnection, state: &mut SavedState) -> StoreR
         }
         record.observations.push(observation);
     }
-    validate(state)
+    // Cross-record invariants include reviews for correction provenance. The
+    // sole caller validates the complete graph after both collections load.
+    Ok(())
 }
 pub(super) fn save(connection: &SqlConnection, state: &SavedState) -> StoreResult<()> {
     for record in state.workers.values() {
