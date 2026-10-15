@@ -41,6 +41,7 @@ pub enum Command {
     Git(crate::git_records::GitCommand),
     Worker(crate::worker_records::WorkerCommand),
     Review(crate::review_records::ReviewCommand),
+    Integration(crate::integration_records::IntegrationCommand),
     Desktop(crate::desktop::DesktopCommand),
 }
 
@@ -126,6 +127,19 @@ impl Command {
         &self,
         state: &SavedState,
     ) -> (Option<String>, Option<String>, Option<String>) {
+        if let Self::Integration(command) = self {
+            return state
+                .integrations
+                .get(command.id())
+                .map(|r| {
+                    (
+                        Some(r.intent.run_id.clone()),
+                        Some(r.intent.task_id.clone()),
+                        None,
+                    )
+                })
+                .unwrap_or_default();
+        }
         if let Self::Review(command) = self {
             return state
                 .reviews
@@ -255,6 +269,7 @@ impl Command {
             Self::Git(value) => value.fingerprint_body(),
             Self::Worker(value) => value.fingerprint(),
             Self::Review(value) => value.body(),
+            Self::Integration(value) => value.body(),
             Self::Desktop(value) => json!(["desktop", value]),
         }
     }
@@ -275,6 +290,7 @@ impl Command {
             Self::Git(value) => value.name(),
             Self::Worker(_) => "worker",
             Self::Review(_) => "review",
+            Self::Integration(_) => "integration",
             Self::Desktop(_) => "desktop",
         }
     }
@@ -296,6 +312,10 @@ impl Command {
         )
     }
     pub(crate) fn apply(&self, state: &mut SavedState) -> StoreResult<Value> {
+        if let Self::Integration(command) = self {
+            super::integration::apply(state, command)?;
+            return Ok(Value::Null);
+        }
         if let Self::Review(command) = self {
             super::review::apply(state, command)?;
             return Ok(Value::Null);
@@ -512,7 +532,7 @@ impl Command {
             }
             Self::Git(_) => unreachable!("Git commands handled before domain commands"),
             Self::Worker(_) => unreachable!("Worker commands handled before domain commands"),
-            Self::Review(_) | Self::Desktop(_) => {
+            Self::Review(_) | Self::Integration(_) | Self::Desktop(_) => {
                 unreachable!("infrastructure commands handled first")
             }
         }

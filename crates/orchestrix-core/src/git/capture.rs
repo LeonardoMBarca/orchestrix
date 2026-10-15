@@ -319,12 +319,21 @@ fn inspect(
     base: &str,
     limits: CaptureLimits,
 ) -> GitResult<Snapshot> {
+    inspect_at(executor, root, base, base, limits)
+}
+fn inspect_at(
+    executor: &GitExecutor,
+    root: &Path,
+    base: &str,
+    expected_head: &str,
+    limits: CaptureLimits,
+) -> GitResult<Snapshot> {
     executor.ensure_supported(root)?;
     let head = git(executor, root, &["rev-parse", "--verify", "HEAD"])?;
     if std::str::from_utf8(&head)
         .map_err(|_| GitError::Base)?
         .trim()
-        != base
+        != expected_head
     {
         return Err(GitError::Base);
     }
@@ -457,6 +466,90 @@ fn inspect(
         exclusions,
         attributes,
         files,
+    })
+}
+
+/// Conservative application profile: no staged, unstaged, untracked or omitted
+/// data. A commit name alone never grants authority over the current checkout.
+pub(crate) fn clean_target(
+    executor: &GitExecutor,
+    root: &Path,
+    common_git_dir: &Path,
+    tree_commit: &str,
+    head: &str,
+    symbolic_ref: &str,
+) -> GitResult<crate::integration_records::TargetState> {
+    let root = super::paths::canonical_directory(root)?;
+    let common = super::paths::canonical_directory(common_git_dir)?;
+    let actual = git(
+        executor,
+        &root,
+        &["rev-parse", "--path-format=absolute", "--git-common-dir"],
+    )?;
+    let actual = std::str::from_utf8(&actual)
+        .map_err(|_| GitError::Path)?
+        .trim();
+    if super::paths::canonical_directory(Path::new(actual))? != common {
+        return Err(GitError::Ownership);
+    }
+    let limits = CaptureLimits::default();
+    let first = inspect_at(executor, &root, tree_commit, head, limits)?;
+    if std::str::from_utf8(&first.branch)
+        .map_err(|_| GitError::Path)?
+        .trim()
+        != symbolic_ref
+        || first.base != first.index
+        || !first.untracked.is_empty()
+        || !first.exclusions.is_empty()
+    {
+        return Err(GitError::UnpreservedWork);
+    }
+    let mut cache = BTreeMap::new();
+    let mut bytes = 0;
+    let mut files = Vec::new();
+    for (path, entry) in &first.base {
+        let base = read_blob(executor, &root, entry, limits, &mut cache, &mut bytes)?;
+        let working = first
+            .files
+            .get(path)
+            .and_then(Option::as_ref)
+            .ok_or(GitError::UnpreservedWork)?;
+        if working.bytes != base || entry.mode != "100644" {
+            return Err(GitError::UnpreservedWork);
+        }
+        files.push(serde_json::json!([
+            path,
+            content_hash(&working.bytes),
+            working.stamp.mode
+        ]));
+    }
+    if inspect_at(executor, &root, tree_commit, head, limits)? != first {
+        return Err(GitError::InconsistentCapture);
+    }
+    Ok(crate::integration_records::TargetState {
+        directory: root.to_str().ok_or(GitError::Path)?.into(),
+        common_git_dir: common.to_str().ok_or(GitError::Path)?.into(),
+        symbolic_ref: symbolic_ref.into(),
+        head: head.into(),
+        // Git may refresh its stat cache without changing staged content.
+        // Pin logical entries/flags; raw index bytes remain part of each
+        // coherent read comparison, not the persisted approval fingerprint.
+        index_sha256: content_hash(
+            serde_json::to_string(
+                &first
+                    .index
+                    .iter()
+                    .map(|(path, entry)| serde_json::json!([path, entry.oid, entry.mode]))
+                    .collect::<Vec<_>>(),
+            )
+            .map_err(|_| GitError::Limit)?
+            .as_bytes(),
+        ),
+        working_sha256: content_hash(
+            serde_json::to_string(&files)
+                .map_err(|_| GitError::Limit)?
+                .as_bytes(),
+        ),
     })
 }
 

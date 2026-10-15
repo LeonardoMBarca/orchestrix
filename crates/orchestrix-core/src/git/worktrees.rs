@@ -55,6 +55,80 @@ pub struct WorktreeService {
     executor: GitExecutor,
 }
 impl WorktreeService {
+    pub(super) fn with_executor(executor: GitExecutor) -> Self {
+        Self { executor }
+    }
+    /// The caller owns a separate persisted integration intent. This does not
+    /// reserve or fabricate an execution attempt in the domain/worker tables.
+    pub(super) fn create_integration_owned(&self, intent: &WorktreeIntent) -> GitResult<()> {
+        if !intent.validate() {
+            return Err(GitError::Ownership);
+        }
+        let root = paths::canonical_directory(Path::new(&intent.authorized_root))?;
+        let repo = paths::canonical_directory(Path::new(&intent.main_repository))?;
+        let common = paths::canonical_directory(Path::new(&intent.common_git_dir))?;
+        let target = Path::new(&intent.path);
+        if root == repo
+            || paths::strict_descendant(&repo, &root)
+            || root == common
+            || paths::strict_descendant(&common, &root)
+            || paths::strict_descendant(target, &repo)
+            || paths::strict_descendant(target, &common)
+        {
+            return Err(GitError::Scope);
+        }
+        self.validate_main(intent)?;
+        let material = read_base(&self.executor, &repo, &intent.base_oid)?;
+        self.ensure_refs(intent)?;
+        if !path_exists(target)? {
+            self.validate_target(intent, false)?;
+            let rows = self.registrations(intent)?;
+            for row in rows {
+                if row.path == target
+                    || paths::strict_descendant(&row.path, target)
+                    || paths::strict_descendant(target, &row.path)
+                    || row.branch.as_deref() == Some(&format!("refs/heads/{}", intent.branch))
+                {
+                    return Err(GitError::Ownership);
+                }
+            }
+            self.executor
+                .run(
+                    &repo,
+                    &[
+                        "worktree".into(),
+                        "add".into(),
+                        "--quiet".into(),
+                        "--no-checkout".into(),
+                        "--lock".into(),
+                        "--reason".into(),
+                        lock_reason(intent).into(),
+                        paths::git_path(target)?,
+                        intent.branch.clone().into(),
+                    ],
+                )?
+                .checked()?;
+            self.inspect_registration(intent, true)?;
+            materialize(target, &material)?;
+            self.executor
+                .run(target, &args_of(&["read-tree", &intent.base_oid]))?
+                .checked()?;
+        }
+        self.inspect_registration(intent, true)?;
+        if !self.materialized(intent)? {
+            verify_base(&self.executor, target, intent, &material)?;
+            self.mark_materialized(intent)?;
+        }
+        Ok(())
+    }
+    pub(super) fn inspect_integration_owned(&self, intent: &WorktreeIntent) -> GitResult<()> {
+        self.validate_main(intent)?;
+        if !self.materialized(intent)? {
+            return Err(GitError::Ownership);
+        }
+        self.inspect_registration(intent, true)?;
+        Ok(())
+    }
     pub fn new() -> GitResult<Self> {
         Ok(Self {
             executor: GitExecutor::new()?,
@@ -1074,7 +1148,7 @@ fn parse_registrations(bytes: &[u8]) -> GitResult<Vec<Registration>> {
     Ok(result)
 }
 
-fn read_base(
+pub(super) fn read_base(
     executor: &GitExecutor,
     root: &Path,
     base: &str,

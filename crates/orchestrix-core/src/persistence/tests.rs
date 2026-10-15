@@ -399,6 +399,78 @@ fn future_unknown_and_corrupt_databases_are_refused_without_recreation() {
 }
 
 #[test]
+fn integration_migration_preserves_v6_rows_and_rolls_back_collisions() {
+    for collision in [false, true] {
+        let temp = TempDb::new();
+        let mut store = Store::open(&temp.path).unwrap();
+        store
+            .execute(&add("before-integration", 0, "preserved-v6-project"))
+            .unwrap();
+        let before: String = store
+            .connection
+            .query_row("SELECT checkpoint FROM projects", [], |r| r.get(0))
+            .unwrap();
+        // Migrations 1..6 are unchanged. Remove only the empty v7 extension
+        // in this private fixture to exercise both migration outcomes.
+        store.connection.execute_batch("DROP TABLE integration_observations;DROP TABLE serial_integrations;PRAGMA user_version=6;").unwrap();
+        if collision {
+            store.connection.execute_batch("CREATE TABLE serial_integrations(sentinel TEXT);INSERT INTO serial_integrations VALUES('preserve');").unwrap();
+        }
+        drop(store);
+        let opened = Store::open(&temp.path);
+        if collision {
+            assert!(opened.is_err());
+            let db = Connection::open(&temp.path).unwrap();
+            assert_eq!(
+                db.pragma_query_value(None, "user_version", |r| r.get::<_, i64>(0))
+                    .unwrap(),
+                6
+            );
+            assert_eq!(
+                db.query_row("SELECT sentinel FROM serial_integrations", [], |r| r
+                    .get::<_, String>(0))
+                    .unwrap(),
+                "preserve"
+            );
+            assert_eq!(
+                db.query_row(
+                    "SELECT count(*) FROM sqlite_master WHERE name='integration_observations'",
+                    [],
+                    |r| r.get::<_, i64>(0)
+                )
+                .unwrap(),
+                0
+            );
+            assert_eq!(
+                db.query_row("SELECT checkpoint FROM projects", [], |r| r
+                    .get::<_, String>(0))
+                    .unwrap(),
+                before
+            );
+        } else {
+            let store = opened.unwrap();
+            assert_eq!(
+                store
+                    .connection
+                    .pragma_query_value(None, "user_version", |r| r.get::<_, i64>(0))
+                    .unwrap(),
+                7
+            );
+            assert_eq!(
+                store
+                    .connection
+                    .query_row("SELECT checkpoint FROM projects", [], |r| r
+                        .get::<_, String>(0))
+                    .unwrap(),
+                before
+            );
+            assert!(store.load().unwrap().integrations().is_empty());
+            assert_eq!(store.load().unwrap().projects().len(), 1);
+        }
+    }
+}
+
+#[test]
 fn migration_failure_rolls_back_schema_and_user_version() {
     let temp = TempDb::new();
     schema::create_v1(&temp.path);

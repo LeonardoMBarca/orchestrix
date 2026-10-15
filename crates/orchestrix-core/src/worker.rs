@@ -188,6 +188,11 @@ impl ManualWorker {
                 .reviews()
                 .values()
                 .any(|r| r.status().blocks_admission())
+            || store
+                .load()?
+                .integrations()
+                .values()
+                .any(|r| r.status().blocks_admission())
         {
             return Err(WorkerError("serial-admission-blocked"));
         }
@@ -978,6 +983,15 @@ fn invalidate_evidence(
     artifact: &ArtifactVersion,
     reason: &str,
 ) -> Result<()> {
+    // Integration owns a separate immutable snapshot once this task is completed.
+    // Losing the original mutable checkout withdraws its physical verification,
+    // without rewriting the accepted snapshot or terminal delivery evidence.
+    let state = store.load()?;
+    let integrated = state.runs()[&RunId::new(&record.intent.run_id)?]
+        .task(&TaskId::new(&record.intent.task_id)?)?
+        .state()
+        == TaskState::Completed;
+    drop(state);
     // Withdraw a positive current summary before appending negative evidence. A crash between commands stays non-green.
     let current = self::record(store, &record.intent.id)?;
     if current.status() == WorkerStatus::Verified {
@@ -988,7 +1002,11 @@ fn invalidate_evidence(
             .details
             .clone();
         details["reason"] = json!(reason);
+        details["sourcePhysicalOnly"] = json!(integrated);
         observe(store, &record.intent.id, WorkerStatus::Invalidated, details)?;
+    }
+    if integrated {
+        return Ok(());
     }
     let invalidated_reviews = store
         .load()?

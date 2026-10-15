@@ -23,8 +23,12 @@ pub struct SavedState {
     pub(super) captured_artifacts: BTreeMap<(String, String), crate::git_records::CapturedArtifact>,
     pub(super) workers: BTreeMap<String, crate::worker_records::WorkerRecord>,
     pub(super) reviews: BTreeMap<String, crate::review_records::ReviewRecord>,
+    pub(super) integrations: BTreeMap<String, crate::integration_records::IntegrationRecord>,
 }
 impl SavedState {
+    pub fn integrations(&self) -> &BTreeMap<String, crate::integration_records::IntegrationRecord> {
+        &self.integrations
+    }
     pub fn reviews(&self) -> &BTreeMap<String, crate::review_records::ReviewRecord> {
         &self.reviews
     }
@@ -83,7 +87,8 @@ impl SavedState {
             "gitWorktrees":self.worktrees.values().collect::<Vec<_>>(),
             "gitArtifacts":self.captured_artifacts.values().map(|a|(&a.id,&a.revision)).collect::<Vec<_>>(),
             "workers":self.workers.values().collect::<Vec<_>>(),
-            "independentReviews":self.reviews.values().collect::<Vec<_>>()})
+            "independentReviews":self.reviews.values().collect::<Vec<_>>(),
+            "serialIntegrations":self.integrations.values().map(|r|json!({"id":r.intent.id,"intentHash":crate::git_records::content_hash(serde_json::to_string(&r.intent).expect("validated integration intent").as_bytes()),"observationHashes":r.observations.iter().map(|o|crate::git_records::content_hash(serde_json::to_string(o).expect("validated integration observation").as_bytes())).collect::<Vec<_>>()})).collect::<Vec<_>>()})
     }
     pub(super) fn validate_snapshot(
         &self,
@@ -140,6 +145,7 @@ impl SavedState {
     fn validate(&self) -> StoreResult<()> {
         super::worker::validate(self)?;
         super::review::validate(self)?;
+        super::integration::validate(self)?;
         super::git::validate(self)?;
         for group in self.capacity_groups.values() {
             if group
@@ -314,6 +320,7 @@ impl SavedState {
         state.captured_artifacts = self.captured_artifacts.clone();
         state.workers = self.workers.clone();
         state.reviews = self.reviews.clone();
+        state.integrations = self.integrations.clone();
         state.validate()?;
         Ok(state)
     }
@@ -446,6 +453,7 @@ pub(super) fn load(connection: &SqlConnection) -> StoreResult<SavedState> {
     super::git::load(connection, &mut state)?;
     super::worker::load(connection, &mut state)?;
     super::review::load(connection, &mut state)?;
+    super::integration::load(connection, &mut state)?;
     state.validate()?;
     let checkpoint = state.checkpoint();
     if sanitize_checkpoint(&checkpoint).map_err(StoreError::Privacy)? != checkpoint {
@@ -643,6 +651,7 @@ pub(super) fn save(connection: &SqlConnection, state: &SavedState) -> StoreResul
     super::git::save(connection, state)?;
     super::worker::save(connection, state)?;
     super::review::save(connection, state)?;
+    super::integration::save(connection, state)?;
     connection.execute(
         "UPDATE store_meta SET revision=?1 WHERE singleton=1",
         [super::sql_int(state.revision)?],

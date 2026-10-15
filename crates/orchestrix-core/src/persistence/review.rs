@@ -182,6 +182,10 @@ pub(super) fn apply(state: &mut SavedState, command: &ReviewCommand) -> StoreRes
                     .workers
                     .values()
                     .any(|w| w.status().blocks_admission())
+                || state
+                    .integrations
+                    .values()
+                    .any(|r| r.status().blocks_admission())
             {
                 return Err(DomainError::InvalidTransition.into());
             }

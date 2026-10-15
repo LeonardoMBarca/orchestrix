@@ -5,6 +5,19 @@ use rusqlite::{OptionalExtension, TransactionBehavior, params};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
+impl Store {
+    pub fn daemon_integration_exists(&self, id: &str) -> StoreResult<bool> {
+        crate::domain::LocalRef::new(id)?;
+        self.connection
+            .query_row(
+                "SELECT EXISTS(SELECT 1 FROM serial_integrations WHERE id=?1)",
+                [id],
+                |row| row.get(0),
+            )
+            .map_err(Into::into)
+    }
+}
+
 pub(super) const MIGRATION_V5: &str = r#"
 CREATE TABLE daemon_meta(singleton INTEGER PRIMARY KEY CHECK(singleton=1), identity TEXT NOT NULL, suspended INTEGER NOT NULL CHECK(suspended IN(0,1)), generation INTEGER NOT NULL CHECK(generation>=0));
 INSERT INTO daemon_meta VALUES(1,lower(hex(randomblob(16))),1,0);

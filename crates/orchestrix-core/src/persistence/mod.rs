@@ -4,6 +4,8 @@ mod commands;
 mod daemon;
 mod desktop;
 mod git;
+mod integration;
+mod integration_projection;
 mod review;
 mod schema;
 mod state;
@@ -194,6 +196,11 @@ impl Store {
             ));
         }
         if let Command::Review(command) = &request.command
+            && !command.bounded()
+        {
+            return Err(StoreError::InvalidState);
+        }
+        if let Command::Integration(command) = &request.command
             && !command.bounded()
         {
             return Err(StoreError::InvalidState);

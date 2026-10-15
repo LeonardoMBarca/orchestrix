@@ -158,6 +158,24 @@ impl Fixture {
             })
             .count()
     }
+    fn dispatch_events(&self) -> std::collections::BTreeMap<String, Vec<u8>> {
+        fs::read_dir(&self.home)
+            .unwrap()
+            .map(Result::unwrap)
+            .filter(|entry| {
+                entry
+                    .file_name()
+                    .to_string_lossy()
+                    .starts_with("dispatch-event-")
+            })
+            .map(|entry| {
+                (
+                    entry.file_name().to_string_lossy().into_owned(),
+                    fs::read(entry.path()).unwrap(),
+                )
+            })
+            .collect()
+    }
 }
 impl Drop for Fixture {
     fn drop(&mut self) {
@@ -183,6 +201,448 @@ impl Drop for Fixture {
 struct Daemon {
     child: Child,
     client: Client,
+}
+
+#[test]
+fn exact_serial_application_is_journaled_shared_and_durable_without_redispatch() {
+    use orchestrix_core::{
+        domain::{DeliveryCandidate, RunId, RunState, TaskId},
+        git_records::content_hash,
+        integration_records::{ApplicationRequest, ApprovalRequest, IntegrationRequest},
+        review::ReviewPipeline,
+        review_records::{ReviewBudget, ReviewRequest, ReviewStatus},
+        runtime::{CancellationToken, RuntimeLaunch},
+        worker::ManualWorker,
+        worker_records::WorkerStatus,
+    };
+    let f = Fixture::new();
+    let task = f.task("implementation");
+    let launch = |scenario: &str| {
+        RuntimeLaunch::fixture(
+            binary(),
+            vec!["--scenario".into(), scenario.into()],
+            f.home.clone(),
+            f.repository.clone(),
+        )
+    };
+    let mut store = Store::open(&f.database).unwrap();
+    let cancel = CancellationToken::new();
+    let source =
+        ManualWorker::run(&mut store, &task, launch("review-implementation"), &cancel).unwrap();
+    assert_eq!(source.status(), WorkerStatus::Verified);
+    let state = store.load().unwrap();
+    let original = state.runs()[&RunId::new(&source.intent.run_id).unwrap()]
+        .task(&TaskId::new(&source.intent.task_id).unwrap())
+        .unwrap()
+        .artifact()
+        .unwrap()
+        .clone();
+    let original_capture = state.captured_artifacts()[&(
+        original.id().as_str().to_owned(),
+        original.revision().as_str().to_owned(),
+    )]
+        .clone();
+    drop(state);
+    let mut review_request = ReviewRequest {
+        schema_version: 1,
+        id: "review".into(),
+        worker_id: source.intent.id.clone(),
+        artifact_revision: original.revision().as_str().to_owned(),
+        authorization_ref: "explicit-synthetic-review".into(),
+        policy: task.policy.clone(),
+        classification: task.classification.clone(),
+        budget: ReviewBudget {
+            max_corrections: 1,
+            max_reviews: 2,
+            max_elapsed_ms: 600_000,
+        },
+    };
+    let rejected = ReviewPipeline::review(
+        &mut store,
+        &review_request,
+        launch("review-reject"),
+        &cancel,
+    )
+    .unwrap();
+    assert_eq!(rejected.status(), ReviewStatus::Rejected);
+    let correction = ReviewPipeline::prepare_correction(
+        &store,
+        &rejected.intent.id,
+        "correction-one",
+        "explicit-one-correction",
+        task.policy.clone(),
+        task.classification.clone(),
+    )
+    .unwrap();
+    assert_eq!(correction.task.instructions, task.instructions);
+    let corrected = ReviewPipeline::correct(
+        &mut store,
+        &correction,
+        launch("review-correction"),
+        &cancel,
+    )
+    .unwrap();
+    assert_eq!(corrected.status(), WorkerStatus::Verified);
+    assert_eq!(corrected.intent.run_id, source.intent.run_id);
+    assert_eq!(corrected.intent.task_id, source.intent.task_id);
+    assert_ne!(corrected.intent.attempt_id, source.intent.attempt_id);
+    let state = store.load().unwrap();
+    assert_eq!(state.runs().len(), 1);
+    let current = state.runs()[&RunId::new(&source.intent.run_id).unwrap()]
+        .task(&TaskId::new(&source.intent.task_id).unwrap())
+        .unwrap();
+    assert_eq!(current.attempts().len(), 2);
+    assert_eq!(
+        current.attempts()[1].inputs().correction_of.as_ref(),
+        Some(&original)
+    );
+    let corrected_artifact = current.artifact().unwrap().clone();
+    assert_ne!(corrected_artifact, original);
+    assert_eq!(corrected_artifact.base(), original.revision());
+    assert_ne!(corrected_artifact.base().as_str(), f.base);
+    let corrected_capture = &state.captured_artifacts()[&(
+        corrected_artifact.id().as_str().to_owned(),
+        corrected_artifact.revision().as_str().to_owned(),
+    )];
+    assert_eq!(corrected_capture.attempt_id, corrected.intent.attempt_id);
+    assert_eq!(corrected_capture.base_oid, f.base);
+    assert_eq!(
+        &state.captured_artifacts()[&(
+            original.id().as_str().to_owned(),
+            original.revision().as_str().to_owned(),
+        )],
+        &original_capture
+    );
+    assert!(
+        !original_capture
+            .files
+            .iter()
+            .any(|file| file.path == "correction.txt")
+    );
+    for (path, expected) in [
+        ("fixture.txt", "after\n"),
+        ("implementation.txt", "preserve prior implementation\n"),
+        ("correction.txt", "finding-one addressed\n"),
+    ] {
+        assert_eq!(
+            corrected_capture
+                .files
+                .iter()
+                .find(|file| file.path == path)
+                .unwrap()
+                .worktree
+                .as_ref()
+                .unwrap()
+                .content,
+            expected
+        );
+    }
+    drop(state);
+    let artifact = corrected_artifact.revision().as_str().to_owned();
+    review_request.id = "corrected-review".into();
+    review_request.worker_id = corrected.intent.id.clone();
+    review_request.artifact_revision = artifact.clone();
+    let reviewed = ReviewPipeline::review(
+        &mut store,
+        &review_request,
+        launch("review-accept"),
+        &cancel,
+    )
+    .unwrap();
+    assert_eq!(reviewed.status(), ReviewStatus::Accepted);
+    // Separate implementer, rejecting reviewer, correction and accepting reviewer.
+    let dispatch_events = f.dispatch_events();
+    assert_eq!(dispatch_events.len(), 4);
+    drop(store);
+    let integration_root = f.root.join("integrations");
+    fs::create_dir(&integration_root).unwrap();
+    let daemon = f.start();
+    let second = Client::new(&f.database).unwrap();
+    daemon.resume("resume-integration");
+    let revision = || Store::open(&f.database).unwrap().load().unwrap().revision();
+    let mut prepare = Operation::PrepareIntegration {
+        command_id: "prepare-result".into(),
+        expected_revision: revision(),
+        request: Box::new(IntegrationRequest {
+            schema_version: 1,
+            id: "result".into(),
+            worker_id: corrected.intent.id.clone(),
+            artifact_revision: artifact.clone(),
+            authorization_ref: "explicit-integration-and-checks".into(),
+            authorized_integration_directory: integration_root,
+            target_directory: f.repository.clone(),
+            checks: task.checks.clone(),
+        }),
+    };
+    let wait = |operation: &Operation| {
+        let command = match operation {
+            Operation::PrepareIntegration { command_id, .. }
+            | Operation::ApproveIntegration { command_id, .. }
+            | Operation::ApplyIntegration { command_id, .. }
+            | Operation::RevalidateIntegration { command_id, .. } => command_id,
+            _ => unreachable!(),
+        };
+        let fingerprint = content_hash(&serde_json::to_vec(operation).unwrap());
+        let deadline = Instant::now() + Duration::from_secs(300);
+        loop {
+            let snapshot = daemon.ok(Operation::Snapshot);
+            let receipt = daemon.ok(Operation::CommandReceipt {
+                command_id: command.clone(),
+                fingerprint: fingerprint.clone(),
+            });
+            if !receipt["receipt"]["outcome"].is_null() {
+                return receipt["receipt"]["outcome"].clone();
+            }
+            assert!(Instant::now() < deadline, "integration deadline {snapshot}");
+            std::thread::sleep(Duration::from_millis(50));
+        }
+    };
+    // A current Task artifact cannot be attributed to its previous worker.
+    let refs_before = git(
+        &f.repository,
+        &["for-each-ref", "--format=%(refname) %(objectname)"],
+    );
+    let mut wrong_worker = prepare.clone();
+    if let Operation::PrepareIntegration {
+        command_id,
+        expected_revision,
+        request,
+    } = &mut wrong_worker
+    {
+        *command_id = "wrong-source-worker".into();
+        *expected_revision = revision();
+        request.id = "wrong-source-binding".into();
+        request.worker_id = source.intent.id.clone();
+    }
+    daemon.ok(wrong_worker.clone());
+    let rejected_binding = wait(&wrong_worker);
+    assert_eq!(rejected_binding["state"], "rejected-before-reservation");
+    assert_eq!(rejected_binding["reservationPersisted"], false);
+    assert!(
+        !Store::open(&f.database)
+            .unwrap()
+            .load()
+            .unwrap()
+            .integrations()
+            .contains_key("wrong-source-binding")
+    );
+    assert_eq!(
+        fs::read_dir(f.root.join("integrations")).unwrap().count(),
+        0
+    );
+    assert_eq!(
+        git(
+            &f.repository,
+            &["for-each-ref", "--format=%(refname) %(objectname)"]
+        ),
+        refs_before
+    );
+    assert_eq!(
+        String::from_utf8(git(&f.repository, &["rev-parse", "HEAD"]))
+            .unwrap()
+            .trim(),
+        f.base
+    );
+    assert_eq!(
+        fs::read_to_string(f.repository.join("fixture.txt")).unwrap(),
+        "before\n"
+    );
+    assert!(!f.repository.join("implementation.txt").exists());
+    assert!(!f.repository.join("correction.txt").exists());
+    assert_eq!(f.dispatch_events(), dispatch_events);
+    if let Operation::PrepareIntegration {
+        expected_revision, ..
+    } = &mut prepare
+    {
+        *expected_revision = revision();
+    }
+    let first = daemon.ok(prepare.clone());
+    assert_eq!(first["replayed"], false);
+    let replay = second
+        .request(&Request {
+            api_version: API_VERSION,
+            operation: prepare.clone(),
+        })
+        .unwrap();
+    assert!(replay.ok);
+    assert_eq!(replay.result["replayed"], true);
+    // Historical inspection remains available while preparation/checks own the worker lease.
+    let snapshot = daemon.ok(Operation::Snapshot);
+    assert!(
+        snapshot["activeOperationKind"].is_null()
+            || snapshot["activeOperationKind"] == "integration-prepare"
+    );
+    assert_eq!(wait(&prepare)["status"], "prepared");
+    let inspect = || {
+        daemon.ok(Operation::InspectIntegration {
+            integration_id: "result".into(),
+        })
+    };
+    let view = inspect();
+    assert_eq!(view["historical"], true);
+    assert_eq!(view["currentVerification"], "not-revalidated");
+    assert_eq!(view["summary"]["delivered"], false);
+    assert_eq!(view["summary"]["worker_id"], corrected.intent.id);
+    assert_eq!(view["summary"]["source_artifact_revision"], artifact);
+    let bound_candidate =
+        DeliveryCandidate::restore_checkpoint(&view["summary"]["candidate"]).unwrap();
+    assert_eq!(
+        bound_candidate.artifacts(),
+        std::slice::from_ref(&corrected_artifact)
+    );
+    let state = Store::open(&f.database).unwrap().load().unwrap();
+    let integrated = &state.integrations()["result"];
+    assert_eq!(integrated.intent.worker_id, corrected.intent.id);
+    assert_eq!(
+        integrated.intent.worktree.attempt_id,
+        corrected.intent.attempt_id
+    );
+    assert_eq!(integrated.intent.capture_revision, artifact);
+    assert_eq!(
+        integrated.snapshot().unwrap().attempt_id,
+        corrected.intent.attempt_id
+    );
+    assert_eq!(
+        &state.captured_artifacts()[&(
+            original.id().as_str().to_owned(),
+            original.revision().as_str().to_owned()
+        )],
+        &original_capture
+    );
+    drop(state);
+    assert_eq!(f.dispatch_events(), dispatch_events);
+    let candidate = view["summary"]["candidate_revision"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    // A physical recheck owns the same bounded slot, while historical reads stay cheap.
+    // Replaying it retains the command identity instead of reserving a new operation.
+    let revalidate = Operation::RevalidateIntegration {
+        command_id: "revalidate-result".into(),
+        integration_id: "result".into(),
+    };
+    daemon.ok(revalidate.clone());
+    assert_eq!(wait(&revalidate)["status"], "prepared");
+    assert_eq!(daemon.ok(revalidate)["replayed"], true);
+    assert_eq!(inspect()["summary"]["candidate_revision"], candidate);
+    let stale = Operation::ApproveIntegration {
+        command_id: "stale-approval".into(),
+        expected_revision: 0,
+        request: Box::new(ApprovalRequest {
+            schema_version: 1,
+            id: "stale".into(),
+            integration_id: "result".into(),
+            candidate_revision: candidate.clone(),
+            authorization_ref: "explicit-human-approval".into(),
+            valid_for_ms: 600_000,
+        }),
+    };
+    daemon.ok(stale.clone());
+    let rejected = wait(&stale);
+    assert_eq!(rejected["reason"], "stale-revision-resync");
+    assert_eq!(rejected["reservationPersisted"], false);
+    assert_eq!(inspect()["summary"]["status"], "prepared");
+    let approve = Operation::ApproveIntegration {
+        command_id: "approve-result".into(),
+        expected_revision: revision(),
+        request: Box::new(ApprovalRequest {
+            schema_version: 1,
+            id: "approval".into(),
+            integration_id: "result".into(),
+            candidate_revision: candidate.clone(),
+            authorization_ref: "explicit-human-approval".into(),
+            valid_for_ms: 600_000,
+        }),
+    };
+    daemon.ok(approve.clone());
+    assert_eq!(wait(&approve)["status"], "approved");
+    let apply = Operation::ApplyIntegration {
+        command_id: "apply-result".into(),
+        expected_revision: revision(),
+        request: Box::new(ApplicationRequest {
+            schema_version: 1,
+            id: "application".into(),
+            integration_id: "result".into(),
+            candidate_revision: candidate,
+            authorization_ref: "explicit-destination-application".into(),
+        }),
+    };
+    daemon.ok(apply.clone());
+    let delivered = wait(&apply);
+    assert_eq!(delivered["status"], "delivered");
+    assert_eq!(delivered["delivered"], true);
+    assert_eq!(
+        fs::read_to_string(f.repository.join("fixture.txt")).unwrap(),
+        "after\n"
+    );
+    assert_eq!(
+        fs::read_to_string(f.repository.join("implementation.txt")).unwrap(),
+        "preserve prior implementation\n"
+    );
+    assert_eq!(
+        fs::read_to_string(f.repository.join("correction.txt")).unwrap(),
+        "finding-one addressed\n"
+    );
+    assert_eq!(
+        fs::read_to_string(Path::new(&original_capture.origin).join("implementation.txt")).unwrap(),
+        "preserve prior implementation\n"
+    );
+    assert!(
+        !Path::new(&original_capture.origin)
+            .join("correction.txt")
+            .exists()
+    );
+    assert_eq!(f.dispatch_events(), dispatch_events);
+    let head = git(&f.repository, &["rev-parse", "HEAD"]);
+    daemon.stop();
+    let reopened = f.start();
+    let replay = reopened.ok(apply);
+    assert_eq!(replay["replayed"], true);
+    assert_eq!(replay["outcome"], delivered);
+    assert_eq!(git(&f.repository, &["rev-parse", "HEAD"]), head);
+    let state = Store::open(&f.database).unwrap().load().unwrap();
+    assert_eq!(
+        state.runs()[&RunId::new(&source.intent.run_id).unwrap()].state(),
+        RunState::Delivered
+    );
+    assert_eq!(f.dispatch_events(), dispatch_events);
+    assert_eq!(reopened.ok(Operation::Snapshot)["state"]["suspended"], true);
+    // Startup deliberately suspends new admissions. Replay above needs no
+    // resume; this new collision probe does, and must not bypass that gate.
+    reopened.resume("resume-collision-probe");
+    let mut collision = prepare.clone();
+    if let Operation::PrepareIntegration {
+        command_id,
+        expected_revision,
+        request,
+    } = &mut collision
+    {
+        *command_id = "colliding-worker-id".into();
+        *expected_revision = revision();
+        request.id = source.intent.id.clone();
+    }
+    reopened.ok(collision.clone());
+    let fingerprint = content_hash(&serde_json::to_vec(&collision).unwrap());
+    let deadline = Instant::now() + Duration::from_secs(300);
+    loop {
+        let receipt = reopened.ok(Operation::CommandReceipt {
+            command_id: "colliding-worker-id".into(),
+            fingerprint: fingerprint.clone(),
+        });
+        if !receipt["receipt"]["outcome"].is_null() {
+            assert_eq!(
+                receipt["receipt"]["outcome"]["state"],
+                "rejected-before-reservation"
+            );
+            assert_eq!(receipt["receipt"]["outcome"]["reservationPersisted"], false);
+            break;
+        }
+        assert!(Instant::now() < deadline);
+        std::thread::sleep(Duration::from_millis(50));
+    }
+    assert_eq!(git(&f.repository, &["rev-parse", "HEAD"]), head);
+    assert_eq!(f.dispatch_events(), dispatch_events);
+    reopened.stop();
 }
 
 #[test]

@@ -7,6 +7,8 @@ pub mod domain;
 pub mod evaluator;
 pub mod git;
 pub mod git_records;
+pub mod integration;
+pub mod integration_records;
 pub mod mechanical;
 pub mod persistence;
 pub mod persistence_privacy;

@@ -25,6 +25,24 @@ pub struct Request {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "kebab-case", deny_unknown_fields)]
 pub enum Operation {
+    PrepareIntegration {
+        command_id: String,
+        expected_revision: u64,
+        request: Box<crate::integration_records::IntegrationRequest>,
+    },
+    InspectIntegration {
+        integration_id: String,
+    },
+    ApproveIntegration {
+        command_id: String,
+        expected_revision: u64,
+        request: Box<crate::integration_records::ApprovalRequest>,
+    },
+    ApplyIntegration {
+        command_id: String,
+        expected_revision: u64,
+        request: Box<crate::integration_records::ApplicationRequest>,
+    },
     CommandReceipt {
         command_id: String,
         fingerprint: String,
@@ -58,6 +76,10 @@ pub enum Operation {
         conversation_id: String,
         task: Box<ManualTaskRequest>,
         runtime: RuntimeChoice,
+    },
+    RevalidateIntegration {
+        command_id: String,
+        integration_id: String,
     },
     Snapshot,
     Workers {
@@ -218,6 +240,8 @@ fn canonical_database_path(database: &Path) -> Result<PathBuf, String> {
     Ok(parent.join(database.file_name().ok_or("database-file")?))
 }
 struct Active {
+    kind: &'static str,
+    reservation_hash: Option<String>,
     cancellable: bool,
     worker_id: String,
     command_id: String,
@@ -267,6 +291,11 @@ impl ControlDiagnostics {
 }
 fn operation_tag(operation: &Operation) -> &'static str {
     match operation {
+        Operation::PrepareIntegration { .. } => "integration-prepare",
+        Operation::RevalidateIntegration { .. } => "integration-revalidate",
+        Operation::InspectIntegration { .. } => "integration-inspect",
+        Operation::ApproveIntegration { .. } => "integration-approve",
+        Operation::ApplyIntegration { .. } => "integration-apply",
         Operation::Desktop { .. } => "desktop",
         Operation::CommandReceipt { .. } => "command-receipt",
         Operation::RequestReview { .. } => "review",
@@ -346,6 +375,9 @@ pub fn serve(database: &Path) -> Result<(), String> {
     // Recovery is deterministic. This startup never redispatches an accepted command.
     let _recovery = crate::recovery::reconcile(&mut store).map_err(|_| "reconciliation")?;
     crate::review::ReviewPipeline::reconcile(&mut store).map_err(|_| "review-reconciliation")?;
+    crate::integration::IntegrationService::new()
+        .reconcile(&mut store)
+        .map_err(|_| "integration-reconciliation")?;
     for (id, kind, _) in store.daemon_pending().map_err(|_| "pending-commands")? {
         store.daemon_finish(&id,&json!({"state":"interrupted-before-response","kind":kind,"resumeAutomatically":false,"inspectionRequired":true})).map_err(|_|"pending-reconciliation")?;
     }
@@ -367,15 +399,28 @@ pub fn serve(database: &Path) -> Result<(), String> {
             let joined = completed.thread.join().is_ok();
             let result = match outcome {
                 Ok(summary) if joined => {
-                    json!({"state":"finished","workerId":completed.worker_id,"status":summary["status"],"artifactRevision":summary["details"].get("artifactRevision").unwrap_or(&summary["artifact_revision"]),"resultQuery":"inspect","delivered":false})
+                    json!({"state":"finished","workerId":completed.worker_id,"status":summary["status"],"artifactRevision":summary["details"].get("artifactRevision").unwrap_or_else(|| summary.get("source_artifact_revision").unwrap_or(&summary["artifact_revision"])),"resultQuery":if summary.get("profile").is_some(){"integration-inspect"}else{"inspect"},"delivered":summary["delivered"]==true})
+                }
+                Err(code) if joined && completed.kind == "integration-revalidate" => {
+                    json!({"state":"revalidation-unavailable","reason":code,"integrationId":completed.worker_id,"resumeAutomatically":false})
                 }
                 Err(code) if joined => {
-                    let reserved = store
-                        .daemon_worker_exists(&completed.worker_id)
+                    let reserved = if code == "stale-revision-resync" {
+                        false
+                    } else {
+                        match completed.kind {
+                            "integration-prepare" | "integration-approve" | "integration-apply" => {
+                                store.daemon_integration_operation_recorded(
+                                    &completed.worker_id,
+                                    completed.kind,
+                                    completed.reservation_hash.as_deref().unwrap_or(""),
+                                )
+                            }
+                            "review" => store.daemon_review_exists(&completed.worker_id),
+                            _ => store.daemon_worker_exists(&completed.worker_id),
+                        }
                         .map_err(|_| "completion-inspection")?
-                        || store
-                            .daemon_review_exists(&completed.worker_id)
-                            .map_err(|_| "completion-inspection")?;
+                    };
                     json!({"state":if reserved{"inspection-required"}else{"rejected-before-reservation"},"reason":code,"workerId":completed.worker_id,"reservationPersisted":reserved,"resumeAutomatically":false,"nextAction":if reserved{"inspect-recovery"}else{"inspect-connection-and-submit-a-new-authorized-command"}})
                 }
                 _ => {
@@ -477,13 +522,19 @@ fn handle_inner(
                 .map(|receipt| json!({"found":receipt.is_some(),"receipt":receipt}))
                 .map_err(|_| "command-id-conflict".into());
         }
+        Operation::InspectIntegration { integration_id } => {
+            return store
+                .daemon_integration_view(integration_id)
+                .map_err(|_| "integration-history-query".into());
+        }
         Operation::Desktop { request } => return crate::desktop::handle(store, request),
         Operation::Snapshot => {
             let mut snapshot = store.daemon_snapshot().map_err(|_| "snapshot")?;
             snapshot["activeWorkerId"] = json!(active.as_ref().map(|a| &a.worker_id));
+            snapshot["activeOperationKind"] = json!(active.as_ref().map(|a| a.kind));
             snapshot["activeCancellable"] = json!(active.as_ref().is_some_and(|a| a.cancellable));
             snapshot["shuttingDown"] = json!(shutdown.is_some());
-            snapshot["features"] = json!(["desktop-v1", "review-v1"]);
+            snapshot["features"] = json!(["desktop-v1", "review-v1", "integration-v1"]);
             return Ok(snapshot);
         }
         Operation::Workers {
@@ -536,6 +587,17 @@ fn handle_inner(
             )
             .map_err(|_| "recovery-schema")?;
             let state = store.load().map_err(|_| "database")?;
+            let integrations: Vec<_> = state
+                .integrations()
+                .values()
+                .filter(|r| r.status().blocks_admission())
+                .map(|r| r.summary())
+                .collect();
+            if !integrations.is_empty() {
+                result["has_blocking_cases"] = json!(true);
+                result["ready_for_admission"] = json!(false);
+            }
+            result["integrations"] = json!(integrations);
             let reviews: Vec<_> = state
                 .reviews()
                 .values()
@@ -564,7 +626,11 @@ fn handle_inner(
             .as_slice(),
     );
     let command_id = match &operation {
-        Operation::Submit { command_id, .. }
+        Operation::RevalidateIntegration { command_id, .. }
+        | Operation::PrepareIntegration { command_id, .. }
+        | Operation::ApproveIntegration { command_id, .. }
+        | Operation::ApplyIntegration { command_id, .. }
+        | Operation::Submit { command_id, .. }
         | Operation::SubmitConversation { command_id, .. }
         | Operation::RevalidateArtifact { command_id, .. }
         | Operation::SetAsideReview { command_id, .. }
@@ -586,6 +652,21 @@ fn handle_inner(
     }
     if shutdown.is_some() {
         return Err("daemon-shutting-down".into());
+    }
+    if active.is_none()
+        && matches!(
+            &operation,
+            Operation::Submit { .. }
+                | Operation::SubmitConversation { .. }
+                | Operation::RequestReview { .. }
+                | Operation::Correct { .. }
+                | Operation::Resume { .. }
+        )
+        && store
+            .daemon_integration_blocks_admission()
+            .map_err(|_| "database")?
+    {
+        return Err("integration-recovery-inspection-required".into());
     }
     let (operation, conversation_id) = match operation {
         Operation::SubmitConversation {
@@ -619,6 +700,12 @@ fn handle_inner(
         other => (other, None),
     };
     match operation {
+        operation @ (Operation::PrepareIntegration { .. }
+        | Operation::ApproveIntegration { .. }
+        | Operation::ApplyIntegration { .. }
+        | Operation::RevalidateIntegration { .. }) => {
+            start_integration(store, database, operation, &fingerprint, active)
+        }
         Operation::SetAsideReview {
             command_id,
             review_id,
@@ -692,6 +779,8 @@ fn handle_inner(
                 });
             let thread = worker_thread_result(store, &command_id, &worker_id, spawned)?;
             *active = Some(Active {
+                kind: "revalidate",
+                reservation_hash: None,
                 worker_id,
                 command_id,
                 cancel,
@@ -750,6 +839,8 @@ fn handle_inner(
                 });
             let thread = worker_thread_result(store, &command_id, &worker_id, spawned)?;
             *active = Some(Active {
+                kind: "review",
+                reservation_hash: None,
                 worker_id,
                 command_id,
                 cancel,
@@ -820,6 +911,8 @@ fn handle_inner(
                 });
             let thread = worker_thread_result(store, &command_id, &worker_id, spawned)?;
             *active = Some(Active {
+                kind: "correction",
+                reservation_hash: None,
                 worker_id,
                 command_id,
                 cancel,
@@ -942,6 +1035,8 @@ fn handle_inner(
                 });
             let thread = worker_thread_result(store, &command_id, &worker_id, spawned)?;
             *active = Some(Active {
+                kind: "runtime",
+                reservation_hash: None,
                 cancellable: true,
                 worker_id,
                 command_id,
@@ -1366,4 +1461,134 @@ mod tests {
         let child=std::process::Command::new(std::env::current_exe().unwrap()).args(["--exact","daemon::tests::watchdog_thread_creation_failure_terminates_own_host_before_acceptance","--nocapture"]).env(CHILD_FLAG,"yes").output().unwrap();
         assert_eq!(child.status.code(), Some(3));
     }
+}
+
+fn start_integration(
+    store: &mut Store,
+    database: &Path,
+    operation: Operation,
+    fingerprint: &str,
+    active: &mut Option<Active>,
+) -> Result<Value, String> {
+    if active.is_some() {
+        return Err("serial-worker-active".into());
+    }
+    if !matches!(operation, Operation::RevalidateIntegration { .. })
+        && store.daemon_state().map_err(|_| "database")?.suspended
+    {
+        return Err("admissions-suspended".into());
+    }
+    let (command, id, expected, kind, cancellable) = match &operation {
+        Operation::PrepareIntegration {
+            command_id,
+            expected_revision,
+            request,
+        } => (
+            command_id.clone(),
+            request.id.clone(),
+            Some(*expected_revision),
+            "integration-prepare",
+            true,
+        ),
+        Operation::ApproveIntegration {
+            command_id,
+            expected_revision,
+            request,
+        } => (
+            command_id.clone(),
+            request.integration_id.clone(),
+            Some(*expected_revision),
+            "integration-approve",
+            false,
+        ),
+        Operation::ApplyIntegration {
+            command_id,
+            expected_revision,
+            request,
+        } => (
+            command_id.clone(),
+            request.integration_id.clone(),
+            Some(*expected_revision),
+            "integration-apply",
+            true,
+        ),
+        Operation::RevalidateIntegration {
+            command_id,
+            integration_id,
+        } => (
+            command_id.clone(),
+            integration_id.clone(),
+            None,
+            "integration-revalidate",
+            false,
+        ),
+        _ => return Err("integration-operation".into()),
+    };
+    crate::domain::LocalRef::new(&id).map_err(|_| "integration-id")?;
+    let reservation_hash = if matches!(operation, Operation::RevalidateIntegration { .. }) {
+        None
+    } else {
+        Some(crate::git_records::content_hash(
+            match &operation {
+                Operation::PrepareIntegration { request, .. } => serde_json::to_value(request),
+                Operation::ApproveIntegration { request, .. } => serde_json::to_value(request),
+                Operation::ApplyIntegration { request, .. } => serde_json::to_value(request),
+                _ => unreachable!(),
+            }
+            .map_err(|_| "integration-request")?
+            .to_string()
+            .as_bytes(),
+        ))
+    };
+    let receipt = store
+        .daemon_begin(&command, fingerprint, kind, Some(&id), None)
+        .map_err(|_| "command-journal")?;
+    let path = database.to_owned();
+    let cancel = CancellationToken::new();
+    let token = cancel.clone();
+    let (tx, rx) = mpsc::sync_channel(1);
+    let spawned = std::thread::Builder::new()
+        .name("orchestrix-serial-integration".into())
+        .spawn(move || {
+            let result = Store::open(&path)
+                .map_err(|_| "database".to_owned())
+                .and_then(|mut store| {
+                    if let Some(expected) = expected
+                        && store.load().map_err(|_| "database")?.revision() != expected
+                    {
+                        return Err("stale-revision-resync".into());
+                    }
+                    let service = crate::integration::IntegrationService::new();
+                    let record = match operation {
+                        Operation::PrepareIntegration { request, .. } => {
+                            service.prepare(&mut store, &request, &token)
+                        }
+                        Operation::ApproveIntegration { request, .. } => {
+                            service.approve(&mut store, &request)
+                        }
+                        Operation::ApplyIntegration { request, .. } => {
+                            service.apply(&mut store, &request, &token)
+                        }
+                        Operation::RevalidateIntegration { integration_id, .. } => {
+                            service.inspect(&mut store, &integration_id)
+                        }
+                        _ => unreachable!("closed integration operation"),
+                    }
+                    .map_err(|e| e.0.to_owned())?;
+                    Ok(record.summary())
+                });
+            let _ = tx.send(result);
+        });
+    let thread = worker_thread_result(store, &command, &id, spawned)?;
+    *active = Some(Active {
+        kind,
+        reservation_hash,
+        worker_id: id,
+        command_id: command,
+        cancel,
+        thread,
+        done: rx,
+        cancellable,
+    });
+    receipt_json(receipt)
 }

@@ -22,6 +22,88 @@ const OUTPUT_LIMIT: usize = 8 * 1024 * 1024;
 const OBJECT_ENTRIES: usize = 16_384;
 static NEXT_DIRECTORY: AtomicU64 = AtomicU64::new(1);
 
+fn owned_index_refresh(args: &[OsString], scoped: bool) -> bool {
+    scoped && args == strings(&["update-index", "--refresh"])
+}
+
+fn scoped_run(
+    command: Command,
+    scope: &orchestrix_process::named_job::JobScope,
+    input: Option<&[u8]>,
+    deadline: Duration,
+    limit: usize,
+) -> GitResult<GitOutput> {
+    use orchestrix_process::{OwnedProcess, ProcessEvent, ProcessLimits, SpawnSpec};
+    let mut process = OwnedProcess::spawn_identified(
+        SpawnSpec {
+            executable: PathBuf::from(command.get_program()),
+            arguments: command.get_args().map(OsString::from).collect(),
+            cwd: command.get_current_dir().ok_or(GitError::Path)?.into(),
+            environment: command
+                .get_envs()
+                .filter_map(|(k, v)| v.map(|v| (k.into(), v.into())))
+                .collect(),
+            limits: ProcessLimits {
+                lifetime: deadline,
+                max_output_bytes: limit as u64,
+                max_write_bytes: 1_048_576,
+            },
+        },
+        scope,
+    )
+    .map_err(|_| GitError::Ownership)?;
+    if let Some(bytes) = input.filter(|bytes| !bytes.is_empty()) {
+        process
+            .send(bytes, deadline)
+            .map_err(|_| GitError::Process)?;
+    }
+    process.close_input();
+    let started = Instant::now();
+    let mut stdout = Vec::new();
+    loop {
+        if started.elapsed() >= deadline {
+            return Err(GitError::Deadline);
+        }
+        match process.receive(Duration::from_millis(5)) {
+            Ok(Some(ProcessEvent::Stdout(bytes))) => stdout.extend(bytes),
+            Ok(Some(ProcessEvent::Stderr(_))) | Ok(None) => {}
+            Err(orchestrix_process::ProcessError::Budget) => return Err(GitError::OutputLimit),
+            Err(orchestrix_process::ProcessError::Deadline) => return Err(GitError::Deadline),
+            Err(_) => return Err(GitError::Process),
+        }
+        let tree = process.tree().map_err(|_| GitError::Ownership)?;
+        let streams = process.streams();
+        if let Some(code) = tree.root_exit_code
+            && tree.owned
+            && tree.active_processes == 0
+            && streams.stdout_closed
+            && streams.stderr_closed
+        {
+            while let Ok(Some(event)) = process.receive(Duration::from_millis(1)) {
+                if let ProcessEvent::Stdout(bytes) = event {
+                    stdout.extend(bytes);
+                }
+            }
+            let stopped = process
+                .terminate(Duration::from_secs(3))
+                .map_err(|_| GitError::Ownership)?;
+            let streams = process.wait_streams(Duration::from_secs(2));
+            if !stopped.owned
+                || stopped.active_processes != 0
+                || !streams.stdin_closed
+                || !streams.stdout_closed
+                || !streams.stderr_closed
+            {
+                return Err(GitError::Ownership);
+            }
+            return Ok(GitOutput {
+                stdout,
+                status: code as i32,
+            });
+        }
+    }
+}
+
 pub(crate) struct GitOutput {
     pub stdout: Vec<u8>,
     pub status: i32,
@@ -39,6 +121,7 @@ impl GitOutput {
 pub struct GitExecutor {
     binary: PathBuf,
     private: PathBuf,
+    scope: Option<orchestrix_process::named_job::JobScope>,
 }
 impl GitExecutor {
     /// Read only, fixed built-in for a host-granted repository. No arbitrary arguments.
@@ -65,6 +148,14 @@ impl GitExecutor {
         Ok(oid.to_owned())
     }
     pub fn new() -> GitResult<Self> {
+        Self::construct(None)
+    }
+    /// Integration effects and their reads share the durable keeper's owned Job.
+    /// The legacy worktree executor retains its existing transport and contract.
+    pub(crate) fn scoped(scope: orchestrix_process::named_job::JobScope) -> GitResult<Self> {
+        Self::construct(Some(scope))
+    }
+    fn construct(scope: Option<orchestrix_process::named_job::JobScope>) -> GitResult<Self> {
         let binary = find_git()?;
         let parent = canonical_directory(&env::temp_dir())?;
         let epoch = SystemTime::now()
@@ -90,6 +181,7 @@ impl GitExecutor {
         let executor = Self {
             binary,
             private: private.ok_or(GitError::Collision)?,
+            scope,
         };
         let version = executor.run(&parent, &strings(&["--version"]))?.checked()?;
         let version = std::str::from_utf8(&version).map_err(|_| GitError::Unsupported)?;
@@ -173,13 +265,15 @@ impl GitExecutor {
                 | "rev-list"
                 | "merge-base"
                 | "read-tree"
+                | "update-index"
         ) {
             return Err(GitError::Unsupported);
         }
         // Block editor aliases and unrelated worktree/branch maintenance even
         // though only this module's trusted callers can supply these arguments.
-        if name == "config"
-            && args != strings(&["config", "--local", "--no-includes", "--null", "--list"])
+        if name == "update-index" && !owned_index_refresh(args, self.scope.is_some())
+            || name == "config"
+                && args != strings(&["config", "--local", "--no-includes", "--null", "--list"])
             || name == "branch"
                 && args.iter().any(|arg| {
                     matches!(
@@ -279,6 +373,9 @@ impl GitExecutor {
         {
             use std::os::windows::process::CommandExt;
             command.creation_flags(0x0800_0000);
+        }
+        if let Some(scope) = &self.scope {
+            return scoped_run(command, scope, input, deadline, limit);
         }
         let started = Instant::now();
         let mut child = command.spawn().map_err(|_| GitError::Process)?;
@@ -544,6 +641,24 @@ fn reap_bounded(child: &mut std::process::Child) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn index_refresh_cannot_stage_or_escape_owned_scope() {
+        let refresh = strings(&["update-index", "--refresh"]);
+        assert!(owned_index_refresh(&refresh, true));
+        assert!(!owned_index_refresh(&refresh, false));
+        for argv in [
+            vec!["update-index"],
+            vec!["update-index", "--really-refresh"],
+            vec!["update-index", "--refresh", "--add"],
+            vec!["update-index", "--refresh", "fixture.txt"],
+            vec!["update-index", "--refresh", "--ignore-missing"],
+            vec!["update-index", "--refresh", "-q"],
+            vec!["update-index", "--index-info"],
+            vec!["update-index", "--cacheinfo", "100644,object,path"],
+        ] {
+            assert!(!owned_index_refresh(&strings(&argv), true));
+        }
+    }
     #[test]
     fn bounded_installed_git_and_fixed_errors() {
         let git = GitExecutor::new().unwrap();

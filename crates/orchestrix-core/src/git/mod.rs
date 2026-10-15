@@ -1,6 +1,7 @@
 //! Bounded local Git worktrees and exact artifact capture; no agent execution.
 mod capture;
 mod executor;
+pub(crate) mod integration;
 pub(crate) mod paths;
 mod worktrees;
 

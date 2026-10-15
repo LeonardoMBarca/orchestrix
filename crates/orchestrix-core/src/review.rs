@@ -61,6 +61,10 @@ impl ReviewPipeline {
                 .reviews()
                 .values()
                 .any(|r| r.status().blocks_admission())
+            || state
+                .integrations()
+                .values()
+                .any(|r| r.status().blocks_admission())
         {
             return Err(WorkerError("serial-admission-blocked"));
         }

@@ -222,6 +222,26 @@ fn main() {
             "turn/start" => {
                 turn += 1;
                 let turn_id = format!("fixture-turn-{turn}");
+                // Per-process dispatch-count remains unchanged for existing
+                // scenarios. This separate ledger records received requests
+                // durably before any ACK, including lost-reply/crash paths.
+                let pid = std::process::id();
+                let epoch_nanos = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap()
+                    .as_nanos();
+                let mut event = std::fs::OpenOptions::new()
+                    .write(true)
+                    .create_new(true)
+                    .open(auth_home.join(format!("dispatch-event-{pid}-{turn}-{epoch_nanos}.json")))
+                    .unwrap();
+                serde_json::to_writer(
+                    &mut event,
+                    &json!({"pid":pid,"turn":turn,"threadId":thread,"turnId":turn_id}),
+                )
+                .unwrap();
+                event.sync_all().unwrap();
+                drop(event);
                 let prompt = params["input"][0]["text"].as_str().unwrap_or("");
                 std::fs::write(auth_home.join("dispatch-count"), turn.to_string()).unwrap();
                 if scenario != "lost-reply" {
