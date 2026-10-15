@@ -1,0 +1,61 @@
+import {useEffect,useRef,useState} from 'react';
+import {Icon} from './icons';
+import {pick,type Grant} from './editor';
+import {request,type Bootstrap,type PreparedTask,type TaskDraft} from './protocol';
+import {preparationStillCurrent,taskFingerprint} from './task-preparation';
+
+type Props={
+ task:TaskDraft,setTask:(task:TaskDraft)=>void,prepared:PreparedTask|null,setPrepared:(prepared:PreparedTask|null)=>void,
+ grants:Grant[],setGrants:React.Dispatch<React.SetStateAction<Grant[]>>,connections:Bootstrap['connections'],projects:Bootstrap['projects'],
+ runtimeConsent:boolean,checkConsent:boolean,setRuntimeConsent:(consent:boolean)=>void,setCheckConsent:(consent:boolean)=>void,
+ busy:boolean,setBusy:(busy:boolean)=>void,t:(text:string)=>string,onError:(error:string)=>void,onSubmit:()=>Promise<void>,
+ suspended:boolean,onResume:()=>Promise<void>,onAttach:(projectId:string)=>Promise<void>,onCreateProject:()=>void
+};
+
+export function TaskForm({task,setTask,prepared,setPrepared,grants,setGrants,connections,projects,runtimeConsent,checkConsent,setRuntimeConsent,setCheckConsent,busy,setBusy,t,onError,onSubmit,suspended,onResume,onAttach,onCreateProject}:Props){
+ const current=useRef(task);current.current=task;
+ const generation=useRef(0),[projectChoice,setProjectChoice]=useState(task.projectId??'');
+ const mounted=useRef(true);
+ useEffect(()=>{mounted.current=true;return()=>{mounted.current=false;generation.current++;};},[]);
+ const authorization=useRef<HTMLDivElement>(null);
+ function patch(value:Partial<TaskDraft>){generation.current++;const next={...current.current,...value};current.current=next;setTask(next);setPrepared(null);setRuntimeConsent(false);setCheckConsent(false);}
+ async function prepare(){
+  const snapshot=current.current,fingerprint=taskFingerprint(snapshot),version=generation.current;
+  setPrepared(null);setRuntimeConsent(false);setCheckConsent(false);setBusy(true);
+  try{const result=await request<PreparedTask>({type:'prepare-task',draft:snapshot});if(!mounted.current||version!==generation.current||!preparationStillCurrent(fingerprint,current.current))return;setPrepared(result);requestAnimationFrame(()=>authorization.current?.scrollIntoView({block:'start',behavior:'smooth'}));}
+  catch(error){if(mounted.current&&version===generation.current)onError(String(error));}finally{setBusy(false);}
+ }
+ const source=prepared?.task as Record<string,unknown>|undefined;
+ const preparedChecks=Array.isArray(source?.checks)?source.checks as {id:string,executable?:string,arguments?:string[],timeout_ms?:number}[]:[];
+ const grantName=(id:string)=>grants.find(grant=>grant.id===id)?.name??t('Not selected');
+ const connection=connections.find(connection=>connection.id===task.connectionId);
+ return <section className="o-page o-task-form">
+  <header className="o-task-heading"><div><h1>{t('Prepare task')}</h1><p>{t('Define the result, inspect the request, then authorize execution.')}</p></div><ol className="o-task-steps" aria-label={t('Task preparation')}><li aria-current={!prepared?'step':undefined}>{t('Define')}</li><li aria-current={prepared?'step':undefined}>{t('Review & authorize')}</li></ol></header>
+  {!task.projectId&&<section className="o-task-attach" aria-label={t('Attach conversation')}><strong>{t('Choose a project for this task')}</strong><p>{t('This conversation is independent. Attach it to a project before preparing a task.')}</p><div className="o-actions"><select aria-label={t('Project')} value={projectChoice} onChange={event=>setProjectChoice(event.target.value)} disabled={busy}><option value="">{t('Select project')}</option>{projects.map(project=><option key={project.id} value={project.id}>{project.name}</option>)}</select><button className="o-secondary" disabled={!projectChoice||busy} onClick={()=>void onAttach(projectChoice)}>{t('Attach conversation')}</button><button disabled={busy} onClick={onCreateProject}><Icon name="plus"/>{t('New project')}</button></div></section>}
+  <fieldset className="o-task-fields" disabled={busy}>
+   <div className="o-field-grid o-task-goals"><label>{t('Objective')}<textarea rows={2} value={task.objective} onChange={event=>patch({objective:event.target.value})}/></label><label>{t('Acceptance criteria')}<textarea rows={2} placeholder={t('One criterion per line')} value={task.acceptanceCriteria.join('\n')} onChange={event=>patch({acceptanceCriteria:event.target.value.split('\n')})}/></label></div>
+   <div className="o-field-grid">
+    <label>{t('Repository')}<button className="o-secondary o-path-picker" onClick={async()=>{const grant=await pick('folder');if(grant){setGrants(all=>[...all,grant]);patch({repositoryGrant:grant.id});}}}><Icon name="folder"/><span>{task.repositoryGrant?grantName(task.repositoryGrant):t('Select repository')}</span></button></label>
+    <label>{t('Worktree folder')}<button className="o-secondary o-path-picker" onClick={async()=>{const grant=await pick('folder');if(grant){setGrants(all=>[...all,grant]);patch({worktreeGrant:grant.id});}}}><Icon name="folder"/><span>{task.worktreeGrant?grantName(task.worktreeGrant):t('Grant worktree folder')}</span></button></label>
+    <label>{t('Connection')}<select value={task.connectionId} onChange={event=>patch({connectionId:event.target.value})}><option value="">{t('Select connection')}</option>{connections.map(connection=><option key={connection.id} value={connection.id}>{connection.label}</option>)}</select></label>
+    <label>{t('Correction budget')}<input type="number" min={0} max={3} value={task.correctionBudget} onChange={event=>patch({correctionBudget:Number(event.target.value)})}/></label>
+   </div>
+   <label className="o-checkbox"><input type="checkbox" checked={task.fallback==='compatible'} onChange={event=>patch({fallback:event.target.checked?'compatible':'block'})}/>{t('Allow compatible runtime defaults when model access is unconfirmed')}</label><p className="o-footnote">{t('Fallback')}: {task.fallback} · {t('No fallback to paid APIs')}</p>
+   <div className="o-task-section-heading"><h2>{t('Authorized checks')}</h2><button className="o-secondary" onClick={()=>patch({checks:[...task.checks,{id:`check-${crypto.randomUUID()}`,executable:'',args:[],timeoutSeconds:30}]})}><Icon name="plus"/>{t('Add check')}</button></div>
+   {!task.checks.length&&<p className="o-footnote">{t('No checks configured. The result will not be presented as tested.')}</p>}
+   {task.checks.map((check,index)=><section key={check.id} className="o-work-card o-check-card" aria-label={`${t('Check')} ${index+1}`}><header><strong>{t('Check')} {index+1}</strong><button onClick={()=>patch({checks:task.checks.filter((_,item)=>item!==index)})}>{t('Remove')}</button></header><div className="o-field-grid"><label>{t('Executable')}<button className="o-secondary o-path-picker" onClick={async()=>{const grant=await pick('file');if(grant){setGrants(all=>[...all,grant]);patch({checks:current.current.checks.map(item=>item.id===check.id?{...item,executable:grant.id}:item)});}}}><Icon name="files"/><span>{check.executable?grantName(check.executable):t('Select executable')}</span></button></label><label>{t('Timeout (seconds)')}<input min={1} max={90} type="number" value={check.timeoutSeconds} onChange={event=>patch({checks:task.checks.map(item=>item.id===check.id?{...item,timeoutSeconds:Number(event.target.value)}:item)})}/></label></div><label>{t('Arguments (one per line)')}<textarea rows={2} value={check.args.join('\n')} onChange={event=>patch({checks:task.checks.map(item=>item.id===check.id?{...item,args:event.target.value.split('\n').filter(Boolean)}:item)})}/></label></section>)}
+   <div className="o-task-section-heading"><h2>{t('Context')}</h2><button className="o-secondary" onClick={async()=>{const grant=await pick('file');if(grant){setGrants(all=>[...all,grant]);patch({contextFiles:[...current.current.contextFiles,{grant:grant.id,relative:''}]});}}}><Icon name="plus"/>{t('Add context file')}</button></div><p className="o-footnote">{t('Files opened here are never added to an agent context automatically.')}</p>
+   {task.contextFiles.map((file,index)=><div className="o-task-context" key={`${file.grant}-${index}`}><Icon name="files"/><span>{grantName(file.grant)}</span><button onClick={()=>patch({contextFiles:task.contextFiles.filter((_,item)=>item!==index)})}>{t('Remove')}</button></div>)}
+   <div className="o-actions"><button className="o-primary" disabled={busy||!task.projectId||!task.objective.trim()||!task.acceptanceCriteria.some(criterion=>criterion.trim())||!task.repositoryGrant||!task.worktreeGrant||!task.connectionId} onClick={()=>void prepare()}>{busy?t('Preparing…'):t('Prepare task')}<Icon name="arrow"/></button><span className="o-footnote">{t('Preparation does not start a runtime turn.')}</span></div>
+  </fieldset>
+  {prepared&&<section className="o-task-authorization" ref={authorization} aria-label={t('Review prepared request')}><h2>{t('Review prepared request')}</h2><p>{t('This is the requested configuration. Effective runtime choices are recorded after execution.')}</p>
+   <dl className="o-task-summary"><dt>{t('Objective')}</dt><dd>{String(source?.objective??task.objective)}</dd><dt>{t('Acceptance criteria')}</dt><dd>{task.acceptanceCriteria.filter(criterion=>criterion.trim()).join('\n')}</dd><dt>{t('Project')}</dt><dd>{projects.find(project=>project.id===task.projectId)?.name??task.projectId}</dd><dt>{t('Repository')}</dt><dd>{String(source?.repository_directory??grantName(task.repositoryGrant))}</dd><dt>{t('Isolated worktree')}</dt><dd>{String(source?.authorized_worktree_directory??grantName(task.worktreeGrant))}</dd><dt>{t('Connection')}</dt><dd>{connection?.label??task.connectionId}</dd><dt>{t('Requested selection')}</dt><dd>{task.strategy} · {task.model||t('Automatic selection')} · {task.effort||t('Runtime default')} · {t('Fallback')}: {task.fallback}</dd><dt>{t('Correction budget')}</dt><dd>{task.correctionBudget}</dd><dt>{t('Context')}</dt><dd>{task.contextFiles.length} {t('Explicit files')}</dd><dt>{t('Authorized checks')}</dt><dd>{task.checks.length?task.checks.map(check=>{const actual=preparedChecks.find(item=>item.id===check.id);return <div key={check.id} className="o-task-command"><code>{actual?.executable??grantName(check.executable)} {(actual?.arguments??check.args).map(argument=>JSON.stringify(argument)).join(' ')}</code><small>{(actual?.timeout_ms??check.timeoutSeconds*1000)/1000}s · {t('Isolated worktree')}</small></div>;}):t('No checks configured')}</dd></dl>
+   {prepared.warning&&<div className="o-notice">{prepared.warning}</div>}
+   {suspended&&<div className="o-notice o-admission-notice" role="status"><div><strong>{t('New admissions are suspended')}</strong><p>{t('Resume admissions to allow this task to start. An active turn is not paused or restarted.')}</p></div><button className="o-secondary" disabled={busy} onClick={()=>void onResume()}>{t('Resume admissions')}</button></div>}
+   <label className="o-checkbox"><input type="checkbox" checked={runtimeConsent} onChange={event=>setRuntimeConsent(event.target.checked)}/>{t('I authorize one runtime turn using my subscription.')}</label>
+   {task.checks.length>0&&<label className="o-checkbox"><input type="checkbox" checked={checkConsent} onChange={event=>setCheckConsent(event.target.checked)}/>{t('I authorize these commands in the isolated worktree.')}</label>}
+   <div className="o-actions"><button className="o-primary" disabled={busy||suspended||!runtimeConsent||(task.checks.length>0&&!checkConsent)} onClick={()=>void onSubmit()}>{t('Authorize and submit')}<Icon name="arrow"/></button></div>
+   <details className="o-prepared-details"><summary>{t('Inspect structured request')}</summary><pre className="o-json">{JSON.stringify(prepared,null,2)}</pre></details>
+  </section>}
+ </section>;
+}

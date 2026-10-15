@@ -5,6 +5,7 @@ use orchestrix_core::{
     desktop::{DesktopRequest, Settings},
     evaluator::CheckSpec,
     git::GitExecutor,
+    integration_records::{ApplicationRequest, ApprovalRequest, IntegrationRequest},
     policy::{TaskClassification, TaskKind},
     review_records::{CorrectionRequest, ReviewBudget, ReviewRequest},
     runtime::{
@@ -196,6 +197,36 @@ pub enum HostRequest {
     },
     InspectWorker {
         worker_id: String,
+    },
+    PrepareIntegration {
+        command_id: String,
+        expected_revision: u64,
+        worker_id: String,
+        artifact_revision: String,
+        target_grant: String,
+        integration_grant: String,
+        authorize_checks: bool,
+    },
+    InspectIntegration {
+        integration_id: String,
+    },
+    RevalidateIntegration {
+        command_id: String,
+        integration_id: String,
+    },
+    ApproveIntegration {
+        command_id: String,
+        expected_revision: u64,
+        integration_id: String,
+        candidate_revision: String,
+        authorize: bool,
+    },
+    ApplyIntegration {
+        command_id: String,
+        expected_revision: u64,
+        integration_id: String,
+        candidate_revision: String,
+        authorize: bool,
     },
     PrepareTask {
         draft: Box<TaskDraft>,
@@ -471,12 +502,35 @@ impl Host {
                     }
                     result["affectedWorkers"] = json!(ids);
                     result["revalidation"] = json!(checks);
+                    let ids: Vec<String> = affected["integrationIds"]
+                        .as_array()
+                        .into_iter()
+                        .flatten()
+                        .filter_map(|id| id.as_str().map(str::to_owned))
+                        .collect();
+                    let mut checks = Vec::new();
+                    for integration_id in &ids {
+                        let command_id = id("save-integration-revalidation");
+                        let observation = self.handle(HostRequest::RevalidateIntegration {
+                            command_id: command_id.clone(),
+                            integration_id: integration_id.clone(),
+                        });
+                        checks.push(json!({"integrationId":integration_id,"commandId":command_id,"accepted":observation.is_ok(),"reason":observation.err()}));
+                    }
+                    result["affectedIntegrations"] = json!(ids);
+                    if checks.iter().any(|check| check["accepted"] != true) {
+                        result["warning"] = json!(
+                            "Candidate revalidation was not confirmed; inspect and revalidate the exact candidate before approval/application."
+                        );
+                    }
+                    result["integrationRevalidation"] = json!(checks);
                 }
                 Err(_) => {
                     if mutating {
                         result["revalidationPending"] = json!(true);
+                        result["integrationRevalidationPending"] = json!(true);
                         result["warning"] = json!(
-                            "Artifact revalidation unavailable; prior evidence is historical."
+                            "Artifact/candidate revalidation unavailable; prior evidence is historical."
                         );
                     }
                 }
@@ -536,6 +590,31 @@ impl Host {
     }
     fn replay(&self, effect: crate::journal::Effect) -> Result<Value, String> {
         let mut known = None;
+        let integration_id = match &effect.operation {
+            Operation::PrepareIntegration { request, .. } => Some(request.id.clone()),
+            Operation::ApproveIntegration { request, .. } => Some(request.integration_id.clone()),
+            Operation::ApplyIntegration { request, .. } => Some(request.integration_id.clone()),
+            Operation::RevalidateIntegration { integration_id, .. } => Some(integration_id.clone()),
+            _ => None,
+        };
+        if let Operation::PrepareIntegration {
+            command_id,
+            request,
+            ..
+        } = &effect.operation
+        {
+            let receipt = self.call(Operation::CommandReceipt {
+                command_id: command_id.clone(),
+                fingerprint: sha(
+                    &serde_json::to_vec(&effect.operation).map_err(|_| "desktop-command-schema")?
+                ),
+            })?;
+            if receipt["found"] == true {
+                known = Some(receipt["receipt"].clone());
+            } else {
+                validate_integration_checks(&request.checks)?;
+            }
+        }
         if let Some(runtime) = effect_runtime(&effect.operation) {
             let command = effect_command(&effect.operation).ok_or("desktop-command-schema")?;
             let fingerprint =
@@ -577,7 +656,9 @@ impl Host {
                 serde_json::from_value(binding).map_err(|_| "runtime-binding-schema")?;
             self.persist_binding(binding)?;
         }
-        Ok(if let Some(worker_id) = effect.worker_id {
+        Ok(if let Some(integration_id) = integration_id {
+            json!({"integrationId":integration_id,"receipt":receipt})
+        } else if let Some(worker_id) = effect.worker_id {
             json!({"workerId":worker_id,"receipt":receipt})
         } else {
             receipt
@@ -820,6 +901,134 @@ impl Host {
             }),
             HostRequest::InspectWorker { worker_id } => {
                 self.desktop(DesktopRequest::InspectWorker { worker_id })
+            }
+            HostRequest::PrepareIntegration {
+                command_id,
+                expected_revision,
+                worker_id,
+                artifact_revision,
+                target_grant,
+                integration_grant,
+                authorize_checks,
+            } => {
+                if !authorize_checks {
+                    return Err(err("explicit-integration-check-authorization-required"));
+                }
+                let inspection = self.desktop(DesktopRequest::InspectWorker {
+                    worker_id: worker_id.clone(),
+                })?;
+                let checks =
+                    integration_source_checks(&inspection, &worker_id, &artifact_revision)?;
+                let (target_directory, authorized_integration_directory) = {
+                    let editor = self.editor.lock().map_err(|_| "editor-lock")?;
+                    (
+                        editor.directory(&target_grant)?,
+                        editor.directory(&integration_grant)?,
+                    )
+                };
+                if target_directory == authorized_integration_directory
+                    || self.database.starts_with(&target_directory)
+                    || self.database.starts_with(&authorized_integration_directory)
+                {
+                    return Err(err("integration-directory-separation"));
+                }
+                self.effect(
+                    &command_id,
+                    fingerprint,
+                    Operation::PrepareIntegration {
+                        command_id: command_id.clone(),
+                        expected_revision,
+                        request: Box::new(IntegrationRequest {
+                            schema_version: 1,
+                            id: stable("integration", &command_id),
+                            worker_id,
+                            artifact_revision,
+                            authorization_ref: stable("integration-consent", &command_id),
+                            authorized_integration_directory,
+                            target_directory,
+                            checks,
+                        }),
+                    },
+                    None,
+                    None,
+                    None,
+                )
+            }
+            HostRequest::InspectIntegration { integration_id } => {
+                self.call(Operation::InspectIntegration { integration_id })
+            }
+            HostRequest::RevalidateIntegration {
+                command_id,
+                integration_id,
+            } => self.effect(
+                &command_id,
+                fingerprint,
+                Operation::RevalidateIntegration {
+                    command_id: command_id.clone(),
+                    integration_id,
+                },
+                None,
+                None,
+                None,
+            ),
+            HostRequest::ApproveIntegration {
+                command_id,
+                expected_revision,
+                integration_id,
+                candidate_revision,
+                authorize,
+            } => {
+                if !authorize {
+                    return Err(err("explicit-candidate-approval-required"));
+                }
+                self.effect(
+                    &command_id,
+                    fingerprint,
+                    Operation::ApproveIntegration {
+                        command_id: command_id.clone(),
+                        expected_revision,
+                        request: Box::new(ApprovalRequest {
+                            schema_version: 1,
+                            id: stable("approval", &command_id),
+                            integration_id,
+                            candidate_revision,
+                            authorization_ref: stable("approval-consent", &command_id),
+                            valid_for_ms: 900_000,
+                        }),
+                    },
+                    None,
+                    None,
+                    None,
+                )
+            }
+            HostRequest::ApplyIntegration {
+                command_id,
+                expected_revision,
+                integration_id,
+                candidate_revision,
+                authorize,
+            } => {
+                if !authorize {
+                    return Err(err("explicit-application-authorization-required"));
+                }
+                self.effect(
+                    &command_id,
+                    fingerprint,
+                    Operation::ApplyIntegration {
+                        command_id: command_id.clone(),
+                        expected_revision,
+                        request: Box::new(ApplicationRequest {
+                            schema_version: 1,
+                            id: stable("application", &command_id),
+                            integration_id,
+                            candidate_revision,
+                            authorization_ref: stable("application-consent", &command_id),
+                        }),
+                    },
+                    None,
+                    None,
+                    None,
+                )
             }
             HostRequest::ArtifactText {
                 artifact_id,
@@ -1456,6 +1665,45 @@ fn observed_file_origin(
     json!({"origin":"project-file","originObservation":{"source":"core-metadata","historical":true,"projectId":id,"projectName":project["name"].as_str(),"revision":revision}})
 }
 
+fn validate_integration_checks(checks: &[CheckSpec]) -> Result<(), String> {
+    if checks.is_empty() || checks.len() > 16 {
+        return Err(err("integration-checks-required"));
+    }
+    for check in checks {
+        check.validate().map_err(err)?;
+        let hash = check
+            .executable_sha256
+            .as_deref()
+            .ok_or("integration-check-hash-required")?;
+        validate_runtime_pin(&check.executable, Some(hash))?;
+    }
+    Ok(())
+}
+fn integration_source_checks(
+    inspection: &Value,
+    worker_id: &str,
+    artifact_revision: &str,
+) -> Result<Vec<CheckSpec>, String> {
+    if inspection["summary"]["workerId"] != worker_id
+        || inspection["summary"]["status"] != "verified"
+        || inspection["artifact"]["revision"] != artifact_revision
+        || !inspection["reviews"].as_array().is_some_and(|reviews| {
+            reviews.iter().any(|review| {
+                review["status"] == "accepted"
+                    && review["worker_id"] == worker_id
+                    && review["artifact_revision"] == artifact_revision
+            })
+        })
+    {
+        return Err(err("verified-reviewed-exact-artifact-required"));
+    }
+    let checks: Vec<CheckSpec> =
+        serde_json::from_value(inspection["worker"]["intent"]["authorized_checks"].clone())
+            .map_err(|_| "integration-source-check-schema")?;
+    validate_integration_checks(&checks)?;
+    Ok(checks)
+}
+
 fn effect_runtime(operation: &Operation) -> Option<&RuntimeChoice> {
     match operation {
         Operation::SubmitConversation { runtime, .. }
@@ -1496,6 +1744,218 @@ fn validate_runtime_pin(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn editor_mutations_revalidate_candidates_even_on_conflict_without_losing_disk_bytes() {
+        let root = directory();
+        let file = root.join("candidate.txt");
+        fs::write(&file, b"before").unwrap();
+        let mut host = Host::new(root.clone()).unwrap();
+        let observed = Arc::new(Mutex::new(Vec::<String>::new()));
+        let calls = observed.clone();
+        host.test_transport = Some(Arc::new(move |operation| match operation {
+            Operation::Desktop { request } => match *request {
+                DesktopRequest::AffectedWorkers { .. } => Ok(
+                    json!({"workerIds":[],"integrationIds":["candidate-one"],"historical":true,"grantsAccess":false}),
+                ),
+                DesktopRequest::Bootstrap => Ok(json!({"revision":1,"projects":[]})),
+                _ => Err("unexpected-test-desktop".into()),
+            },
+            Operation::RevalidateIntegration {
+                command_id,
+                integration_id,
+            } => {
+                assert_eq!(integration_id, "candidate-one");
+                calls.lock().unwrap().push(command_id);
+                Ok(json!({"response":{"state":"accepted"},"outcome":null}))
+            }
+            _ => Err("unexpected-test-operation".into()),
+        }));
+        let grant = host
+            .editor
+            .lock()
+            .unwrap()
+            .grant_dialog_selection(root.clone())
+            .unwrap();
+        let opened = host
+            .edit(EditorRequest::Open {
+                grant: grant.id.clone(),
+                relative: "candidate.txt".into(),
+            })
+            .unwrap();
+        assert!(observed.lock().unwrap().is_empty());
+        let document = opened["id"].as_str().unwrap().to_owned();
+        let saved = host
+            .edit(EditorRequest::Save {
+                document: document.clone(),
+                base: opened["version"].as_str().unwrap().into(),
+                text: "saved".into(),
+            })
+            .unwrap();
+        assert_eq!(saved["affectedIntegrations"], json!(["candidate-one"]));
+        assert_eq!(saved["integrationRevalidation"][0]["accepted"], true);
+        assert_eq!(
+            saved["integrationRevalidation"][0]["integrationId"],
+            "candidate-one"
+        );
+        assert!(saved.get("approved").is_none());
+        assert_eq!(fs::read(&file).unwrap(), b"saved");
+        fs::write(&file, b"external").unwrap();
+        let conflict = host
+            .edit(EditorRequest::Save {
+                document,
+                base: saved["version"].as_str().unwrap().into(),
+                text: "unsaved buffer".into(),
+            })
+            .unwrap();
+        assert!(
+            conflict["saveError"]
+                .as_str()
+                .unwrap()
+                .contains("save-conflict")
+        );
+        assert!(conflict.get("version").is_none());
+        assert_eq!(fs::read(&file).unwrap(), b"external");
+        assert_eq!(conflict["affectedIntegrations"], json!(["candidate-one"]));
+        assert_eq!(observed.lock().unwrap().len(), 2);
+        let created = host
+            .edit(EditorRequest::Create {
+                grant: grant.id,
+                name: "new-file.txt".into(),
+            })
+            .unwrap();
+        assert_eq!(created["affectedIntegrations"], json!(["candidate-one"]));
+        assert_eq!(observed.lock().unwrap().len(), 3);
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn integration_uses_only_exact_reviewed_checks_and_requires_pinned_bytes() {
+        let root = directory();
+        let executable = root.join("check.exe");
+        fs::write(&executable, b"authorized-check").unwrap();
+        let check = CheckSpec {
+            id: "check-one".into(),
+            executable: executable.clone(),
+            arguments: vec!["--verify".into()],
+            authorization_ref: "original-check-consent".into(),
+            authorized: true,
+            timeout_ms: 30_000,
+            executable_sha256: Some(sha(b"authorized-check")),
+        };
+        let mut inspection = json!({"summary":{"workerId":"worker-one","status":"verified"},"artifact":{"revision":"exact-artifact"},"worker":{"intent":{"authorized_checks":[check]}},"reviews":[{"worker_id":"worker-one","artifact_revision":"exact-artifact","status":"accepted"}]});
+        let selected =
+            integration_source_checks(&inspection, "worker-one", "exact-artifact").unwrap();
+        assert_eq!(
+            serde_json::to_value(&selected[0]).unwrap(),
+            serde_json::to_value(&check).unwrap()
+        );
+        assert!(integration_source_checks(&inspection, "worker-one", "another-artifact").is_err());
+        inspection["reviews"][0]["worker_id"] = json!("another-worker");
+        assert!(integration_source_checks(&inspection, "worker-one", "exact-artifact").is_err());
+        inspection["reviews"][0]["worker_id"] = json!("worker-one");
+        inspection["worker"]["intent"]["authorized_checks"][0]["executable_sha256"] = Value::Null;
+        assert_eq!(
+            integration_source_checks(&inspection, "worker-one", "exact-artifact").unwrap_err(),
+            "integration-check-hash-required"
+        );
+        fs::write(&executable, b"replaced-check").unwrap();
+        assert!(validate_integration_checks(&[check]).is_err());
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn integration_grants_commands_and_replay_are_narrow_and_original() {
+        let root = directory();
+        let target = root.join("target-checkout");
+        let integration = root.join("integration-worktrees");
+        fs::create_dir(&target).unwrap();
+        fs::create_dir(&integration).unwrap();
+        // Native grants store canonical absolute paths, including Windows'
+        // extended-path prefix and long names when TEMP uses an 8.3 alias.
+        let target = target.canonicalize().unwrap();
+        let integration = integration.canonicalize().unwrap();
+        let executable = root.join("check.exe");
+        fs::write(&executable, b"original-check").unwrap();
+        let inspection = json!({"summary":{"workerId":"worker-one","status":"verified"},"artifact":{"revision":"exact-artifact"},"worker":{"intent":{"authorized_checks":[{"id":"check-one","executable":executable,"arguments":["--verify"],"authorization_ref":"original-consent","authorized":true,"timeout_ms":30000,"executable_sha256":sha(b"original-check")}]}},"reviews":[{"worker_id":"worker-one","artifact_revision":"exact-artifact","status":"accepted"}]});
+        let mut host = Host::new(root.clone()).unwrap();
+        let operations = Arc::new(Mutex::new(Vec::<Value>::new()));
+        let receipts = Arc::new(Mutex::new(false));
+        let observed = operations.clone();
+        let known = receipts.clone();
+        host.test_transport = Some(Arc::new(move |operation| match operation {
+            Operation::Desktop { request }
+                if matches!(*request, DesktopRequest::InspectWorker { .. }) =>
+            {
+                Ok(inspection.clone())
+            }
+            Operation::CommandReceipt { .. } => {
+                Ok(json!({"found":*known.lock().unwrap(),"receipt":{"state":"accepted"}}))
+            }
+            Operation::PrepareIntegration {
+                request,
+                expected_revision,
+                ..
+            } => {
+                assert_eq!(expected_revision, 7);
+                observed.lock().unwrap().push(json!(request));
+                *known.lock().unwrap() = true;
+                Ok(json!({"state":"accepted"}))
+            }
+            _ => Err("unexpected-test-operation".into()),
+        }));
+        let (target_grant, integration_grant) = {
+            let mut editor = host.editor.lock().unwrap();
+            (
+                editor.grant_dialog_selection(target.clone()).unwrap(),
+                editor.grant_dialog_selection(integration.clone()).unwrap(),
+            )
+        };
+        let mut request = HostRequest::PrepareIntegration {
+            command_id: "integration-command".into(),
+            expected_revision: 7,
+            worker_id: "worker-one".into(),
+            artifact_revision: "exact-artifact".into(),
+            target_grant: target_grant.id,
+            integration_grant: integration_grant.id,
+            authorize_checks: false,
+        };
+        assert!(host.handle(request.clone()).is_err());
+        if let HostRequest::PrepareIntegration {
+            authorize_checks, ..
+        } = &mut request
+        {
+            *authorize_checks = true;
+        }
+        let mut changed = serde_json::to_value(&request).unwrap();
+        changed["checks"] = json!([]);
+        assert!(serde_json::from_value::<HostRequest>(changed).is_err());
+        let result = host.handle(request.clone()).unwrap();
+        assert!(
+            result["integrationId"]
+                .as_str()
+                .unwrap()
+                .starts_with("integration-")
+        );
+        assert_eq!(operations.lock().unwrap().len(), 1);
+        assert_eq!(
+            operations.lock().unwrap()[0]["target_directory"],
+            json!(target)
+        );
+        assert_eq!(
+            operations.lock().unwrap()[0]["authorized_integration_directory"],
+            json!(integration)
+        );
+        fs::write(&executable, b"replaced-check").unwrap();
+        // A known receipt can be recovered without executing changed bytes.
+        host.handle(request.clone()).unwrap();
+        assert_eq!(operations.lock().unwrap().len(), 1);
+        // An unknown outcome cannot dispatch the original check after replacement.
+        *receipts.lock().unwrap() = false;
+        assert!(host.handle(request).is_err());
+        assert_eq!(operations.lock().unwrap().len(), 1);
+        fs::remove_dir_all(root).unwrap();
+    }
+
     fn directory() -> PathBuf {
         let path = std::env::temp_dir().join(id("orchestrix-native-boundary"));
         fs::create_dir(&path).unwrap();

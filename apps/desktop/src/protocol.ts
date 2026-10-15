@@ -13,7 +13,7 @@ export type Project={id:string,name:string,directory?:string};
 export type Connection={id:string,label:string,provider:string,mode:string,status:string,models?:{id:string,name:string,efforts?:string[]}[]};
 export type WorkerSummary={workerId:string,status:string};
 export type Cursor={database:string,sequence:number};
-export type DaemonSnapshot={state:{suspended:boolean,generation:number,cursor:Cursor},workers:WorkerSummary[],workerCount:number,nextWorker?:string|null,workerFactsHistorical:true,activeWorkerId?:string|null,activeCancellable?:boolean};
+export type DaemonSnapshot={state:{suspended:boolean,generation:number,cursor:Cursor},workers:WorkerSummary[],workerCount:number,nextWorker?:string|null,workerFactsHistorical:true,activeWorkerId?:string|null,activeCancellable?:boolean,activeOperationKind?:string|null,features?:string[]};
 export type Workspace={revision:number,projects:Project[],conversations:Conversation[],settings:Settings,connections:Connection[],eventCursor:Cursor,admissionsSuspended:boolean};
 export type Bootstrap=Workspace&{nativeTestMode?:boolean,daemon?:DaemonSnapshot,runtime?:{available:boolean,version?:string,reason?:string}};
 export type DesktopRequest=
@@ -26,6 +26,11 @@ export type DesktopRequest=
  |{type:'attach-conversation',commandId:string,expectedRevision:number,conversationId:string,projectId:string}
  |{type:'save-settings',commandId:string,expectedRevision:number,settings:Settings}
  |{type:'inspect-worker',workerId:string}
+ |{type:'prepare-integration',commandId:string,expectedRevision:number,workerId:string,artifactRevision:string,targetGrant:string,integrationGrant:string,authorizeChecks:boolean}
+ |{type:'inspect-integration',integrationId:string}
+ |{type:'revalidate-integration',commandId:string,integrationId:string}
+ |{type:'approve-integration',commandId:string,expectedRevision:number,integrationId:string,candidateRevision:string,authorize:boolean}
+ |{type:'apply-integration',commandId:string,expectedRevision:number,integrationId:string,candidateRevision:string,authorize:boolean}
  |{type:'artifact-text',artifactId:string,revision:string,path:null|string,offset:number,limit:number}
  |{type:'prepare-task',draft:TaskDraft}
  |{type:'submit-task',commandId:string,preparationId:string,authorizeRuntime:boolean,authorizeChecks:boolean}
