@@ -19,6 +19,18 @@ pub struct WorkerIntent {
     pub policy: Value,
     pub context: Value,
     pub authorized_checks: Value,
+    /// Immutable host protocol declared before effects. Absence preserves the
+    /// exact legacy representation and grants no launch-free/closure guarantee.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub launch_protocol: Option<WorkerLaunchProtocol>,
+}
+
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "kebab-case")]
+pub enum WorkerLaunchProtocol {
+    /// Durable SupervisorReady precedes runtime launch; durable Checking
+    /// precedes every evaluator launch in the shared fenced scope.
+    GuardedRuntimeAndChecksV1,
 }
 impl WorkerIntent {
     pub fn validate(&self) -> bool {
@@ -297,6 +309,27 @@ fn bounded_reservation(body: &Value, components: impl IntoIterator<Item = Value>
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn launch_protocol_is_optional_for_exact_legacy_bytes_and_closed_when_present() {
+        let legacy = concat!(
+            "{\"id\":\"worker\",\"request_hash\":\"",
+            "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "\",\"run_id\":\"run\",\"task_id\":\"task\",\"attempt_id\":\"attempt\",",
+            "\"project_id\":\"project\",\"repository_id\":\"repository\",\"base_oid\":\"",
+            "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "\",\"policy\":{},\"context\":{},\"authorized_checks\":[]}"
+        );
+        let mut restored: WorkerIntent = serde_json::from_str(legacy).unwrap();
+        assert!(restored.validate());
+        assert_eq!(restored.launch_protocol, None);
+        assert_eq!(serde_json::to_string(&restored).unwrap(), legacy);
+        restored.launch_protocol = Some(WorkerLaunchProtocol::GuardedRuntimeAndChecksV1);
+        let mut current = serde_json::to_value(&restored).unwrap();
+        assert_eq!(current["launch_protocol"], "guarded-runtime-and-checks-v1");
+        current["launch_protocol"] = json!("unknown-protocol");
+        assert!(serde_json::from_value::<WorkerIntent>(current).is_err());
+    }
 
     #[test]
     fn composed_documents_do_not_share_one_documents_node_budget() {

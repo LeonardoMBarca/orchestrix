@@ -368,6 +368,7 @@ impl ManualWorker {
             policy: decision.snapshot().as_json().clone(),
             context: context.as_json().clone(),
             authorized_checks: json!(input.checks),
+            launch_protocol: Some(WorkerLaunchProtocol::GuardedRuntimeAndChecksV1),
         };
         let diagnostics = vec![diagnostic_input(
             store,

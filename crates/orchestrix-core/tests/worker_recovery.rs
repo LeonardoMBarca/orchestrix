@@ -536,3 +536,394 @@ fn crash_windows_reconcile_without_pid_adoption_or_automatic_dispatch_and_restor
 fn reopened_revision(store: &Store) -> u64 {
     store.load().unwrap().revision()
 }
+
+// Build faithful legacy-contract rows through the normal reservation API. This
+// is not an assertion that an old executable was run: no existing row, trigger,
+// digest or snapshot is edited to manufacture a recovery proof.
+fn legacy_reservation(
+    state: &orchestrix_core::persistence::SavedState,
+    protocol: Option<orchestrix_core::worker_records::WorkerLaunchProtocol>,
+) -> orchestrix_core::worker_records::WorkerReservation {
+    use orchestrix_core::domain::*;
+    let mut intent = state.workers()["recovery-worker"].intent.clone();
+    intent.launch_protocol = protocol;
+    let original = state.runs()[&RunId::new(&intent.run_id).unwrap()]
+        .task(&TaskId::new(&intent.task_id).unwrap())
+        .unwrap();
+    let attempt = &original.attempts()[0];
+    assert_eq!(attempt.state(), AttemptState::Created);
+    let project = Project::restore_checkpoint(
+        &state.projects()[&ProjectId::new(&intent.project_id).unwrap()].checkpoint(),
+    )
+    .unwrap();
+    let mut run = Run::new(
+        RunId::new(&intent.run_id).unwrap(),
+        Some(&project),
+        RevisionId::new(&intent.base_oid).unwrap(),
+        DeliveryRequirement::FinalApplication,
+    )
+    .unwrap();
+    run.add_task(
+        Task::new(
+            original.id().clone(),
+            original.objective(),
+            original.kind(),
+            original.acceptance_criteria().to_vec(),
+            vec![],
+        )
+        .unwrap(),
+    )
+    .unwrap();
+    run.make_ready(original.id()).unwrap();
+    let session = attempt.session();
+    orchestrix_core::worker_records::WorkerReservation {
+        intent,
+        project,
+        connection: Connection::restore_checkpoint(
+            &state.connections()[&(
+                session.connection_id().clone(),
+                session.connection_revision(),
+            )]
+                .checkpoint(),
+        )
+        .unwrap(),
+        session: RuntimeSessionRef::restore_checkpoint(&session.checkpoint()).unwrap(),
+        run,
+        attempt: TaskAttempt::restore_checkpoint(&attempt.checkpoint()).unwrap(),
+        snapshot: state.snapshots()[attempt.id()].clone(),
+        definitions: state.records().definitions().to_vec(),
+        diagnostics: state.records().diagnostics().to_vec(),
+    }
+}
+
+fn effect(store: &mut Store, key: &str, command: orchestrix_core::persistence::Command) {
+    let result = store
+        .execute(&orchestrix_core::persistence::Request {
+            scope: orchestrix_core::domain::LocalRef::new("legacy-proof-test").unwrap(),
+            key: orchestrix_core::domain::LocalRef::new(key).unwrap(),
+            expected_revision: store.load().unwrap().revision(),
+            command,
+        })
+        .unwrap();
+    assert_eq!(
+        result.result.disposition,
+        orchestrix_core::persistence::Disposition::Applied
+    );
+}
+
+#[test]
+fn legacy_launch_and_unrecorded_checks_never_gain_closure_from_missing_barriers() {
+    use orchestrix_core::{
+        domain::*,
+        git::{CreateWorktree, WorktreeService},
+        persistence::{Command as DurableCommand, RunAction},
+        recovery_guardian::GuardianBinding,
+        runtime::{AttemptExecution, CodexAdapter, RuntimeError},
+        runtime_contract::normalize_request,
+        worker_records::{WorkerCommand, WorkerLaunchProtocol},
+    };
+    use orchestrix_process::{OwnedProcess, ProcessLimits, SpawnSpec};
+    use serde_json::json;
+
+    let fixture = Fixture::new();
+    let mut request = fixture.request();
+    let marker = fixture.root.join("legacy-check-started");
+    request.checks = vec![orchestrix_core::evaluator::CheckSpec {
+        id: "legacy-check".into(),
+        executable: PathBuf::from(env!("CARGO_BIN_EXE_orchestrix-runtime-fixture")),
+        arguments: vec!["--check-hang".into(), marker.to_string_lossy().into()],
+        authorization_ref: "explicit-legacy-check-fixture".into(),
+        authorized: true,
+        timeout_ms: 90_000,
+        executable_sha256: None,
+    }];
+    let manifest = fixture.root.join("seed-task.json");
+    fs::write(&manifest, serde_json::to_vec(&request).unwrap()).unwrap();
+    let child = Command::new(env::current_exe().unwrap())
+        .args(["--ignored", "--exact", "worker_crash_child", "--nocapture"])
+        .env("ORCHESTRIX_RECOVERY_MANIFEST", &manifest)
+        .env("ORCHESTRIX_RECOVERY_DATABASE", &fixture.database)
+        .env("ORCHESTRIX_RECOVERY_HOME", &fixture.home)
+        .env("ORCHESTRIX_RECOVERY_PHASE", "Reserved")
+        .output()
+        .unwrap();
+    assert_eq!(child.status.code(), Some(86), "{child:?}");
+    let seed = Store::open(&fixture.database).unwrap().load().unwrap();
+
+    for case in [
+        "legacy-reserved",
+        "legacy-worktree",
+        "guarded-reserved",
+        "schema5-preparing",
+        "unproved-preparing",
+        "legacy-runtime-check",
+    ] {
+        eprintln!("legacy compatibility case: {case}");
+        let database = fixture.root.join(format!("{case}.sqlite"));
+        let mut store = Store::open(&database).unwrap();
+        let protocol =
+            (case == "guarded-reserved").then_some(WorkerLaunchProtocol::GuardedRuntimeAndChecksV1);
+        let reservation = legacy_reservation(&seed, protocol);
+        let intent_bytes = serde_json::to_string(&reservation.intent).unwrap();
+        if protocol.is_none() {
+            assert!(!intent_bytes.contains("launch_protocol"));
+        }
+        let snapshot_before = serde_json::to_value(&reservation.snapshot).unwrap();
+        effect(
+            &mut store,
+            "reserve",
+            DurableCommand::Worker(WorkerCommand::Reserve(Box::new(reservation))),
+        );
+        if matches!(case, "schema5-preparing" | "unproved-preparing") {
+            let details = if case == "schema5-preparing" {
+                let binding = GuardianBinding::prepare(
+                    store.path(),
+                    &seed.workers()["recovery-worker"].intent.attempt_id,
+                    &orchestrix_core::recovery_guardian::default_helper().unwrap(),
+                )
+                .unwrap();
+                json!({"guardian":binding,"runtimeSpawnRequiresSupervisorReady":true})
+            } else {
+                json!({"runtimeSpawnRequiresSupervisorReady":true})
+            };
+            effect(
+                &mut store,
+                "prepare",
+                DurableCommand::Worker(WorkerCommand::Observe {
+                    id: "recovery-worker".into(),
+                    status: WorkerStatus::Preparing,
+                    details,
+                }),
+            );
+        }
+        let mut own_check = None;
+        if matches!(case, "legacy-worktree" | "legacy-runtime-check") {
+            // The two independent databases must not claim the same Git refs
+            // or checkout. Clone only this owned fixture locally, preserving
+            // its exact commit while using a separate physical Git registry.
+            let repository = if case == "legacy-runtime-check" {
+                let repository = fixture.root.join("legacy-runtime-source");
+                let ordinary = |path: &Path| {
+                    path.to_string_lossy()
+                        .strip_prefix(r"\\?\")
+                        .unwrap_or(path.to_str().unwrap())
+                        .to_owned()
+                };
+                git(
+                    &fixture.root,
+                    &[
+                        "clone",
+                        "--quiet",
+                        "--no-hardlinks",
+                        "--",
+                        &ordinary(&fixture.repository),
+                        &ordinary(&repository),
+                    ],
+                );
+                repository
+            } else {
+                fixture.repository.clone()
+            };
+            let authorized = fixture.authorized.join(case);
+            fs::create_dir(&authorized).unwrap();
+            let state = store.load().unwrap();
+            let intent = &state.workers()["recovery-worker"].intent;
+            let task = state.runs()[&RunId::new(&intent.run_id).unwrap()]
+                .task(&TaskId::new(&intent.task_id).unwrap())
+                .unwrap();
+            let attempt = &task.attempts()[0];
+            let runtime_request = normalize_request(&json!({
+                "version":{"major":1,"minor":1},"connectionId":request.connection_id,
+                "connectionRevision":request.connection_revision,"sessionId":attempt.session().id().as_str(),
+                "attemptId":intent.attempt_id,"contextPackRef":attempt.inputs().context.reference.as_str(),
+                "billingMode":"subscription-only","paidFallback":"forbidden",
+                "requested":attempt.runtime_snapshot()["requested"]
+            }))
+            .unwrap();
+            let worktree = WorktreeService::new()
+                .unwrap()
+                .create(
+                    &mut store,
+                    &CreateWorktree {
+                        scope: LocalRef::new("legacy-proof-test").unwrap(),
+                        key: LocalRef::new(format!("create-{case}")).unwrap(),
+                        expected_revision: state.revision(),
+                        project: ProjectId::new(&intent.project_id).unwrap(),
+                        repository: RepositoryId::new(&intent.repository_id).unwrap(),
+                        run: RunId::new(&intent.run_id).unwrap(),
+                        task: TaskId::new(&intent.task_id).unwrap(),
+                        attempt: AttemptId::new(&intent.attempt_id).unwrap(),
+                        directory_reference: LocalRef::new(format!(
+                            "directory-{}",
+                            request.project_id
+                        ))
+                        .unwrap(),
+                        worktree_reference: attempt.inputs().worktree.clone(),
+                        repository_path: repository,
+                        authorized_directory: authorized,
+                        base_commit: fixture.base.clone(),
+                    },
+                )
+                .unwrap();
+            if case == "legacy-runtime-check" {
+                let diagnostic = &state.snapshots()[attempt.id()].diagnostics[0];
+                effect(
+                    &mut store,
+                    "dispatch-intent",
+                    DurableCommand::Worker(WorkerCommand::Observe {
+                        id: "recovery-worker".into(),
+                        status: WorkerStatus::DispatchPlanned,
+                        details: json!({"admissionDiagnostic":diagnostic,"worktreeOperation":worktree.intent.operation_id}),
+                    }),
+                );
+                let path = PathBuf::from(&worktree.intent.path);
+                let launch = RuntimeLaunch::fixture(
+                    PathBuf::from(env!("CARGO_BIN_EXE_orchestrix-runtime-fixture")),
+                    vec!["--scenario".into(), "success".into()],
+                    fixture.home.clone(),
+                    path.clone(),
+                );
+                let mut adapter = CodexAdapter::connect(
+                    launch,
+                    &request.connection_id,
+                    request.connection_revision,
+                    100,
+                    &CancellationToken::new(),
+                )
+                .unwrap();
+                let mut sequence = 0;
+                let report = adapter
+                    .execute(
+                        AttemptExecution {
+                            request: runtime_request,
+                            prompt: request.objective.clone(),
+                            base_instructions: "Synthetic legacy compatibility proof".into(),
+                            developer_instructions: "Only the owned fixture".into(),
+                            resume: None,
+                        },
+                        &CancellationToken::new(),
+                        |frame, origin| {
+                            sequence += 1;
+                            let receipt = store
+                                .execute(&orchestrix_core::persistence::Request {
+                                    scope: LocalRef::new("legacy-proof-test").unwrap(),
+                                    key: LocalRef::new(format!("frame-{sequence}")).unwrap(),
+                                    expected_revision: store.load().unwrap().revision(),
+                                    command: DurableCommand::run(
+                                        RunId::new(&intent.run_id).unwrap(),
+                                        RunAction::Observe {
+                                            task: TaskId::new(&intent.task_id).unwrap(),
+                                            frame: frame.to_string(),
+                                            origin,
+                                        },
+                                    ),
+                                })
+                                .map_err(|_| RuntimeError::observation_failed())?;
+                            if receipt.result.disposition
+                                != orchestrix_core::persistence::Disposition::Applied
+                            {
+                                return Err(RuntimeError::observation_failed());
+                            }
+                            Ok(())
+                        },
+                    )
+                    .unwrap();
+                assert_eq!(report.fault, None);
+                assert!(report.tree.is_some_and(|tree| tree.active_processes == 0));
+                assert!(
+                    report.streams.stdin_closed
+                        && report.streams.stdout_closed
+                        && report.streams.stderr_closed
+                );
+                effect(
+                    &mut store,
+                    "runtime-observed",
+                    DurableCommand::Worker(WorkerCommand::Observe {
+                        id: "recovery-worker".into(),
+                        status: WorkerStatus::RuntimeObserved,
+                        details: json!({"treeStopped":true,"streamsClosed":true,"worktreeOperation":worktree.intent.operation_id}),
+                    }),
+                );
+                // V4 could now start its authorized check without recording
+                // Checking. Its old runtime closure is not closure of this Job.
+                request.checks[0].validate().unwrap();
+                let mut check = OwnedProcess::spawn(SpawnSpec {
+                    executable: request.checks[0].executable.clone(),
+                    arguments: request.checks[0].arguments.iter().map(Into::into).collect(),
+                    cwd: path,
+                    environment: env::vars_os()
+                        .filter(|(key, _)| {
+                            ["PATH", "SystemRoot", "SystemDrive", "WINDIR", "TEMP", "TMP"]
+                                .iter()
+                                .any(|name| key.to_string_lossy().eq_ignore_ascii_case(name))
+                        })
+                        .collect(),
+                    limits: ProcessLimits {
+                        lifetime: Duration::from_millis(request.checks[0].timeout_ms),
+                        ..ProcessLimits::default()
+                    },
+                })
+                .unwrap();
+                check.close_input();
+                let start = std::time::Instant::now();
+                while !marker.is_file() {
+                    assert!(start.elapsed() < Duration::from_secs(3));
+                    std::thread::sleep(Duration::from_millis(5));
+                }
+                assert!(check.tree().unwrap().active_processes > 0);
+                own_check = Some(check);
+            }
+        }
+        let summary = recovery::reconcile(&mut store).unwrap();
+        let case_result = &summary.cases[0];
+        let eligible = matches!(case, "guarded-reserved" | "schema5-preparing");
+        assert_eq!(case_result.set_aside_eligible, eligible, "{case}");
+        assert!(!case_result.local_scope_exhausted);
+        if case == "legacy-runtime-check" {
+            assert!(case_result.local_tree_stopped && case_result.streams_closed);
+        }
+        let revision = store.load().unwrap().revision();
+        assert_eq!(
+            recovery::intervene(
+                &mut store,
+                "recovery-worker",
+                revision,
+                "explicit-legacy-inspection",
+                RecoveryAction::SetAside,
+            )
+            .is_ok(),
+            eligible,
+            "{case}"
+        );
+        if let Some(check) = &mut own_check {
+            assert!(check.tree().unwrap().active_processes > 0);
+            assert_eq!(
+                check
+                    .terminate(Duration::from_secs(3))
+                    .unwrap()
+                    .active_processes,
+                0
+            );
+        }
+        let after = store.load().unwrap();
+        assert_eq!(
+            serde_json::to_string(&after.workers()["recovery-worker"].intent).unwrap(),
+            intent_bytes
+        );
+        assert_eq!(
+            serde_json::to_value(after.snapshots().values().next().unwrap()).unwrap(),
+            snapshot_before
+        );
+        drop(store);
+        let reopened = Store::open(&database).unwrap();
+        assert_eq!(
+            serde_json::to_string(&reopened.load().unwrap().workers()["recovery-worker"].intent)
+                .unwrap(),
+            intent_bytes
+        );
+        assert_eq!(
+            recovery::snapshot(&reopened).unwrap().ready_for_admission,
+            eligible
+        );
+    }
+}

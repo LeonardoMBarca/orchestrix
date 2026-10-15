@@ -464,6 +464,7 @@ mod tests {
                 policy: json!({}),
                 context: json!({}),
                 authorized_checks: json!([]),
+                launch_protocol: None,
             };
             assert!(intent.validate());
             connection

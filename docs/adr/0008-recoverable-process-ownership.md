@@ -1,6 +1,6 @@
 # ADR-0008 — Recoverable owned-process closure evidence
 
-- **Status:** Proposed; acceptance depends on the integrated crash tests
+- **Status:** Proposed pending the final legacy-compatibility correction; S5/crash [evidence](../research/local-daemon-recovery-increment.md) is preserved
 - **Date:** 2026-10-14
 - **Owners:** Orchestrix Core / Windows process boundary
 - **Related issues:** OX-011, CONT-01/02
@@ -16,6 +16,8 @@ A named Job alone is insufficient: a temporary object's name can disappear when 
 Provide a small trusted Rust supervisor helper, built alongside the CLI, that holds a handle to the exact restricted Job before the runtime root is created. The Core keeps its existing process I/O and Codex adapter. The helper keeps ownership evidence alive independently; it does not interpret provider protocol, choose a model, delegate or duplicate the worker engine.
 
 Persist a scope/receipt reference before entering the process-launch window. Use a private user-owned scope outside repository/worktree access. Bind helper readiness to that Job's identity/security and the host process handle plus creation identity. No runtime process may start before readiness. Preserve atomic Job association through the existing process-creation Job-list attribute, which assigns membership before the first thread runs. See [Microsoft's explanation of PROC_THREAD_ATTRIBUTE_JOB_LIST](https://devblogs.microsoft.com/oldnewthing/20230209-00/?p=107812).
+
+Record a typed guarded launch protocol in new intents before effects: readiness precedes runtime spawn and Checking precedes evaluator spawn. Preserve absent legacy fields without changing serialized bytes. Older workers could connect before DispatchPlanned and launch checks after RuntimeObserved without those barriers, so missing markers alone cannot justify SetAside. Recognize early-S5 authority only through its explicit Preparing guard and validated version-1 binding; otherwise require independent valid closure evidence. Loading or acknowledging an old incident cannot upgrade its launch contract.
 
 On host death, explicit finish or bounded lifetime, the helper first seals admissions to that exact kernel Job with a verified zero-active-process limit, then terminates its members and confirms zero active processes. Identified process creation never resets that limit. This fence matters even when the original host remains alive: a delayed host cannot put a new process into a scope after its closure was certified. A Windows test uses the same executable/specification successfully in an open Job before proving that association to the sealed Job fails before child code runs.
 

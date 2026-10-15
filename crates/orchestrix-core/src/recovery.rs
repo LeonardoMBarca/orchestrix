@@ -224,10 +224,12 @@ pub fn intervene(
 /// by appending SetAside directly. No absence-of-PID inference is involved.
 pub(crate) fn set_aside_evidence(state: &SavedState, record: &WorkerRecord) -> bool {
     knowledge(state, record).is_ok_and(|(dispatch, _, tree, streams)| {
-        // Preparing is written before connect can spawn anything. Even though
-        // no task turn was sent, a lost process handle is not stopped evidence.
-        // Only the earlier reservation/worktree-only window is launch-free.
+        // Legacy workers could connect before DispatchPlanned without any
+        // Preparing, and could launch checks without Checking. Their absence
+        // is therefore evidence only under a recorded guarded host protocol.
+        let guarded = has_enforced_launch_protocol(record);
         (dispatch == DispatchKnowledge::NeverSent
+            && guarded
             && !record.observations.iter().any(|o| {
                 matches!(
                     o.status,
@@ -248,7 +250,8 @@ pub(crate) fn set_aside_evidence(state: &SavedState, record: &WorkerRecord) -> b
                         )
                         .is_ok_and(|b| b.validate())
                 }))
-            || (tree
+            || (guarded
+                && tree
                 && streams
                 && !record
                     .observations
@@ -259,6 +262,22 @@ pub(crate) fn set_aside_evidence(state: &SavedState, record: &WorkerRecord) -> b
                 .iter()
                 .any(|o| valid_local_proof(record, &o.details))
     })
+}
+
+fn has_enforced_launch_protocol(record: &WorkerRecord) -> bool {
+    record.intent.launch_protocol
+        == Some(crate::worker_records::WorkerLaunchProtocol::GuardedRuntimeAndChecksV1)
+        // Early schema-5 workers recorded this explicit version-1 binding
+        // before launch and introduced BOTH barriers, before the intent field
+        // existed. A generic/legacy Preparing is never sufficient.
+        || record.observations.iter().any(|observation| {
+            observation.status == WorkerStatus::Preparing
+                && observation.details["runtimeSpawnRequiresSupervisorReady"] == true
+                && serde_json::from_value::<crate::recovery_guardian::GuardianBinding>(
+                    observation.details["guardian"].clone(),
+                )
+                .is_ok_and(|binding| binding.validate())
+        })
 }
 
 fn knowledge(
