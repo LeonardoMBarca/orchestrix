@@ -1,6 +1,8 @@
 //! Bounded owned-process transport. Windows Job ownership is independent of protocol success.
 #![deny(unsafe_op_in_unsafe_fn)]
+pub mod ipc;
 pub mod lease;
+pub mod named_job;
 pub mod watch;
 
 use std::ffi::OsString;
@@ -127,6 +129,12 @@ impl OwnedProcess {
         self.native.member_ids()
     }
     pub fn spawn(spec: SpawnSpec) -> Result<Self> {
+        Self::spawn_inner(spec, None)
+    }
+    pub fn spawn_identified(spec: SpawnSpec, scope: &named_job::JobScope) -> Result<Self> {
+        Self::spawn_inner(spec, Some(scope))
+    }
+    fn spawn_inner(spec: SpawnSpec, scope: Option<&named_job::JobScope>) -> Result<Self> {
         let limits = spec.limits.validate()?;
         if !spec.executable.is_absolute()
             || !spec.executable.is_file()
@@ -137,7 +145,7 @@ impl OwnedProcess {
         {
             return Err(ProcessError::Arguments);
         }
-        let launched = native::NativeProcess::spawn(&spec)?;
+        let launched = native::NativeProcess::spawn(&spec, scope)?;
         let native = Arc::new(launched.process);
         let state = Arc::new(PumpState {
             input: AtomicBool::new(false),

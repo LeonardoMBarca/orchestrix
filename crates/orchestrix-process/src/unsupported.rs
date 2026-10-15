@@ -10,7 +10,7 @@ impl NativeProcess {
     pub fn member_ids(&self) -> Result<Vec<u32>> {
         Err(ProcessError::Unsupported)
     }
-    pub fn spawn(_: &SpawnSpec) -> Result<Launched> {
+    pub fn spawn(_: &SpawnSpec, _: Option<&crate::named_job::JobScope>) -> Result<Launched> {
         Err(ProcessError::Unsupported)
     }
     pub fn observe(&self) -> Result<TreeState> {

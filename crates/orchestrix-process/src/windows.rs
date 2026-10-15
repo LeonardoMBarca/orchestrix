@@ -229,7 +229,7 @@ impl NativeProcess {
                 .collect()
         }
     }
-    pub fn spawn(spec: &SpawnSpec) -> Result<Launched> {
+    pub fn spawn(spec: &SpawnSpec, scope: Option<&crate::named_job::JobScope>) -> Result<Launched> {
         let executable = wide(spec.executable.as_os_str())?;
         let cwd = wide(spec.cwd.as_os_str())?;
         let mut command = quote(spec.executable.as_os_str())?;
@@ -243,19 +243,25 @@ impl NativeProcess {
         command.push(0);
         let environment = environment(spec)?;
         unsafe {
-            let job = OwnedHandle(CreateJobObjectW(null(), null()));
+            let job = OwnedHandle(if let Some(scope) = scope {
+                scope.duplicate()?
+            } else {
+                CreateJobObjectW(null(), null())
+            });
             require(!job.0.is_null(), ProcessError::Ownership)?;
             let mut limits: ExtendedLimits = zeroed();
             limits.basic.flags = KILL_ON_JOB_CLOSE;
-            require(
-                SetInformationJobObject(
-                    job.0,
-                    9,
-                    (&limits as *const ExtendedLimits).cast(),
-                    size_of::<ExtendedLimits>() as u32,
-                ) != 0,
-                ProcessError::Ownership,
-            )?;
+            if scope.is_none() {
+                require(
+                    SetInformationJobObject(
+                        job.0,
+                        9,
+                        (&limits as *const ExtendedLimits).cast(),
+                        size_of::<ExtendedLimits>() as u32,
+                    ) != 0,
+                    ProcessError::Ownership,
+                )?;
+            }
             let (input_read, mut input_write) = pipe()?;
             let (mut output_read, output_write) = pipe()?;
             let (mut error_read, error_write) = pipe()?;
