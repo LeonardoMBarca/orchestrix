@@ -231,6 +231,8 @@ impl GitExecutor {
         deadline: Duration,
         limit: usize,
     ) -> GitResult<GitOutput> {
+        #[cfg(all(test, windows))]
+        let _diagnostic_timing = test_timing::Call::start(args);
         let cwd = canonical_directory(cwd)?;
         reject_links(&self.private)?;
         if fs::read_dir(&self.private)
@@ -491,17 +493,19 @@ impl GitExecutor {
                 return Err(GitError::Unsupported);
             }
         }
-        for arg in ["--absolute-git-dir", "--git-common-dir"] {
-            let raw = self.run(repo, &strings(&["rev-parse", arg]))?.checked()?;
-            let text = std::str::from_utf8(&raw)
-                .map_err(|_| GitError::Path)?
-                .trim_end_matches(['\n', '\r']);
-            let path = Path::new(text);
-            let dir = canonical_directory(&if path.is_absolute() {
-                path.to_path_buf()
-            } else {
-                repo.join(path)
-            })?;
+        let raw = self
+            .run(
+                repo,
+                &strings(&[
+                    "rev-parse",
+                    "--path-format=absolute",
+                    "--absolute-git-dir",
+                    "--git-common-dir",
+                ]),
+            )?
+            .checked()?;
+        for path in repository_directories(&raw)? {
+            let dir = canonical_directory(&path)?;
             for name in [
                 "config",
                 "config.worktree",
@@ -533,6 +537,125 @@ impl GitExecutor {
             inspect_object_store(&dir.join("objects"))?;
         }
         Ok(())
+    }
+}
+
+/// Git prints one canonical absolute directory for each fixed rev-parse option.
+/// Reject truncation/extra fields rather than interpreting them as paths. This
+/// batches only discovery; every support check still rereads config, paths and
+/// object-store metadata at its original observation boundary.
+fn repository_directories(raw: &[u8]) -> GitResult<[PathBuf; 2]> {
+    let body = raw.strip_suffix(b"\n").ok_or(GitError::Path)?;
+    let mut directories = Vec::new();
+    for line in body.split(|byte| *byte == b'\n') {
+        let line = line.strip_suffix(b"\r").unwrap_or(line);
+        let text = std::str::from_utf8(line).map_err(|_| GitError::Path)?;
+        let path = PathBuf::from(text);
+        if !path.is_absolute() || text.chars().any(char::is_control) {
+            return Err(GitError::Path);
+        }
+        directories.push(path);
+    }
+    directories.try_into().map_err(|_| GitError::Path)
+}
+
+#[cfg(test)]
+mod metadata_batch_tests {
+    use super::*;
+
+    #[test]
+    fn directory_response_requires_exact_absolute_fields() {
+        let directory = canonical_directory(&env::temp_dir()).unwrap();
+        let text = directory.to_str().unwrap();
+        assert_eq!(
+            repository_directories(format!("{text}\n{text}\n").as_bytes()).unwrap(),
+            [directory.clone(), directory.clone()]
+        );
+        assert_eq!(
+            repository_directories(format!("{text}\r\n{text}\r\n").as_bytes()).unwrap(),
+            [directory.clone(), directory.clone()]
+        );
+        for bad in [
+            format!("{text}\n"),
+            format!("{text}\n{text}"),
+            format!("{text}\n{text}\nextra\n"),
+            format!("{text}\nrelative\n"),
+            format!("{text}\n\n"),
+            format!("{text}\0\n{text}\n"),
+        ] {
+            assert_eq!(repository_directories(bad.as_bytes()), Err(GitError::Path));
+        }
+    }
+}
+
+#[cfg(all(test, windows))]
+pub(crate) mod test_timing {
+    use std::{cell::RefCell, ffi::OsString, time::Instant};
+
+    #[derive(serde::Serialize)]
+    pub(crate) struct Sample {
+        pub builtin: &'static str,
+        pub elapsed_micros: u128,
+    }
+    thread_local! {
+        static SAMPLES: RefCell<Option<Vec<Sample>>> = const { RefCell::new(None) };
+    }
+    pub(crate) fn begin() {
+        SAMPLES.with(|samples| assert!(samples.replace(Some(Vec::new())).is_none()));
+    }
+    pub(crate) fn finish() -> Vec<Sample> {
+        SAMPLES.with(|samples| samples.take().expect("diagnostic trace not enabled"))
+    }
+    pub(super) struct Call {
+        builtin: &'static str,
+        started: Instant,
+    }
+    impl Call {
+        pub(super) fn start(args: &[OsString]) -> Option<Self> {
+            if !SAMPLES.with(|samples| samples.borrow().is_some()) {
+                return None;
+            }
+            let builtin = match args.first().and_then(|value| value.to_str()) {
+                Some("--version") => "--version",
+                Some("rev-parse") => "rev-parse",
+                Some("symbolic-ref") => "symbolic-ref",
+                Some("config") => "config",
+                Some("ls-files") => "ls-files",
+                Some("ls-tree") => "ls-tree",
+                Some("cat-file") => "cat-file",
+                Some("status") => "status",
+                Some("diff") => "diff",
+                Some("worktree") => "worktree",
+                Some("branch") => "branch",
+                Some("update-ref") => "update-ref",
+                Some("for-each-ref") => "for-each-ref",
+                Some("check-ref-format") => "check-ref-format",
+                Some("check-attr") => "check-attr",
+                Some("hash-object") => "hash-object",
+                Some("show-ref") => "show-ref",
+                Some("rev-list") => "rev-list",
+                Some("merge-base") => "merge-base",
+                Some("read-tree") => "read-tree",
+                Some("update-index") => "update-index",
+                _ => "unsupported",
+            };
+            Some(Self {
+                builtin,
+                started: Instant::now(),
+            })
+        }
+    }
+    impl Drop for Call {
+        fn drop(&mut self) {
+            SAMPLES.with(|samples| {
+                if let Some(samples) = samples.borrow_mut().as_mut() {
+                    samples.push(Sample {
+                        builtin: self.builtin,
+                        elapsed_micros: self.started.elapsed().as_micros(),
+                    });
+                }
+            });
+        }
     }
 }
 

@@ -453,3 +453,232 @@ fn write_tree(
     }
     object(executor, root, "tree", &body, write)
 }
+
+#[cfg(all(test, windows))]
+mod diagnostics {
+    use super::*;
+    use crate::recovery_guardian::{Guardian, GuardianBinding, default_helper, read_proof};
+    use serde_json::json;
+    use std::{
+        env,
+        path::PathBuf,
+        sync::{Arc, Condvar, Mutex},
+        thread,
+        time::{Duration, Instant, SystemTime, UNIX_EPOCH},
+    };
+
+    #[derive(serde::Serialize, PartialEq, Eq)]
+    struct Stamp {
+        directory: bool,
+        bytes: u64,
+        modified_nanos: u128,
+        readonly: bool,
+        sha256: Option<String>,
+    }
+    fn fingerprint(roots: &[PathBuf]) -> BTreeMap<PathBuf, Stamp> {
+        fn visit(path: &Path, files: &mut BTreeMap<PathBuf, Stamp>, bytes: &mut usize) {
+            if files.contains_key(path) {
+                return;
+            }
+            assert!(files.len() < 16_384, "diagnostic-inventory-limit");
+            paths::reject_links(path).expect("diagnostic-link-check");
+            let metadata = fs::symlink_metadata(path).expect("diagnostic-metadata");
+            assert!(
+                metadata.is_file() || metadata.is_dir(),
+                "diagnostic-special-file"
+            );
+            let sha256 = if metadata.is_file() {
+                *bytes = bytes
+                    .checked_add(usize::try_from(metadata.len()).expect("diagnostic-size"))
+                    .expect("diagnostic-size");
+                assert!(*bytes <= 64 * 1024 * 1024, "diagnostic-inventory-bytes");
+                Some(content_hash(&fs::read(path).expect("diagnostic-read")))
+            } else {
+                None
+            };
+            files.insert(
+                path.to_owned(),
+                Stamp {
+                    directory: metadata.is_dir(),
+                    bytes: metadata.len(),
+                    modified_nanos: metadata
+                        .modified()
+                        .expect("diagnostic-modified")
+                        .duration_since(UNIX_EPOCH)
+                        .expect("diagnostic-clock")
+                        .as_nanos(),
+                    readonly: metadata.permissions().readonly(),
+                    sha256,
+                },
+            );
+            if metadata.is_dir() {
+                for entry in fs::read_dir(path).expect("diagnostic-directory") {
+                    visit(&entry.expect("diagnostic-entry").path(), files, bytes);
+                }
+            }
+        }
+        let mut files = BTreeMap::new();
+        let mut bytes = 0;
+        for root in roots {
+            visit(root, &mut files, &mut bytes);
+        }
+        files
+    }
+    fn code(error: &GitError) -> &'static str {
+        match error {
+            GitError::Io => "io",
+            GitError::Path => "path",
+            GitError::Scope => "scope",
+            GitError::Link => "link",
+            GitError::Collision => "collision",
+            GitError::Unsupported => "unsupported",
+            GitError::NotRepository => "not-repository",
+            GitError::Base => "base",
+            GitError::Ownership => "ownership",
+            GitError::MissingAttempt => "missing-attempt",
+            GitError::Conflict => "conflict",
+            GitError::Process => "process",
+            GitError::Deadline => "deadline",
+            GitError::OutputLimit => "output-limit",
+            GitError::Limit => "limit",
+            GitError::InconsistentCapture => "inconsistent-capture",
+            GitError::SecretContent => "secret-content",
+            GitError::Pending => "pending",
+            GitError::UnpreservedWork => "unpreserved-work",
+            GitError::Injected => "injected",
+            GitError::Storage(_) => "storage",
+        }
+    }
+
+    /// Explicit, read-only timing of one existing owned integration checkout.
+    /// No Store, reservation, materialize, result ref, check or reconciliation.
+    #[test]
+    #[ignore = "requires an explicitly authorized readonly intent export and its SHA-256"]
+    fn scoped_inspect_from_readonly_export() {
+        let global_started = Instant::now();
+        let input = fs::canonicalize(
+            env::var_os("ORCHESTRIX_DIAGNOSTIC_INTENT").expect("diagnostic-intent-opt-in"),
+        )
+        .expect("diagnostic-intent-path");
+        let expected =
+            env::var("ORCHESTRIX_DIAGNOSTIC_INTENT_SHA256").expect("diagnostic-intent-sha-opt-in");
+        assert!(
+            expected.len() == 64 && expected.bytes().all(|byte| byte.is_ascii_hexdigit()),
+            "diagnostic-intent-sha"
+        );
+        let body = fs::read(&input).expect("diagnostic-intent-read");
+        assert!(body.len() <= 1_048_576, "diagnostic-intent-limit");
+        let intent_hash = content_hash(&body);
+        assert!(
+            intent_hash == expected.to_ascii_lowercase(),
+            "diagnostic-intent-hash"
+        );
+        let parsed = serde_json::from_slice::<IntegrationIntent>(&body);
+        assert!(parsed.is_ok(), "diagnostic-intent-schema");
+        let intent = parsed.expect("validated intent");
+        assert!(intent.validate(), "diagnostic-intent-validation");
+        let fixture = input.parent().expect("diagnostic-fixture-root");
+        let roots = [
+            &intent.target.directory,
+            &intent.target.common_git_dir,
+            &intent.worktree.path,
+        ]
+        .map(|root| {
+            let root = fs::canonicalize(root).expect("diagnostic-root");
+            assert!(
+                root.starts_with(fixture) && root != fixture,
+                "diagnostic-root-outside-fixture"
+            );
+            root
+        });
+        let before = fingerprint(&roots);
+        let repository = fs::canonicalize(Path::new(env!("CARGO_MANIFEST_DIR")).join("../.."))
+            .expect("diagnostic-repository-root");
+        let base = repository.join("artifacts/diagnostics");
+        fs::create_dir_all(&base).expect("diagnostic-output-parent");
+        let out = base.join(format!(
+            "scoped-integration-inspect-{}-{}",
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .expect("diagnostic-clock")
+                .as_nanos(),
+            std::process::id()
+        ));
+        fs::create_dir(&out).expect("diagnostic-output-new");
+        let helper = default_helper().expect("diagnostic-helper");
+        let binding = GuardianBinding::prepare(
+            &out.join("not-created.sqlite"),
+            "readonly-integration-diagnostic",
+            &helper,
+        )
+        .expect("diagnostic-binding");
+        let setup = Instant::now();
+        let mut guardian =
+            Guardian::start(binding.clone(), &helper).expect("diagnostic-owned-guardian");
+        let scope = guardian.job().expect("diagnostic-own-job");
+        let git = IntegrationGit::new(scope.clone()).expect("diagnostic-scoped-git");
+        let setup_micros = setup.elapsed().as_micros();
+        // The diagnostic's own global ceiling is independent of the unchanged
+        // production keeper/Git deadlines. Only this newly created Job can be
+        // interrupted; no existing integration scope is opened or reused.
+        let completed = Arc::new((Mutex::new(false), Condvar::new()));
+        let signal = completed.clone();
+        let remaining = Duration::from_secs(120).saturating_sub(global_started.elapsed());
+        let watchdog = thread::spawn(move || {
+            let (lock, wake) = &*signal;
+            let (finished, timeout) = wake
+                .wait_timeout_while(
+                    lock.lock().expect("diagnostic-watchdog-lock"),
+                    remaining,
+                    |finished| !*finished,
+                )
+                .expect("diagnostic-watchdog-wait");
+            if timeout.timed_out() && !*finished {
+                let _ = scope.terminate();
+                true
+            } else {
+                false
+            }
+        });
+        super::super::executor::test_timing::begin();
+        let started = Instant::now();
+        let result = git.inspect(&intent);
+        let inspect_micros = started.elapsed().as_micros();
+        let samples = super::super::executor::test_timing::finish();
+        let (lock, wake) = &*completed;
+        *lock.lock().expect("diagnostic-watchdog-lock") = true;
+        wake.notify_one();
+        let diagnostic_interrupted = watchdog.join().expect("diagnostic-watchdog-join");
+        drop(git);
+        drop(guardian);
+        let proof = read_proof(&binding).expect("diagnostic-local-closure");
+        let after = fingerprint(&roots);
+        let stable = before == after;
+        let mut totals: BTreeMap<&str, (usize, u128)> = BTreeMap::new();
+        for sample in &samples {
+            let aggregate = totals.entry(sample.builtin).or_default();
+            aggregate.0 += 1;
+            aggregate.1 += sample.elapsed_micros;
+        }
+        let before_hash =
+            content_hash(&serde_json::to_vec(&before).expect("diagnostic-inventory-hash"));
+        let after_hash =
+            content_hash(&serde_json::to_vec(&after).expect("diagnostic-inventory-hash"));
+        let report = json!({"schemaVersion":1,"diagnosticOnly":true,"integrationStateChanged":false,"providerCalls":0,"storeOpened":false,"inspectCalls":1,"intentSha256":intent_hash,"setupMicros":setup_micros,"inspectMicros":inspect_micros,"diagnosticCeilingMs":120000,"diagnosticInterrupted":diagnostic_interrupted,"gitCallCount":samples.len(),"timings":samples,"byBuiltin":totals,"inspectionSucceeded":result.is_ok(),"gitError":result.as_ref().err().map(code),"returnedRevision":result.as_ref().ok().map(|artifact|&artifact.revision),"physicalStateUnchanged":stable,"fingerprintedEntries":before.len(),"beforeSha256":before_hash,"afterSha256":after_hash,"keeper":{"closureTrigger":proof["body"]["closureTrigger"],"localJobEmpty":proof["body"]["localJobEmpty"],"observedAfterIssuedMs":proof["body"]["observedAtMs"].as_u64().and_then(|now|now.checked_sub(binding.issued_at_ms)),"lifetimeMs":binding.lifetime_ms},"sourceHashes":{"gitExecutor":content_hash(include_bytes!("executor.rs")),"gitIntegration":content_hash(include_bytes!("integration.rs")),"gitCapture":content_hash(include_bytes!("capture.rs")),"gitWorktrees":content_hash(include_bytes!("worktrees.rs"))}});
+        fs::write(
+            out.join("result.json"),
+            serde_json::to_vec_pretty(&report).expect("diagnostic-report-json"),
+        )
+        .expect("diagnostic-report-write");
+        println!("Read-only scoped inspection diagnostic: {}", out.display());
+        assert!(stable, "diagnostic-physical-state-changed");
+        assert!(
+            proof["body"]["localJobEmpty"] == true,
+            "diagnostic-owned-job-not-empty"
+        );
+        assert!(
+            result.is_ok(),
+            "diagnostic-inspection-failed; see static result code"
+        );
+    }
+}

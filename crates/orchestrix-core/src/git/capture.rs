@@ -160,6 +160,26 @@ fn parse_entries(bytes: &[u8], tree: bool) -> GitResult<BTreeMap<String, BlobEnt
     }
     Ok(entries)
 }
+/// --stage and -v have a documented combined record: tag, mode, OID, stage,
+/// TAB, path. Keep the exact old stage/flag observations while reading the
+/// index once. Unsupported flags/stages/duplicates still fail closed.
+fn staged_index(bytes: &[u8]) -> GitResult<(BTreeMap<String, BlobEntry>, Vec<u8>)> {
+    let mut stages = Vec::new();
+    let mut flags = Vec::new();
+    for record in nul_entries(bytes)? {
+        let stage = record.strip_prefix(b"H ").ok_or(GitError::Unsupported)?;
+        let tab = stage
+            .iter()
+            .position(|byte| *byte == b'\t')
+            .ok_or(GitError::Process)?;
+        stages.extend_from_slice(stage);
+        stages.push(0);
+        flags.extend_from_slice(b"H ");
+        flags.extend_from_slice(&stage[tab + 1..]);
+        flags.push(0);
+    }
+    Ok((parse_entries(&stages, false)?, flags))
+}
 fn path_list(bytes: &[u8]) -> GitResult<BTreeSet<String>> {
     nul_entries(bytes)?.into_iter().map(path_text).collect()
 }
@@ -347,13 +367,8 @@ fn inspect_at(
         )?,
         true,
     )?;
-    let index = parse_entries(&git(executor, root, &["ls-files", "-s", "-z"])?, false)?;
-    let index_flags = git(executor, root, &["ls-files", "-v", "-z"])?;
-    for flag in nul_entries(&index_flags)? {
-        if !flag.starts_with(b"H ") {
-            return Err(GitError::Unsupported);
-        }
-    }
+    let (index, index_flags) =
+        staged_index(&git(executor, root, &["ls-files", "-s", "-v", "-z"])?)?;
     let untracked = path_list(&git(
         executor,
         root,
@@ -780,4 +795,47 @@ pub fn capture_with_observer<F: FnOnce() -> GitResult<()>>(
         return Err(GitError::Limit);
     }
     Ok(artifact)
+}
+
+#[cfg(test)]
+mod metadata_batch_tests {
+    use super::*;
+
+    #[test]
+    fn staged_flags_preserve_separate_observations() {
+        for oid in ["a".repeat(40), "b".repeat(64)] {
+            let stages = format!("100644 {oid} 0\tdirectory/file space.md\0");
+            let combined = format!("H {stages}");
+            let (entries, flags) = staged_index(combined.as_bytes()).unwrap();
+            assert_eq!(entries, parse_entries(stages.as_bytes(), false).unwrap());
+            assert_eq!(flags, b"H directory/file space.md\0");
+        }
+        assert_eq!(staged_index(b"").unwrap(), (BTreeMap::new(), Vec::new()));
+    }
+
+    #[test]
+    fn staged_flags_reject_hidden_unmerged_malformed_and_duplicate_entries() {
+        let oid = "a".repeat(40);
+        for flag in ["h", "S", "s", "M", "m", "?", "R", "C"] {
+            assert_eq!(
+                staged_index(format!("{flag} 100644 {oid} 0\tfile.txt\0").as_bytes()),
+                Err(GitError::Unsupported)
+            );
+        }
+        for bad in [
+            format!("H 100644 {oid} 1\tfile.txt\0"),
+            format!("H 100644 {oid} 2\tfile.txt\0"),
+            format!("H 100644 {oid} 3\tfile.txt\0"),
+            format!("H 100644 {oid} 0\tfile.txt\0H 100644 {oid} 0\tfile.txt\0"),
+        ] {
+            assert_eq!(staged_index(bad.as_bytes()), Err(GitError::Unsupported));
+        }
+        for bad in [
+            format!("H 100644 {oid} 0 file.txt\0"),
+            format!("H 100644 {oid} 0\tfile.txt"),
+            "H 100644 not-an-oid 0\tfile.txt\0".into(),
+        ] {
+            assert_eq!(staged_index(bad.as_bytes()), Err(GitError::Process));
+        }
+    }
 }

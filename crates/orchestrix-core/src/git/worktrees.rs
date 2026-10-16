@@ -780,9 +780,43 @@ impl WorktreeService {
             .executor
             .run(repo, &args_of(&["rev-parse", "--verify", "--quiet", name]))?;
         if output.status == 1 {
-            return Ok(None);
+            // Git uses the same quiet status for a missing name and some
+            // corrupt loose refs. A still-present file/directory is not proof
+            // of absence and must never authorize creation/removal as missing.
+            let loose = Path::new(&intent.common_git_dir).join(name);
+            paths::reject_links(&loose)?;
+            return match fs::symlink_metadata(&loose) {
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(None),
+                Err(_) => Err(GitError::Io),
+                Ok(_) => Err(GitError::Ownership),
+            };
         }
         Ok(Some(text(output.checked()?)?))
+    }
+    fn ref_values(
+        &self,
+        intent: &WorktreeIntent,
+        names: &[String],
+    ) -> GitResult<BTreeMap<String, String>> {
+        if names.is_empty()
+            || names.len() > 4
+            || names.iter().collect::<BTreeSet<_>>().len() != names.len()
+        {
+            return Err(GitError::Ownership);
+        }
+        let mut args = args_of(&[
+            "for-each-ref",
+            "--format=%(refname)%00%(objectname)%00%(symref)%00",
+        ]);
+        // Exact generated ref names contain no pattern metacharacters. Git can
+        // also match descendants, so reject every unrequested result below.
+        args.push(format!("--count={}", names.len() + 1).into());
+        args.extend(names.iter().map(OsString::from));
+        let raw = self
+            .executor
+            .run(Path::new(&intent.main_repository), &args)?
+            .checked()?;
+        owned_ref_values(&raw, names)
     }
     fn ensure_refs(&self, intent: &WorktreeIntent) -> GitResult<()> {
         self.validate_main(intent)?;
@@ -827,24 +861,32 @@ impl WorktreeService {
     }
     fn verify_refs(&self, intent: &WorktreeIntent, allow_missing_branch: bool) -> GitResult<()> {
         self.validate_main(intent)?;
-        let owner = self
-            .ref_value(intent, &owner_ref(intent))?
-            .ok_or(GitError::Ownership)?;
+        let names = [
+            owner_ref(intent),
+            base_ref(intent),
+            format!("refs/heads/{}", intent.branch),
+        ];
+        let values = self.ref_values(intent, &names)?;
+        let owner = values.get(&names[0]).ok_or(GitError::Ownership)?;
         let body = self
             .executor
             .run(
                 Path::new(&intent.main_repository),
-                &args_of(&["cat-file", "blob", &owner]),
+                &args_of(&["cat-file", "blob", owner]),
             )?
             .checked()?;
         if body != serde_json::to_vec(intent).map_err(|_| GitError::Ownership)?
-            || self.ref_value(intent, &base_ref(intent))?.as_deref() != Some(&intent.base_oid)
+            || values.get(&names[1]) != Some(&intent.base_oid)
+            || self.ref_values(intent, &names)? != values
         {
             return Err(GitError::Ownership);
         }
-        match self.ref_value(intent, &format!("refs/heads/{}", intent.branch))? {
-            Some(value) if value == intent.base_oid => Ok(()),
-            None if allow_missing_branch => Ok(()),
+        match values.get(&names[2]) {
+            Some(value) if *value == intent.base_oid => Ok(()),
+            // for-each-ref omits broken/dangling refs. Absence is not authority
+            // to treat a symbolic/broken branch as missing: preserve the native
+            // symbolic-ref/rev-parse check at this optional-absence edge.
+            None if allow_missing_branch && self.ref_value(intent, &names[2])?.is_none() => Ok(()),
             _ => Err(GitError::Ownership),
         }
     }
@@ -940,10 +982,20 @@ impl WorktreeService {
         Ok(())
     }
     fn materialized(&self, intent: &WorktreeIntent) -> GitResult<bool> {
-        match self.ref_value(intent, &materialized_ref(intent))? {
-            None => Ok(false),
+        let names = [materialized_ref(intent), owner_ref(intent)];
+        let values = self.ref_values(intent, &names)?;
+        match values.get(&names[0]) {
+            None => {
+                // Required rows fail closed; optional absence still uses the
+                // old resolver, which rejects dangling symbolic refs omitted by
+                // for-each-ref. Do not cache across materialization boundaries.
+                if self.ref_value(intent, &names[0])?.is_some() {
+                    return Err(GitError::Ownership);
+                }
+                Ok(false)
+            }
             Some(value) => {
-                if self.ref_value(intent, &owner_ref(intent))?.as_deref() != Some(&value) {
+                if values.get(&names[1]) != Some(value) {
                     return Err(GitError::Ownership);
                 }
                 Ok(true)
@@ -972,6 +1024,31 @@ impl WorktreeService {
         }
         Ok(())
     }
+}
+
+fn owned_ref_values(raw: &[u8], names: &[String]) -> GitResult<BTreeMap<String, String>> {
+    let mut values = BTreeMap::new();
+    if raw.is_empty() {
+        return Ok(values);
+    }
+    let body = raw.strip_suffix(b"\n").ok_or(GitError::Process)?;
+    for row in body.split(|byte| *byte == b'\n') {
+        let row = row.strip_suffix(b"\0").ok_or(GitError::Process)?;
+        let fields: Vec<_> = row.split(|byte| *byte == 0).collect();
+        if fields.len() != 3 {
+            return Err(GitError::Process);
+        }
+        let name = std::str::from_utf8(fields[0]).map_err(|_| GitError::Process)?;
+        let oid = std::str::from_utf8(fields[1]).map_err(|_| GitError::Process)?;
+        if !names.iter().any(|expected| expected == name)
+            || !valid_oid(oid)
+            || !fields[2].is_empty()
+            || values.insert(name.into(), oid.into()).is_some()
+        {
+            return Err(GitError::Ownership);
+        }
+    }
+    Ok(values)
 }
 
 fn record(store: &Store, operation_id: &str) -> GitResult<WorktreeRecord> {
@@ -1304,4 +1381,333 @@ fn verify_base(
         }
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod metadata_batch_tests {
+    use super::*;
+    use std::{
+        env,
+        process::{Command as ProcessCommand, Stdio},
+    };
+
+    #[test]
+    fn owned_refs_reject_symrefs_duplicates_extra_rows_and_invalid_oids() {
+        let names = vec!["refs/orchestrix/ownership/one".to_owned()];
+        let oid = "a".repeat(40);
+        let row = format!("{}\0{oid}\0\0\n", names[0]);
+        assert_eq!(
+            owned_ref_values(row.as_bytes(), &names)
+                .unwrap()
+                .get(&names[0]),
+            Some(&oid)
+        );
+        assert!(owned_ref_values(b"", &names).unwrap().is_empty());
+        for bad in [
+            format!("{}\0{oid}\0refs/heads/main\0\n", names[0]),
+            format!("{row}{row}"),
+            format!("{}/descendant\0{oid}\0\0\n", names[0]),
+            format!("{}\0not-an-oid\0\0\n", names[0]),
+        ] {
+            assert_eq!(
+                owned_ref_values(bad.as_bytes(), &names),
+                Err(GitError::Ownership)
+            );
+        }
+        for bad in [
+            row.trim_end_matches('\n').to_owned(),
+            format!("{}\0{oid}\n", names[0]),
+        ] {
+            assert_eq!(
+                owned_ref_values(bad.as_bytes(), &names),
+                Err(GitError::Process)
+            );
+        }
+    }
+
+    struct Fixture {
+        root: PathBuf,
+        temporary: PathBuf,
+        repo: PathBuf,
+        templates: PathBuf,
+    }
+    impl Fixture {
+        fn new() -> Self {
+            let temporary = paths::canonical_directory(&env::temp_dir()).unwrap();
+            let root = temporary.join(format!(
+                "orchestrix-metadata-batch-{}-{}",
+                std::process::id(),
+                SystemTime::now()
+                    .duration_since(UNIX_EPOCH)
+                    .unwrap()
+                    .as_nanos()
+            ));
+            fs::create_dir(&root).unwrap();
+            let repo = root.join("repository");
+            fs::create_dir(&repo).unwrap();
+            let templates = root.join("empty-templates");
+            fs::create_dir(&templates).unwrap();
+            let fixture = Self {
+                root,
+                temporary,
+                repo,
+                templates,
+            };
+            fixture.git(&["init", "--quiet"], None);
+            fixture
+        }
+        fn git(&self, args: &[&str], input: Option<&[u8]>) -> Vec<u8> {
+            let mut command = ProcessCommand::new("git");
+            command.env_clear();
+            for key in ["PATH", "SystemRoot", "SystemDrive", "WINDIR", "TEMP", "TMP"] {
+                if let Some(value) = env::var_os(key) {
+                    command.env(key, value);
+                }
+            }
+            let null = if cfg!(windows) { "NUL" } else { "/dev/null" };
+            command
+                .env("GIT_CONFIG_NOSYSTEM", "1")
+                .env("GIT_CONFIG_GLOBAL", null)
+                .env("GIT_CONFIG_SYSTEM", null)
+                .env("GIT_NO_REPLACE_OBJECTS", "1")
+                .env("GIT_TERMINAL_PROMPT", "0")
+                .env("GIT_OPTIONAL_LOCKS", "0")
+                .arg("-c")
+                .arg(format!(
+                    "init.templateDir={}",
+                    paths::git_path(&self.templates).unwrap().to_string_lossy()
+                ))
+                .arg("-c")
+                .arg(format!(
+                    "core.hooksPath={}",
+                    paths::git_path(&self.templates).unwrap().to_string_lossy()
+                ))
+                .args(["-c", "core.fsmonitor=false", "-c", "core.autocrlf=false"])
+                .args(args)
+                .current_dir(&self.repo)
+                .stdin(if input.is_some() {
+                    Stdio::piped()
+                } else {
+                    Stdio::null()
+                })
+                .stdout(Stdio::piped())
+                .stderr(Stdio::piped());
+            #[cfg(windows)]
+            {
+                use std::os::windows::process::CommandExt;
+                command.creation_flags(0x0800_0000);
+            }
+            let mut child = command.spawn().unwrap();
+            if let Some(input) = input {
+                child.stdin.take().unwrap().write_all(input).unwrap();
+            }
+            let output = child.wait_with_output().unwrap();
+            assert!(
+                output.status.success(),
+                "owned metadata fixture setup: {} {}: {}",
+                args.first().unwrap_or(&"unknown"),
+                args.get(1).unwrap_or(&"none"),
+                String::from_utf8_lossy(&output.stderr)
+            );
+            output.stdout
+        }
+    }
+    impl Drop for Fixture {
+        fn drop(&mut self) {
+            let root = fs::canonicalize(&self.root).unwrap();
+            assert!(
+                root.parent() == Some(self.temporary.as_path())
+                    && root
+                        .file_name()
+                        .unwrap()
+                        .to_str()
+                        .unwrap()
+                        .starts_with("orchestrix-metadata-batch-")
+            );
+            paths::reject_links(&root).unwrap();
+            fs::remove_dir_all(root).unwrap();
+        }
+    }
+
+    #[test]
+    fn installed_git_batches_preserve_flags_refs_replacements_and_optional_absence() {
+        let fixture = Fixture::new();
+        let service = WorktreeService::new().unwrap();
+        let tree = text(
+            service
+                .executor
+                .run_with_input(
+                    &fixture.repo,
+                    &args_of(&["hash-object", "-t", "tree", "-w", "--stdin"]),
+                    b"",
+                )
+                .unwrap()
+                .checked()
+                .unwrap(),
+        )
+        .unwrap();
+        let commit = format!(
+            "tree {tree}\nauthor Fixture <fixture@orchestrix.invalid> 1 +0000\ncommitter Fixture <fixture@orchestrix.invalid> 1 +0000\n\nOwned metadata fixture\n"
+        );
+        let base = text(
+            service
+                .executor
+                .run_with_input(
+                    &fixture.repo,
+                    &args_of(&["hash-object", "-t", "commit", "-w", "--stdin"]),
+                    commit.as_bytes(),
+                )
+                .unwrap()
+                .checked()
+                .unwrap(),
+        )
+        .unwrap();
+        let authorized = fixture.root.join("attempts");
+        fs::create_dir(&authorized).unwrap();
+        let intent = WorktreeIntent {
+            operation_id: "metadata-batch".into(),
+            project_id: "project".into(),
+            repository_id: "repository".into(),
+            run_id: "run".into(),
+            task_id: "task".into(),
+            attempt_id: "attempt".into(),
+            base_oid: base.clone(),
+            domain_base: "base".into(),
+            worktree_ref: "worktree".into(),
+            authorized_root: path_string(&authorized).unwrap(),
+            path: path_string(&authorized.join("checkout")).unwrap(),
+            main_repository: path_string(&fixture.repo).unwrap(),
+            branch: "orchestrix/metadata-batch".into(),
+            common_git_dir: path_string(&fixture.repo.join(".git")).unwrap(),
+            ownership_token: "a".repeat(64),
+        };
+        assert!(intent.validate());
+        let owner = text(
+            service
+                .executor
+                .run_with_input(
+                    &fixture.repo,
+                    &args_of(&["hash-object", "-w", "--stdin"]),
+                    &serde_json::to_vec(&intent).unwrap(),
+                )
+                .unwrap()
+                .checked()
+                .unwrap(),
+        )
+        .unwrap();
+        let replacement = text(
+            service
+                .executor
+                .run_with_input(
+                    &fixture.repo,
+                    &args_of(&["hash-object", "-w", "--stdin"]),
+                    b"not ownership\n",
+                )
+                .unwrap()
+                .checked()
+                .unwrap(),
+        )
+        .unwrap();
+        let branch = format!("refs/heads/{}", intent.branch);
+        for (name, oid) in [
+            (owner_ref(&intent), &owner),
+            (base_ref(&intent), &base),
+            (branch.clone(), &base),
+            (materialized_ref(&intent), &owner),
+            (format!("refs/replace/{owner}"), &replacement),
+        ] {
+            service
+                .executor
+                .run(&fixture.repo, &args_of(&["update-ref", &name, oid]))
+                .unwrap()
+                .checked()
+                .unwrap();
+        }
+        // Replacement refs cannot rewrite the ownership blob addressed by OID.
+        service.verify_refs(&intent, false).unwrap();
+        assert!(service.materialized(&intent).unwrap());
+        let marker = Path::new(&intent.common_git_dir).join(materialized_ref(&intent));
+        fs::write(&marker, b"ref: refs/heads/missing-target\n").unwrap();
+        assert_eq!(service.materialized(&intent), Err(GitError::Ownership));
+        fs::write(&marker, format!("{owner}\n")).unwrap();
+        let owner_path = Path::new(&intent.common_git_dir).join(owner_ref(&intent));
+        fs::write(&owner_path, format!("ref: {}\n", base_ref(&intent))).unwrap();
+        assert_eq!(
+            service.verify_refs(&intent, false),
+            Err(GitError::Ownership)
+        );
+        fs::write(&owner_path, format!("{owner}\n")).unwrap();
+        let branch_path = Path::new(&intent.common_git_dir).join(&branch);
+        fs::write(&branch_path, b"ref: refs/heads/missing-target\n").unwrap();
+        assert_eq!(service.verify_refs(&intent, true), Err(GitError::Ownership));
+        fs::remove_file(&branch_path).unwrap();
+        assert_eq!(
+            service.verify_refs(&intent, false),
+            Err(GitError::Ownership)
+        );
+        service.verify_refs(&intent, true).unwrap();
+        fs::remove_file(&marker).unwrap();
+        assert!(!service.materialized(&intent).unwrap());
+        fs::write(&marker, b"broken-ref-body\n").unwrap();
+        assert!(service.materialized(&intent).is_err());
+
+        // Exercise installed Git's combined -s/-v grammar, not just fixtures.
+        fs::write(fixture.repo.join("file space.txt"), b"not ownership\n").unwrap();
+        fixture.git(
+            &[
+                "update-index",
+                "--add",
+                "--cacheinfo",
+                &format!("100644,{replacement},file space.txt"),
+            ],
+            None,
+        );
+        let stages = service
+            .executor
+            .run(&fixture.repo, &args_of(&["ls-files", "-s", "-z"]))
+            .unwrap()
+            .checked()
+            .unwrap();
+        let combined = service
+            .executor
+            .run(&fixture.repo, &args_of(&["ls-files", "-s", "-v", "-z"]))
+            .unwrap()
+            .checked()
+            .unwrap();
+        assert_eq!(combined, [b"H ".as_slice(), &stages].concat());
+        let flags = service
+            .executor
+            .run(&fixture.repo, &args_of(&["ls-files", "-v", "-z"]))
+            .unwrap()
+            .checked()
+            .unwrap();
+        assert_eq!(flags, b"H file space.txt\0");
+        fixture.git(
+            &["update-index", "--assume-unchanged", "file space.txt"],
+            None,
+        );
+        assert!(
+            service
+                .executor
+                .run(&fixture.repo, &args_of(&["ls-files", "-s", "-v", "-z"]))
+                .unwrap()
+                .checked()
+                .unwrap()
+                .starts_with(b"h ")
+        );
+        fixture.git(
+            &["update-index", "--no-assume-unchanged", "file space.txt"],
+            None,
+        );
+        fixture.git(&["update-index", "--skip-worktree", "file space.txt"], None);
+        assert!(
+            service
+                .executor
+                .run(&fixture.repo, &args_of(&["ls-files", "-s", "-v", "-z"]))
+                .unwrap()
+                .checked()
+                .unwrap()
+                .starts_with(b"S ")
+        );
+    }
 }
