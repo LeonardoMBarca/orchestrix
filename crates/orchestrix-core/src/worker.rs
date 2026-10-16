@@ -88,6 +88,78 @@ impl From<RuntimeError> for WorkerError {
 }
 type Result<T> = std::result::Result<T, WorkerError>;
 
+/// Operational codes only: never serialize a Git/SQLite error, path, command,
+/// process output or captured content into a worker diagnostic.
+#[derive(Clone, Copy, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct CaptureDiagnostic {
+    schema_version: u32,
+    stage: &'static str,
+    git_code: &'static str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    storage_code: Option<&'static str>,
+}
+impl CaptureDiagnostic {
+    fn new(stage: &'static str, error: &git::GitError) -> Self {
+        use git::GitError;
+        let git_code = match error {
+            GitError::Io => "io",
+            GitError::Path => "path",
+            GitError::Scope => "scope",
+            GitError::Link => "link",
+            GitError::Collision => "collision",
+            GitError::Unsupported => "unsupported",
+            GitError::NotRepository => "not-repository",
+            GitError::Base => "base",
+            GitError::Ownership => "ownership",
+            GitError::MissingAttempt => "missing-attempt",
+            GitError::Conflict => "conflict",
+            GitError::Process => "process",
+            GitError::Deadline => "deadline",
+            GitError::OutputLimit => "output-limit",
+            GitError::Limit => "limit",
+            GitError::InconsistentCapture => "inconsistent-capture",
+            GitError::SecretContent => "secret-content",
+            GitError::Pending => "pending",
+            GitError::UnpreservedWork => "unpreserved-work",
+            GitError::Injected => "injected",
+            GitError::Storage(_) => "storage",
+        };
+        let storage_code = if let GitError::Storage(error) = error {
+            use crate::persistence::StoreError;
+            Some(match error {
+                StoreError::InvalidPath => "invalid-path",
+                StoreError::FutureSchema => "future-schema",
+                StoreError::UnknownDatabase => "unknown-database",
+                StoreError::Configuration => "configuration",
+                StoreError::InvalidState => "invalid-state",
+                StoreError::Busy => "busy",
+                StoreError::Constraint => "constraint",
+                StoreError::Storage => "storage",
+                StoreError::IdempotencyConflict => "idempotency-conflict",
+                StoreError::StaleRevision => "stale-revision",
+                StoreError::InconsistentCommand => "inconsistent-command",
+                StoreError::InjectedRollback => "injected-rollback",
+                StoreError::ReplyLost => "reply-lost",
+                StoreError::Domain(_) => "domain",
+                StoreError::Records(_) => "records",
+                StoreError::Privacy(_) => "privacy",
+            })
+        } else {
+            None
+        };
+        Self {
+            schema_version: 1,
+            stage,
+            git_code,
+            storage_code,
+        }
+    }
+    fn attach(self, details: &mut Value) {
+        details["captureDiagnostic"] = json!(self);
+    }
+}
+
 pub struct ManualWorker;
 /// Explicit lifecycle seam for controlled process-crash proofs. Normal execution
 /// uses a no-op observer; callbacks do not authorize effects or alter recovery.
@@ -103,6 +175,9 @@ pub enum WorkerCheckpoint {
     DispatchConfirmed,
     TerminalObserved,
     RuntimeObserved,
+    CaptureInspecting,
+    CaptureReading,
+    CapturePersisting,
     ArtifactCaptured,
     Checking,
     CheckStarted,
@@ -460,6 +535,7 @@ impl ManualWorker {
         )?;
         // Any interruption after this point leaves a durable attempt and will not automatically dispatch again.
         checkpoint(WorkerCheckpoint::Reserved);
+        let mut capture_diagnostic = None;
         let outcome = Self::execute(
             store,
             input,
@@ -473,6 +549,7 @@ impl ManualWorker {
             &metadata,
             &mut checkpoint,
             keeper_failure,
+            &mut capture_diagnostic,
         );
         if let Err(error) = outcome {
             let current = record(store, &input.id)?;
@@ -484,6 +561,10 @@ impl ManualWorker {
                 if dispatched {
                     transport_lost(store, &current, "worker-effect-not-confirmed")?;
                 }
+                let mut details = json!({"reason":error.0,"inspectionRequired":true,"synthetic":metadata.synthetic});
+                if let Some(diagnostic) = capture_diagnostic {
+                    diagnostic.attach(&mut details);
+                }
                 observe(
                     store,
                     &input.id,
@@ -492,7 +573,7 @@ impl ManualWorker {
                     } else {
                         WorkerStatus::Blocked
                     },
-                    json!({"reason":error.0,"inspectionRequired":true,"synthetic":metadata.synthetic}),
+                    details,
                 )?;
             }
         }
@@ -512,6 +593,7 @@ impl ManualWorker {
         expected_metadata: &RuntimeMetadata,
         checkpoint: &mut impl FnMut(WorkerCheckpoint),
         keeper_failure: bool,
+        capture_diagnostic: &mut Option<CaptureDiagnostic>,
     ) -> Result<()> {
         let initial = record(store, &input.id)?;
         let service = WorktreeService::new()?;
@@ -673,14 +755,15 @@ impl ManualWorker {
                     &input.id,
                     &worktree.intent.operation_id,
                     "uncertain-artifact",
+                    capture_diagnostic,
+                    checkpoint,
                 );
             }
-            return observe(
-                store,
-                &input.id,
-                WorkerStatus::Uncertain,
-                json!({"reason":"runtime-outcome-not-confirmed","synthetic":report.synthetic,"inspectionRequired":true,"worktreeOperation":worktree.intent.operation_id}),
-            );
+            let mut details = json!({"reason":"runtime-outcome-not-confirmed","synthetic":report.synthetic,"inspectionRequired":true,"worktreeOperation":worktree.intent.operation_id});
+            if let Some(diagnostic) = capture_diagnostic {
+                diagnostic.attach(&mut details);
+            }
+            return observe(store, &input.id, WorkerStatus::Uncertain, details);
         }
         let artifact = capture_store(
             &service,
@@ -688,6 +771,8 @@ impl ManualWorker {
             &input.id,
             &worktree.intent.operation_id,
             "runtime-artifact",
+            capture_diagnostic,
+            checkpoint,
         )?;
         checkpoint(WorkerCheckpoint::ArtifactCaptured);
         if attempt_state != AttemptState::Succeeded {
@@ -1077,14 +1162,35 @@ fn capture_store(
     id: &str,
     operation: &str,
     key: &str,
+    diagnostic: &mut Option<CaptureDiagnostic>,
+    checkpoint: &mut impl FnMut(WorkerCheckpoint),
 ) -> Result<CapturedArtifact> {
-    Ok(service.capture(
-        store,
-        &LocalRef::new(id)?,
-        &LocalRef::new(key)?,
-        store.load()?.revision(),
-        operation,
-    )?)
+    let scope = LocalRef::new(id)?;
+    let key = LocalRef::new(key)?;
+    let revision = store
+        .load()
+        .map_err(|error| {
+            *diagnostic = Some(CaptureDiagnostic::new(
+                "inspect",
+                &git::GitError::Storage(error.clone()),
+            ));
+            WorkerError::from(error)
+        })?
+        .revision();
+    let mut stage = "inspect";
+    service
+        .capture_with_diagnostics(store, &scope, &key, revision, operation, |next| {
+            stage = next;
+            checkpoint(match next {
+                "capture" => WorkerCheckpoint::CaptureReading,
+                "persist" => WorkerCheckpoint::CapturePersisting,
+                _ => WorkerCheckpoint::CaptureInspecting,
+            });
+        })
+        .map_err(|error| {
+            *diagnostic = Some(CaptureDiagnostic::new(stage, &error));
+            WorkerError::from(error)
+        })
 }
 fn definition(kind: DefinitionKind, id: &str, version: u64, body: Value) -> DefinitionInput {
     DefinitionInput {
@@ -1256,4 +1362,56 @@ pub(crate) fn diagnostic_input(
         values: json!({"descriptor":descriptor,"observations":observation.observations,"controls":metadata.controls}),
         error_code: None,
     })
+}
+
+#[cfg(test)]
+mod capture_diagnostic_tests {
+    use super::*;
+    use crate::persistence::StoreError;
+
+    #[test]
+    fn capture_diagnostic_contains_only_static_codes() {
+        let private = "private-path/credential-token-and-provider-output";
+        let io = git::GitError::from(std::io::Error::other(private));
+        assert_eq!(
+            json!(CaptureDiagnostic::new("inspect", &io)),
+            json!({"schemaVersion":1,"stage":"inspect","gitCode":"io"})
+        );
+        for (error, expected) in [
+            (git::GitError::Deadline, "deadline"),
+            (git::GitError::OutputLimit, "output-limit"),
+            (git::GitError::SecretContent, "secret-content"),
+            (git::GitError::InconsistentCapture, "inconsistent-capture"),
+        ] {
+            assert_eq!(
+                json!(CaptureDiagnostic::new("capture", &error)),
+                json!({"schemaVersion":1,"stage":"capture","gitCode":expected})
+            );
+        }
+        for (error, expected) in [
+            (StoreError::StaleRevision, "stale-revision"),
+            (StoreError::Busy, "busy"),
+            (StoreError::ReplyLost, "reply-lost"),
+            (StoreError::Domain(DomainError::Ownership), "domain"),
+            (
+                StoreError::Records(crate::persistence_records::RecordError::Invalid),
+                "records",
+            ),
+            (
+                StoreError::Privacy(crate::persistence_privacy::PrivacyError::Limit),
+                "privacy",
+            ),
+        ] {
+            let diagnostic = json!(CaptureDiagnostic::new(
+                "persist",
+                &git::GitError::Storage(error)
+            ));
+            assert_eq!(
+                diagnostic,
+                json!({"schemaVersion":1,"stage":"persist","gitCode":"storage","storageCode":expected})
+            );
+            assert!(exact_safe(&diagnostic, 256));
+            assert!(!diagnostic.to_string().contains(private));
+        }
+    }
 }

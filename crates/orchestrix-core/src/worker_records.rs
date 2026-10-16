@@ -142,6 +142,7 @@ impl WorkerRecord {
         if let Some(last) = self.observations.last() {
             for key in [
                 "reason",
+                "captureDiagnostic",
                 "inspectionRequired",
                 "synthetic",
                 "artifactRevision",

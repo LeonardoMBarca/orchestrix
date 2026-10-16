@@ -797,6 +797,206 @@ fn protocol_diagnostic_is_durable_private_and_does_not_authorize_reexecution() {
 }
 
 #[test]
+fn capture_failures_preserve_stage_codes_and_never_redispatch() {
+    use orchestrix_core::domain::LocalRef;
+    use orchestrix_core::persistence::{Command as StoreCommand, Disposition, Request};
+    use orchestrix_core::persistence_records::{DefinitionInput, DefinitionKind, RecordsCommand};
+    use orchestrix_core::worker::WorkerCheckpoint;
+    use serde_json::json;
+
+    for (id, phase, stage, git_code, storage_code, scenario, reason) in [
+        (
+            "capture-inspect-failure",
+            WorkerCheckpoint::CaptureInspecting,
+            "inspect",
+            "process",
+            None,
+            "success",
+            "git-inspection-required",
+        ),
+        (
+            "capture-read-failure",
+            WorkerCheckpoint::CaptureReading,
+            "capture",
+            "unsupported",
+            None,
+            "success",
+            "git-inspection-required",
+        ),
+        (
+            "capture-persist-failure",
+            WorkerCheckpoint::CapturePersisting,
+            "persist",
+            "storage",
+            Some("stale-revision"),
+            "success",
+            "git-inspection-required",
+        ),
+        (
+            "capture-runtime-uncertain",
+            WorkerCheckpoint::CaptureReading,
+            "capture",
+            "unsupported",
+            None,
+            "lost-reply",
+            "runtime-outcome-not-confirmed",
+        ),
+    ] {
+        let fixture = Fixture::new();
+        let request = fixture.request(id);
+        let mut store = fixture.store();
+        let mut injected = false;
+        let mut capture_stages = vec![];
+        let record = ManualWorker::run_with_checkpoint(
+            &mut store,
+            &request,
+            fixture.launch(scenario),
+            &CancellationToken::new(),
+            |checkpoint| {
+                if matches!(
+                    checkpoint,
+                    WorkerCheckpoint::CaptureInspecting
+                        | WorkerCheckpoint::CaptureReading
+                        | WorkerCheckpoint::CapturePersisting
+                ) {
+                    capture_stages.push(checkpoint);
+                }
+                if checkpoint != phase || injected {
+                    return;
+                }
+                injected = true;
+                let worktree = fs::read_dir(&fixture.authorized)
+                    .unwrap()
+                    .map(|entry| entry.unwrap().path())
+                    .find(|path| path.is_dir())
+                    .unwrap();
+                match checkpoint {
+                    WorkerCheckpoint::CaptureInspecting => {
+                        fs::write(
+                            worktree.join(".git"),
+                            "gitdir: not-for-diagnostics-CAPTURE-CANARY\n",
+                        )
+                        .unwrap();
+                    }
+                    WorkerCheckpoint::CaptureReading => {
+                        fs::write(
+                            worktree.join("private-binary.txt"),
+                            b"not-for-diagnostics-CAPTURE-CANARY\0",
+                        )
+                        .unwrap();
+                    }
+                    WorkerCheckpoint::CapturePersisting => {
+                        // A separate writer can commit here because Git and
+                        // capture hold no SQLite writer transaction. The old
+                        // expected revision must still fail, without a retry.
+                        let mut other = fixture.store();
+                        let revision = other.load().unwrap().revision();
+                        let receipt = other
+                            .execute(&Request {
+                                scope: LocalRef::new("capture-test").unwrap(),
+                                key: LocalRef::new("concurrent-definition").unwrap(),
+                                expected_revision: revision,
+                                command: StoreCommand::Records(RecordsCommand::AddDefinition(
+                                    DefinitionInput {
+                                        kind: DefinitionKind::Configuration,
+                                        id: "capture-concurrent-definition".into(),
+                                        version: 1,
+                                        body: json!({"purpose":"capture-stage-proof"}),
+                                        references: vec![],
+                                    },
+                                )),
+                            })
+                            .unwrap();
+                        assert_eq!(receipt.result.disposition, Disposition::Applied);
+                    }
+                    _ => unreachable!(),
+                }
+            },
+        )
+        .unwrap();
+        assert!(
+            injected,
+            "{id}: the requested stage must actually be reached"
+        );
+        let stages = [
+            WorkerCheckpoint::CaptureInspecting,
+            WorkerCheckpoint::CaptureReading,
+            WorkerCheckpoint::CapturePersisting,
+        ];
+        let reached = stages.iter().position(|stage| *stage == phase).unwrap() + 1;
+        assert_eq!(
+            capture_stages,
+            stages[..reached],
+            "{id}: capture never retries"
+        );
+        assert_eq!(record.status(), WorkerStatus::Uncertain, "{id}");
+        let details = &record.observations.last().unwrap().details;
+        assert_eq!(details["reason"], reason, "{id}");
+        let mut diagnostic = json!({"schemaVersion":1,"stage":stage,"gitCode":git_code});
+        if let Some(code) = storage_code {
+            diagnostic["storageCode"] = json!(code);
+        }
+        assert_eq!(details["captureDiagnostic"], diagnostic, "{id}");
+        assert_eq!(
+            record.summary()["details"]["captureDiagnostic"],
+            diagnostic,
+            "{id}"
+        );
+        assert!(!details.to_string().contains("CAPTURE-CANARY"));
+        assert!(
+            !details
+                .to_string()
+                .contains(fixture.root.to_string_lossy().as_ref())
+        );
+        let state = store.load().unwrap();
+        assert!(state.captured_artifacts().is_empty(), "{id}");
+        let task = state.runs()[&RunId::new(&record.intent.run_id).unwrap()]
+            .task(&TaskId::new(&record.intent.task_id).unwrap())
+            .unwrap();
+        assert_eq!(task.attempts().len(), 1, "{id}");
+        assert!(task.verifications().is_empty(), "{id}");
+        assert!(!matches!(
+            task.state(),
+            TaskState::Approved | TaskState::Completed
+        ));
+        drop(state);
+        drop(store);
+        let mut reopened = fixture.store();
+        assert_eq!(ManualWorker::inspect(&mut reopened, id).unwrap(), record);
+        let replay = ManualWorker::run(
+            &mut reopened,
+            &request,
+            fixture.launch("success"),
+            &CancellationToken::new(),
+        )
+        .unwrap();
+        assert_eq!(replay, record, "{id}");
+        assert_eq!(fixture.thread_count(), 1, "{id}");
+        assert_eq!(
+            fs::read_to_string(fixture.home.join("dispatch-count")).unwrap(),
+            "1",
+            "{id}"
+        );
+        assert!(reopened.load().unwrap().captured_artifacts().is_empty());
+        drop(reopened);
+        for entry in fs::read_dir(&fixture.root).unwrap() {
+            let entry = entry.unwrap();
+            if entry
+                .file_name()
+                .to_string_lossy()
+                .starts_with("state.sqlite")
+            {
+                assert!(
+                    !String::from_utf8_lossy(&fs::read(entry.path()).unwrap())
+                        .contains("CAPTURE-CANARY"),
+                    "{id}: rejected content and Git stderr must not enter SQLite"
+                );
+            }
+        }
+    }
+}
+
+#[test]
 fn required_sensitive_context_is_rejected_before_worktree_and_model_dispatch() {
     let fixture = Fixture::new();
     let secret = "API_KEY=sk-syntheticfixturecredential123456";

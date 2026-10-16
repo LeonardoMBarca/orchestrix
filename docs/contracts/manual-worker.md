@@ -29,6 +29,8 @@ The first review fixes the Task's review/correction count and elapsed-time budge
 - `orchestrix-process` owns Windows process handles, Job Objects, pipe pumps and directory watches. Core retains `forbid(unsafe_code)`; the separate OS crate contains the small Win32 FFI boundary. Other platforms explicitly return Unsupported.
 - `worker.rs` is the serial host service; `evaluator.rs` runs explicitly authorized commands; `mechanical.rs` serves authorized local queries without a model. `Store` remains the sole durable command boundary. No writer transaction spans Git, a process, inference or a check.
 
+Capture failures retain a bounded `captureDiagnostic` in the durable worker observation and its compact summary: schema version 1, the fixed stage `inspect`/`capture`/`persist`, a static Git error code and, for storage failures, a static storage code. Raw errors, paths, commands, process output and file content are excluded. This also preserves a capture failure when the runtime outcome was already uncertain. The diagnostic does not change the outcome, authorize another capture/dispatch, revalidate an artifact or retroactively diagnose an older generic failure.
+
 ## Policy schema 1
 
 The precedence is System → User → Project → Profile → CategoryRisk → Execution → Task, with at most one layer per scope. Mode defaults enter at the system baseline and executor profile defaults at profile scope. Mandatory mode/layer restrictions accumulate rather than being removed by a later preference. Mode, executor profile, resource strategy and specialized preset have separate identities.

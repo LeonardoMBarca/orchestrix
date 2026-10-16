@@ -292,6 +292,49 @@ impl WorktreeService {
         operation_id: &str,
         between: F,
     ) -> GitResult<CapturedArtifact> {
+        self.capture_observed(
+            store,
+            scope,
+            key,
+            expected_revision,
+            operation_id,
+            between,
+            |_| {},
+        )
+    }
+    /// Reports only fixed operation stages; the caller receives the original
+    /// error without repeating inspection, capture or the durable command.
+    pub(crate) fn capture_with_diagnostics<F: FnMut(&'static str)>(
+        &self,
+        store: &mut Store,
+        scope: &LocalRef,
+        key: &LocalRef,
+        expected_revision: u64,
+        operation_id: &str,
+        progress: F,
+    ) -> GitResult<CapturedArtifact> {
+        self.capture_observed(
+            store,
+            scope,
+            key,
+            expected_revision,
+            operation_id,
+            || Ok(()),
+            progress,
+        )
+    }
+    #[allow(clippy::too_many_arguments)]
+    fn capture_observed<F: FnOnce() -> GitResult<()>, P: FnMut(&'static str)>(
+        &self,
+        store: &mut Store,
+        scope: &LocalRef,
+        key: &LocalRef,
+        expected_revision: u64,
+        operation_id: &str,
+        between: F,
+        mut progress: P,
+    ) -> GitResult<CapturedArtifact> {
+        progress("inspect");
         // Replaying a committed capture returns its immutable evidence, even if
         // the directory has since changed or been removed. Re-submit the exact
         // command so the Store still enforces scope/key/body/revision identity.
@@ -316,6 +359,7 @@ impl WorktreeService {
                 .get(&(id.into(), revision.into()))
                 .cloned()
                 .ok_or(GitError::Conflict)?;
+            progress("persist");
             applied(store.execute(&Request {
                 scope: scope.clone(),
                 key: key.clone(),
@@ -329,6 +373,7 @@ impl WorktreeService {
             return Err(GitError::Pending);
         }
         self.inspect(store, operation_id)?;
+        progress("capture");
         let artifact = super::capture_with_observer(
             &self.executor,
             Path::new(&current.intent.path),
@@ -342,6 +387,7 @@ impl WorktreeService {
             expected_revision,
             command: Command::Git(GitCommand::RecordArtifact(artifact.clone())),
         };
+        progress("persist");
         applied(store.execute(&request)?)?;
         Ok(artifact)
     }
