@@ -12,7 +12,8 @@ try {
  await page.addInitScript(settings=>{
   const workerId='worker-real-shape',revision='exact-artifact-hash';let sequence=0;const events=[];
   const detail={worker:{intent:{id:workerId,policy:{}},status:'verified'},summary:{workerId,status:'verified',details:{artifactRevision:revision,checks:[{id:'fixture-check',result:'passed',exit_code:0}]}},artifact:{id:'artifact-id',revision,immutable:true,files:[{path:'fixture.txt'}]},reviews:[],historical:true};
-  const calls=[];let active=null,suspended=false,visibleWorkers=true;const daemon=()=>({state:{suspended,generation:1,cursor:{database:'worker-shape',sequence}},workers:visibleWorkers?[{workerId,status:'verified'}]:[],workerCount:visibleWorkers?1:0,workerFactsHistorical:true,activeWorkerId:active,features:['desktop-v1','review-v1']});
+  const correctionId='correction-exact-worker',linkedWork=[{runId:'shared-run',taskId:'shared-task',attemptId:'implementation-attempt',workerId,revision:'first-recorded-revision'},{runId:'shared-run',taskId:'shared-task',attemptId:'correction-attempt',workerId:correctionId,revision:'corrected-recorded-revision'}];
+  const calls=[];let active=null,suspended=false,visibleWorkers=true;const daemon=()=>({state:{suspended,generation:1,cursor:{database:'worker-shape',sequence}},workers:visibleWorkers?[{workerId,status:'verified'},{workerId:correctionId,status:'needs-work'}]:[],workerCount:visibleWorkers?2:0,workerFactsHistorical:true,activeWorkerId:active,features:['desktop-v1','review-v1']});
   window.__qa={calls,setActivity(id,paused,showWorkers=true){active=id;suspended=paused;visibleWorkers=showWorkers;},finishReview(summary='Rejected exact artifact',emit=true){detail.reviews=[{id:'review-distinct-identity',worker_id:workerId,artifact_revision:revision,status:'rejected',result:{summary,findings:[{id:'finding-one',path:'fixture.txt',line_start:1,line_end:1,severity:'warning',explanation:'finding-one requires correction',evidence:'exact artifact evidence'}]}}];if(emit){sequence++;events.push({sequence,kind:'command-finished',body:{commandId:'review-command',workerId:'review-distinct-identity',state:'finished'}});}}};
   window.__TAURI_EVENT_PLUGIN_INTERNALS__={unregisterListener(){}};
   window.__TAURI_INTERNALS__={transformCallback(){return 1;},unregisterCallback(){},async invoke(command,args={}){
@@ -21,8 +22,9 @@ try {
    if(command.startsWith('plugin:event|'))return 1;
    if(command==='desktop_request'){
     const r=args.request;calls.push(structuredClone(r));
-    if(r.type==='bootstrap')return {revision:0,projects:[],conversations:[],settings,connections:[],eventCursor:{database:'worker-shape',sequence},admissionsSuspended:false,daemon:daemon()};
-    if(r.type==='inspect-worker')return structuredClone(detail);
+    if(r.type==='bootstrap')return {revision:0,projects:[],conversations:[{id:'linked-conversation',title:'Correct the calculation',messageCount:1}],settings,connections:[],eventCursor:{database:'worker-shape',sequence},admissionsSuspended:false,daemon:daemon()};
+    if(r.type==='conversation')return {id:'linked-conversation',messages:[{id:'first-message',ordinal:1,role:'user',text:'Correct the calculation'}],more:false,nextOrdinal:1,work:linkedWork};
+    if(r.type==='inspect-worker')return r.workerId===correctionId?{...structuredClone(detail),worker:{intent:{id:correctionId,policy:{}},status:'needs-work'},summary:{workerId:correctionId,status:'needs-work',details:{artifactRevision:'corrected-recorded-revision',checks:[{id:'fixture-check',result:'failed',exit_code:1}]}},reviews:[]}:structuredClone(detail);
     if(r.type==='recovery')return {has_blocking_cases:true,ready_for_admission:false,cases:[{worker_id:'uncertain-work',status:'uncertain',remote_outcome:'completed',local_tree_stopped:true,streams_closed:true,inspection_required:true,set_aside_eligible:true},{worker_id:'unknown-work',status:'uncertain',set_aside_eligible:false}],reviews:[],integrations:[{id:'integration-uncertain',worker_id:'worker-real-shape',run_id:'run-one',task_id:'task-one',source_artifact_revision:revision,status:'uncertain',input_base:'base-commit',result_revision:null,candidate_revision:null,checks:null,reason:'git-inspection-required',delivered:false,profile:'single-code-task-clean-target-v1',target:{directory:'C:/fixture/target',head:'base-commit'},guardian:{authority:'never-render-ownership-authority'}}]};
     if(r.type==='artifact-text')return {text:'immutable fixture text',nextOffset:22,more:false,immutable:true};
    }
@@ -83,6 +85,21 @@ try {
  await integration.getByText('Show evidence',{exact:true}).click();
  assert.match(await integration.locator('.o-json:visible').innerText(),/"status": "uncertain"/);
  assert.doesNotMatch(await integration.textContent(),/guardian|authority|never-render/,'ownership bindings must not enter visible or collapsed evidence');
+ await page.locator('.o-rail').getByRole('button',{name:'Chat',exact:true}).click();
+ const beforeConversation=await inspections();
+ await page.locator('.o-dock').getByRole('button',{name:'Correct the calculation',exact:true}).click();
+ const attempts=page.locator('.o-conversation-attempt');
+ await attempts.first().getByRole('heading',{name:'Attempt 1',exact:true}).waitFor();
+ await attempts.nth(1).getByRole('heading',{name:'Attempt 2',exact:true}).waitFor();
+ assert.equal(await attempts.count(),2);
+ assert.match(await attempts.first().innerText(),/Checks passed/);assert.match(await attempts.nth(1).innerText(),/Checks need attention/);
+ assert.equal(await inspections(),beforeConversation,'presenting conversation attempts must not inspect or restore each worker');
+ assert.equal(await attempts.locator('dd:visible').count(),0,'long identifiers remain accessible in collapsed identity details');
+ await attempts.nth(1).getByText('Attempt identity',{exact:true}).click();
+ assert.match(await attempts.nth(1).innerText(),/shared-task[\s\S]*correction-attempt[\s\S]*correction-exact-worker[\s\S]*corrected-recorded-revision/);
+ const evidence=attempts.nth(1).getByRole('button',{name:'Show evidence · Attempt 2',exact:true});
+ const evidenceBox=await evidence.boundingBox(),cardBox=await attempts.nth(1).boundingBox();assert(evidenceBox.width<cardBox.width*.7,'conversation evidence action stays naturally sized');
+ await evidence.click();assert.equal(await page.evaluate(()=>window.__qa.calls.filter(r=>r.type==='inspect-worker').at(-1).workerId),'correction-exact-worker');
  assert.deepEqual(errors,[]);
  process.stdout.write('Worker evidence renderer regression passed: compact preservation, distinct review identity, bounded refresh, Files return, blocking integration recovery.\n');
 } finally {await browser.close();}

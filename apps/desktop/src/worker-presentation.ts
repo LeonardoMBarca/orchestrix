@@ -1,3 +1,5 @@
+import type {ConversationWork,WorkerSummary} from './protocol';
+
 const stages:Record<string,[string,string]>={
  reserved:['Request saved','The request is persisted. Runtime execution has not been confirmed.'],
  preparing:['Preparing work','Preparing the authorized isolated worktree.'],
@@ -17,3 +19,10 @@ const stages:Record<string,[string,string]>={
  'set-aside':['Set aside','This attempt was explicitly set aside. It was not delivered.']
 };
 export function workerStage(status:string):{title:string,description:string}{const value=stages[status];return value?{title:value[0],description:value[1]}:{title:status,description:'No confirmed execution state is available.'};}
+
+// Conversation links are chronological attempts, not separate Tasks. Their
+// order and identifiers do not establish an implementation/correction role.
+export function conversationAttempt(work:ConversationWork,index:number,workers:WorkerSummary[]){
+ const observed=work.workerId?workers.find(worker=>worker.workerId===work.workerId):undefined;
+ return {number:index+1,workerId:work.workerId,status:observed?.status,statusLabel:observed?workerStage(observed.status).title:'Not yet observed'};
+}

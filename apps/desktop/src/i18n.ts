@@ -10,6 +10,11 @@ import controls from '../../../prototypes/desktop/locales/chat-controls.json';
 export type Language = 'en'|'pt'|'es';
 const catalog = Object.assign({},chrome,shell,settings,activity,files,experience,sessions,controls) as Record<string,{en:string,es:string}>;
 const extra: Record<string,[string,string]> = {
+  'Attempt {number}':['Tentativa {number}','Intento {number}'],
+  'Attempt identity':['Identidade da tentativa','Identidad del intento'],
+  'Attempt':['Tentativa','Intento'],
+  'Worker':['Executor','Ejecutor'],
+  'Recorded revision':['Revisão registrada','Revisión registrada'],
   'Work recovery':['Recuperação do trabalho','Recuperación del trabajo'],
   'Integration recovery':['Recuperação da integração','Recuperación de la integración'],
   'Integration identity':['Identidade da integração','Identidad de la integración'],

@@ -58,6 +58,8 @@ try{
  await page.getByRole('heading',{name:'Integration candidate',exact:true}).waitFor();
  const preparations=await page.evaluate(()=>window.__qa.calls.filter(r=>r.type==='prepare-integration'));assert.equal(preparations.length,2);assert.deepEqual(preparations[0],preparations[1]);
  assert.equal(await page.getByRole('button',{name:'Apply approved candidate',exact:true}).count(),0);
+ const approvalAction=page.getByRole('button',{name:'Approve exact candidate',exact:true}),candidateCard=approvalAction.locator('..');
+ assert((await approvalAction.boundingBox()).width<(await candidateCard.boundingBox()).width*.7,'approval action must not stretch across its grid card');
  const approvalConsent=page.getByLabel('I approve this exact candidate for 15 minutes. This does not apply it.',{exact:true});
  await approvalConsent.check();await page.evaluate(()=>window.__qa.suspend());
  await page.getByRole('button',{name:'Resume admissions',exact:true}).waitFor();
@@ -67,6 +69,7 @@ try{
  assert.equal(await approvalConsent.isChecked(),true,'resuming admissions preserves the exact-candidate consent');
  await page.getByRole('button',{name:'Approve exact candidate',exact:true}).click();
  await page.getByRole('button',{name:'Apply approved candidate',exact:true}).waitFor();assert.equal(await page.getByRole('button',{name:'Apply approved candidate',exact:true}).isDisabled(),true);
+ const applicationAction=page.getByRole('button',{name:'Apply approved candidate',exact:true});assert((await applicationAction.boundingBox()).width<(await applicationAction.locator('..').boundingBox()).width*.7,'application action must keep its natural width');
  assert.equal(await page.evaluate(()=>window.__qa.calls.filter(r=>r.type==='apply-integration').length),0);
  await page.getByLabel('I authorize applying this exact candidate to the selected checkout after Core revalidation.',{exact:true}).check();await page.getByRole('button',{name:'Apply approved candidate',exact:true}).click();
  await page.getByRole('heading',{name:'Delivered to checkout',exact:true}).waitFor();
