@@ -23,7 +23,7 @@ try {
     const r=args.request;calls.push(structuredClone(r));
     if(r.type==='bootstrap')return {revision:0,projects:[],conversations:[],settings,connections:[],eventCursor:{database:'worker-shape',sequence},admissionsSuspended:false,daemon:daemon()};
     if(r.type==='inspect-worker')return structuredClone(detail);
-    if(r.type==='recovery')return {cases:[{worker_id:'uncertain-work',status:'uncertain',remote_outcome:'completed',local_tree_stopped:true,streams_closed:true,inspection_required:true,set_aside_eligible:true},{worker_id:'unknown-work',status:'uncertain',set_aside_eligible:false}],reviews:[]};
+    if(r.type==='recovery')return {has_blocking_cases:true,ready_for_admission:false,cases:[{worker_id:'uncertain-work',status:'uncertain',remote_outcome:'completed',local_tree_stopped:true,streams_closed:true,inspection_required:true,set_aside_eligible:true},{worker_id:'unknown-work',status:'uncertain',set_aside_eligible:false}],reviews:[],integrations:[{id:'integration-uncertain',worker_id:'worker-real-shape',run_id:'run-one',task_id:'task-one',source_artifact_revision:revision,status:'uncertain',input_base:'base-commit',result_revision:null,candidate_revision:null,checks:null,reason:'git-inspection-required',delivered:false,profile:'single-code-task-clean-target-v1',target:{directory:'C:/fixture/target',head:'base-commit'},guardian:{authority:'never-render-ownership-authority'}}]};
     if(r.type==='artifact-text')return {text:'immutable fixture text',nextOffset:22,more:false,immutable:true};
    }
    throw Error('Unexpected mocked native command');
@@ -67,13 +67,22 @@ try {
  assert.equal(await page.getByRole('cell',{name:'passed',exact:true}).count(),1);
  await page.locator('.o-dock').getByRole('button',{name:'Recovery',exact:true}).click();
  await page.getByRole('heading',{name:'Recovery',exact:true}).waitFor();
- const cases=page.locator('.o-review-card');
+ const cases=page.locator('.o-review-card').filter({has:page.getByRole('heading',{name:'Work recovery',exact:true})});
  assert.equal(await cases.count(),2);
  assert.match(await cases.first().innerText(),/completed[\s\S]*Stopped[\s\S]*Closed[\s\S]*Required/);
  assert.match(await cases.nth(1).innerText(),/Unknown/,'missing recovery observations must remain unknown');
  assert.equal(await page.locator('.o-json:visible').count(),0,'recovery evidence must start collapsed without hiding its summary or actions');
  assert.equal(await page.getByRole('button',{name:'Set aside',exact:true}).count(),1,'only Core-eligible cases offer set aside');
  await page.getByText('Set aside releases the local admission barrier and preserves this uncertain result. It does not retry or discard the work.',{exact:true}).waitFor();
+ const integration=page.locator('.o-integration-recovery');
+ assert.equal(await integration.count(),1,'blocking integration must not disappear behind completed worker recovery cards');
+ assert.match(await integration.innerText(),/Integration recovery[\s\S]*Outcome uncertain[\s\S]*git-inspection-required[\s\S]*worker-real-shape[\s\S]*exact-artifact-hash[\s\S]*C:\/fixture\/target/);
+ assert.equal(await integration.getByRole('button').count(),0,'integration recovery cannot invent SetAside, retry or apply actions');
+ await page.getByText('New work is blocked until the recovery cases are resolved.',{exact:true}).waitFor();
+ await integration.getByText('Preserve the integration worktree and its evidence. This view does not retry, apply or discard the result.',{exact:true}).waitFor();
+ await integration.getByText('Show evidence',{exact:true}).click();
+ assert.match(await integration.locator('.o-json:visible').innerText(),/"status": "uncertain"/);
+ assert.doesNotMatch(await integration.textContent(),/guardian|authority|never-render/,'ownership bindings must not enter visible or collapsed evidence');
  assert.deepEqual(errors,[]);
- process.stdout.write('Worker evidence renderer regression passed: compact preservation, distinct review identity, bounded refresh, Files return.\n');
+ process.stdout.write('Worker evidence renderer regression passed: compact preservation, distinct review identity, bounded refresh, Files return, blocking integration recovery.\n');
 } finally {await browser.close();}

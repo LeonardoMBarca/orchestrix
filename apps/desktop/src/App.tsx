@@ -12,7 +12,7 @@ import {workerStage} from './worker-presentation';
 import {IntegrationPanel,type IntegrationDetail} from './integration-panel';
 import {modalKey} from './accessibility';
 import {EditorPane,FileTree,pick,editorCall,type Grant,type OpenDocument,type SavedEvidence} from './editor';
-import {confirmsIntegrationRevalidation,integrationFooter,type IntegrationRevalidationPin} from './integration-state';
+import {confirmsIntegrationRevalidation,integrationFooter,integrationStage,integrationRecoveryEvidence,type IntegrationRevalidationPin} from './integration-state';
 import {request,poll,commandId,defaultSettings,type Activity,type Bootstrap,type ConversationDetail,type Cursor,type DaemonSnapshot,type DesktopRequest,type PreparedTask,type Settings,type Side,type TaskDraft} from './protocol';
 import {initialLayout,moveActivity,movePanel,resizeDock,selectActivity,uniqueEvents,confirmsRevalidation,reviewMatchesArtifact,mergeCompactWorker,type RevalidationPin,type Layout} from './state';
 
@@ -120,6 +120,15 @@ function WorkerView({candidateStale,integrationSummary,integrationPanel,busy,pen
 function RecoveryView({data,busy,t,onRefresh,onRecheck,onAction,onSetAsideReview}:{data:any,busy:boolean,t:(s:string)=>string,onRefresh:()=>Promise<void>,onRecheck:(id:string)=>Promise<void>,onAction:(id:string,action:'record-inspection'|'set-aside')=>Promise<void>,onSetAsideReview:(id:string)=>Promise<void>}){
  const fact=(value:unknown,yes:string,no:string)=>t(value===true?yes:value===false?no:'Unknown');
  return <section className="o-page"><h1>{t('Recovery')}</h1><p>{t('No automatic execution on reconnect.')}</p><button disabled={busy} onClick={()=>void onRefresh()}>{t('Refresh history')}</button>
+  {data?.has_blocking_cases===true&&data?.ready_for_admission===false&&<p className="o-notice">{t('New work is blocked until the recovery cases are resolved.')}</p>}
+  {(data?.integrations??[]).map(integrationRecoveryEvidence).map((item:ReturnType<typeof integrationRecoveryEvidence>,index:number)=><section className="o-work-card o-review-card o-integration-recovery" key={item.id??index}>
+   <header><h3>{t('Integration recovery')}</h3><span className="o-status">{t(integrationStage(item.status??'Unknown'))}</span></header>
+   <details className="o-worker-identity"><summary>{t('Integration identity')}</summary><dl className="o-task-summary"><dt>ID</dt><dd><code>{item.id??t('Unknown')}</code></dd><dt>{t('Run')}</dt><dd><code>{item.run_id??t('Unknown')}</code></dd><dt>{t('Task')}</dt><dd><code>{item.task_id??t('Unknown')}</code></dd></dl></details>
+   <dl className="o-task-summary"><dt>{t('Reason')}</dt><dd><code>{item.reason??t('Unknown')}</code></dd><dt>{t('Source execution')}</dt><dd><code>{item.worker_id??t('Unknown')}</code></dd><dt>{t('Artifact revision')}</dt><dd><code>{item.source_artifact_revision??t('Unknown')}</code></dd><dt>{t('Git base commit')}</dt><dd><code>{item.input_base??t('Unknown')}</code></dd><dt>{t('Target directory')}</dt><dd>{item.target.directory??t('Unknown')}</dd></dl>
+   <p className="o-footnote">{t('Historical observation')} - {t('Current verification not performed')}</p>
+   <p className="o-notice">{t('Preserve the integration worktree and its evidence. This view does not retry, apply or discard the result.')}</p>
+   <details><summary>{t('Show evidence')}</summary><pre className="o-json">{JSON.stringify(item,null,2)}</pre></details>
+  </section>)}
   {(data?.cases??[]).map((item:any)=><section className="o-work-card o-review-card" key={item.worker_id}>
    <header><h3>{t('Work recovery')}</h3><span className="o-status">{t(workerStage(item.status).title)}</span></header>
    <details className="o-worker-identity"><summary>{t('Execution identity')}</summary><code>{item.worker_id}</code></details>

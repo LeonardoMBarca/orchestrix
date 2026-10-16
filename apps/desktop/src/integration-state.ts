@@ -2,6 +2,21 @@ import {reviewMatchesArtifact} from './state.ts';
 
 export function integrationStage(status:string):string{return ({reserved:'Integration request saved',preparing:'Preparing integration',materialized:'Integration worktree ready',checking:'Checking integration',checked:'Integration checks passed','commit-planned':'Result commit planned',integrated:'Result commit recorded',prepared:'Candidate prepared',approved:'Candidate approved',applying:'Applying candidate',applied:'Candidate applied',delivered:'Delivered',blocked:'Blocked',invalidated:'Evidence invalidated',uncertain:'Outcome uncertain'} as Record<string,string>)[status]??status;}
 
+// Recovery receives historical summaries, not permission to expose future
+// guardian/binding fields or to retry an integration. Keep evidence explicit.
+export function integrationRecoveryEvidence(input:Record<string,unknown>){
+ const text=(value:unknown)=>typeof value==='string'?value:undefined;
+ const target=input.target&&typeof input.target==='object'?input.target as Record<string,unknown>:{};
+ return {
+  id:text(input.id),worker_id:text(input.worker_id),run_id:text(input.run_id),task_id:text(input.task_id),
+  source_artifact_revision:text(input.source_artifact_revision),status:text(input.status),reason:input.reason===null?null:text(input.reason),
+  input_base:text(input.input_base),result_revision:input.result_revision===null?null:text(input.result_revision),candidate_revision:input.candidate_revision===null?null:text(input.candidate_revision),
+  delivered:typeof input.delivered==='boolean'?input.delivered:undefined,profile:text(input.profile),
+  target:{directory:text(target.directory),common_git_dir:text(target.common_git_dir),symbolic_ref:text(target.symbolic_ref),head:text(target.head),index_sha256:text(target.index_sha256),working_sha256:text(target.working_sha256)},
+  checks:input.checks===null?null:Array.isArray(input.checks)?input.checks.map((report:Record<string,unknown>)=>({id:text(report.id),artifact_revision:text(report.artifact_revision),result:text(report.result),exit_code:typeof report.exit_code==='number'?report.exit_code:null,command_hash:text(report.command_hash),executable_hash:text(report.executable_hash),tree_confirmed:typeof report.tree_confirmed==='boolean'?report.tree_confirmed:undefined,streams_closed:typeof report.streams_closed==='boolean'?report.streams_closed:undefined})):undefined
+ };
+}
+
 export function integrationPreparationBarriers(records:{worker_id?:string,source_artifact_revision?:string,status?:string,result_revision?:string|null}[],source:{workerId:string,revision:string}):{recordedResult:boolean,recoveryRequired:boolean,candidateExists:boolean}{
  const own=records.filter(record=>record.worker_id===source.workerId);
  return {

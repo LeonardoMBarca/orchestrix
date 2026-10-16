@@ -45,3 +45,16 @@ test('compact daemon status preserves inspected checks, review findings and immu
  assert.equal(mergeCompactWorker(full,{workerId:'different-worker',status:'failed'}),full);
  assert.equal(mergeCompactWorker(full,{...compact,status:'artifact-invalidated'}).summary.status,'artifact-invalidated');assert.deepEqual(mergeCompactWorker(full,compact),mergeCompactWorker(merged,compact));
 });
+
+test('checking status can arrive before artifact details without inventing or discarding evidence',()=>{
+ const previous={summary:{workerId:'worker-pending-details',status:'runtime-observed',details:{}},artifact:null,reviews:[]};
+ const compact={workerId:'worker-pending-details',status:'checking'};
+ const checking=mergeCompactWorker(previous,compact);
+ assert.equal(checking.summary.status,'checking');assert.equal(checking.artifact,null);
+ assert.deepEqual(checking.summary.details,{});assert.equal(previous.summary.status,'runtime-observed');
+ // Only an explicit detailed response supplies the exact captured version.
+ const refreshed={...checking,artifact:{id:'artifact-one',revision:'exact-captured-version',immutable:true}};
+ const following=mergeCompactWorker(refreshed,{...compact,status:'verified'});
+ assert.equal(following.summary.status,'verified');assert.deepEqual(following.artifact,refreshed.artifact);
+ assert.equal(checking.artifact,null);assert.deepEqual(following.reviews,[]);
+});

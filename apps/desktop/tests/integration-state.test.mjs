@@ -1,8 +1,21 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {canPrepareIntegration,confirmsIntegrationRevalidation,integrationAction,integrationFooter,integrationPreparationBarriers,integrationStage} from '../src/integration-state.ts';
+import {canPrepareIntegration,confirmsIntegrationRevalidation,integrationAction,integrationFooter,integrationPreparationBarriers,integrationStage,integrationRecoveryEvidence} from '../src/integration-state.ts';
 
 const source={workerId:'worker-one',revision:'artifact-one',status:'verified',stale:false,reviews:[{status:'accepted',worker_id:'worker-one',artifact_revision:'artifact-one'}]};
+
+test('integration recovery retains exact provenance and uncertainty without exposing ownership bindings',()=>{
+ const summary={id:'integration-uncertain',worker_id:'worker-one',run_id:'run-one',task_id:'task-one',source_artifact_revision:'artifact-one',status:'uncertain',input_base:'base-commit',result_revision:null,candidate_revision:null,checks:null,reason:'git-inspection-required',delivered:false,profile:'single-code-task-clean-target-v1',target:{directory:'C:/fixture/target',head:'base-commit',symbolic_ref:'refs/heads/main',authority:'never-render-ownership-authority'},guardian:{authority:'never-render-ownership-authority'},authority:'never-render-ownership-authority'};
+ const evidence=integrationRecoveryEvidence(summary);
+ assert.equal(evidence.id,summary.id);assert.equal(evidence.worker_id,summary.worker_id);assert.equal(evidence.run_id,summary.run_id);assert.equal(evidence.task_id,summary.task_id);
+ assert.equal(evidence.source_artifact_revision,summary.source_artifact_revision);assert.equal(evidence.target.directory,summary.target.directory);assert.equal(evidence.input_base,summary.input_base);
+ assert.equal(evidence.status,'uncertain');assert.equal(evidence.reason,'git-inspection-required');assert.equal(evidence.checks,null);assert.equal(evidence.result_revision,null);assert.equal(evidence.candidate_revision,null);assert.equal(evidence.delivered,false);
+ assert.equal(integrationStage(evidence.status),'Outcome uncertain');
+ assert.doesNotMatch(JSON.stringify(evidence),/guardian|authority|never-render/);
+ assert.equal(integrationAction(evidence,source,false),null,'a recovery summary cannot authorize apply or approval');
+ const checked=integrationRecoveryEvidence({...summary,checks:[{id:'check-one',result:'passed',artifact_revision:'artifact-one',exit_code:0,tree_confirmed:true,streams_closed:true,output:'never-render-ownership-authority',guardian:{authority:'never-render-ownership-authority'}}]});
+ assert.equal(checked.checks[0].result,'passed');assert.equal(checked.checks[0].exit_code,0);assert.doesNotMatch(JSON.stringify(checked),/guardian|authority|never-render/);
+});
 test('integration preparation requires exact worker/artifact accepted review, current evidence and idle admission',()=>{
  assert.equal(canPrepareIntegration(source,false),true);
  for(const patch of [{status:'reserved'},{status:'invalidated'},{stale:true},{revision:'artifact-two'},{workerId:'worker-two'},{reviews:[{...source.reviews[0],status:'rejected'}]},{reviews:[]}])assert.equal(canPrepareIntegration({...source,...patch},false),false);
