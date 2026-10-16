@@ -7,8 +7,9 @@ if(process.platform!=='win32')throw new Error('Windows QA fixture only');
 const repoRoot=fileURLToPath(new URL('../../../',import.meta.url));
 const profile=process.argv.includes('--release')?'release':'debug';
 const controls=process.argv.includes('--controls');
+const controlsWorker=process.argv.includes('--controls-worker');
 const acceptedReview=process.argv.includes('--accepted-review');
-if(controls&&acceptedReview)throw new Error('Choose one explicit QA scenario per fixture');
+if(Number(controls)+Number(controlsWorker)+Number(acceptedReview)>1)throw new Error('Choose one explicit QA scenario per fixture');
 const executable=path.join(repoRoot,'target','native-sidecars',profile,'orchestrix-runtime-fixture.exe');
 if(!existsSync(executable))throw new Error('Build the Orchestrix-owned runtime fixture first');
 const parent=path.join(repoRoot,'artifacts','native-desktop');mkdirSync(parent,{recursive:true});
@@ -26,6 +27,6 @@ for(const args of [['init','--quiet','--initial-branch=main'],['add','--all'],['
   const result=spawnSync('git',['-c',`core.hooksPath=${path.join(root,'empty-hooks')}`,'-c','core.autocrlf=false','-c','user.name=Orchestrix fixture','-c','user.email=fixture@invalid.local',...args],{cwd:repository,env,encoding:'utf8',windowsHide:true});
   if(result.status!==0)throw new Error(`Fixture Git ${args[0]} failed`);
 }
-const config={root:realpathSync(root),executable:realpathSync(executable),home:realpathSync(home),repository:realpathSync(repository),worktrees:realpathSync(worktrees),reviewScenario:controls?'qa-controlled':acceptedReview?'review-accept':'review-reject'};
+const config={root:realpathSync(root),executable:realpathSync(executable),home:realpathSync(home),repository:realpathSync(repository),worktrees:realpathSync(worktrees),reviewScenario:controls?'qa-controlled':acceptedReview?'review-accept':'review-reject',...(controlsWorker?{workerScenario:'qa-controlled'}:{})};
 const configPath=path.join(root,'fixture.json');writeFileSync(configPath,JSON.stringify(config,null,2));
 console.log(JSON.stringify({fixtureConfig:configPath,...config},null,2));

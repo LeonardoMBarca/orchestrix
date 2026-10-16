@@ -69,6 +69,41 @@ struct FixtureConfig {
     worktrees: PathBuf,
     #[serde(default)]
     review_scenario: Option<String>,
+    #[serde(default)]
+    worker_scenario: Option<String>,
+}
+#[cfg(feature = "test-fixtures")]
+impl FixtureConfig {
+    fn validate_scenarios(&self) -> Result<(), String> {
+        if ![
+            None,
+            Some("review-reject"),
+            Some("review-accept"),
+            Some("review-invalid"),
+            Some("quota-failure"),
+            Some("hang"),
+            Some("qa-controlled"),
+        ]
+        .contains(&self.review_scenario.as_deref())
+            || ![None, Some("review-implementation"), Some("qa-controlled")]
+                .contains(&self.worker_scenario.as_deref())
+        {
+            return Err("native-fixture-scenario".into());
+        }
+        Ok(())
+    }
+    fn scenario(&self, purpose: &str) -> &str {
+        match purpose {
+            "review" => self.review_scenario.as_deref().unwrap_or("review-reject"),
+            "review-corrected" => "review-accept",
+            "correction" => "review-correction",
+            "implementation" => self
+                .worker_scenario
+                .as_deref()
+                .unwrap_or("review-implementation"),
+            _ => "review-implementation",
+        }
+    }
 }
 #[cfg(feature = "test-fixtures")]
 fn fixture_config() -> Result<Option<FixtureConfig>, String> {
@@ -99,19 +134,7 @@ fn fixture_config() -> Result<Option<FixtureConfig>, String> {
     {
         return Err("native-fixture-executable".into());
     }
-    if ![
-        None,
-        Some("review-reject"),
-        Some("review-accept"),
-        Some("review-invalid"),
-        Some("quota-failure"),
-        Some("hang"),
-        Some("qa-controlled"),
-    ]
-    .contains(&config.review_scenario.as_deref())
-    {
-        return Err("native-fixture-scenario".into());
-    }
+    config.validate_scenarios()?;
     Ok(Some(config))
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -545,18 +568,7 @@ impl Host {
             return Ok(RuntimeChoice::Synthetic {
                 executable: binding.executable,
                 home: binding.home,
-                scenario: if purpose == "review" {
-                    fixture
-                        .review_scenario
-                        .clone()
-                        .unwrap_or_else(|| "review-reject".into())
-                } else if purpose == "review-corrected" {
-                    "review-accept".into()
-                } else if purpose == "correction" {
-                    "review-correction".into()
-                } else {
-                    "review-implementation".into()
-                },
+                scenario: fixture.scenario(purpose).into(),
             });
         }
         #[cfg(not(feature = "test-fixtures"))]
@@ -1511,7 +1523,10 @@ impl Host {
         if !exists {
             let launch = RuntimeLaunch::fixture(
                 executable.clone(),
-                vec!["--scenario".into(), "review-implementation".into()],
+                vec![
+                    "--scenario".into(),
+                    fixture.scenario("implementation").into(),
+                ],
                 home.clone(),
                 fixture.repository.clone(),
             );
@@ -1724,6 +1739,58 @@ fn validate_runtime_pin(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[cfg(feature = "test-fixtures")]
+    #[test]
+    fn controlled_worker_scenario_is_explicit_and_scoped_to_implementation() {
+        let mut fixture: FixtureConfig = serde_json::from_value(json!({
+            "root":"fixture-root",
+            "executable":"orchestrix-runtime-fixture.exe",
+            "home":"runtime-home",
+            "repository":"repository",
+            "worktrees":"worktrees",
+            "reviewScenario":"qa-controlled"
+        }))
+        .unwrap();
+        assert!(fixture.validate_scenarios().is_ok());
+        assert_eq!(fixture.scenario("implementation"), "review-implementation");
+        assert_eq!(fixture.scenario("review"), "qa-controlled");
+        fixture.worker_scenario = Some("qa-controlled".into());
+        assert!(fixture.validate_scenarios().is_ok());
+        assert_eq!(fixture.scenario("implementation"), "qa-controlled");
+        assert_eq!(fixture.scenario("review"), "qa-controlled");
+        assert_eq!(fixture.scenario("review-corrected"), "review-accept");
+        assert_eq!(fixture.scenario("correction"), "review-correction");
+        assert_eq!(fixture.scenario("unknown-purpose"), "review-implementation");
+        fixture.worker_scenario = Some("review-implementation".into());
+        assert_eq!(fixture.scenario("implementation"), "review-implementation");
+    }
+
+    #[cfg(feature = "test-fixtures")]
+    #[test]
+    fn fixture_worker_scenario_rejects_other_runtime_fault_modes() {
+        let value = json!({
+            "root":"fixture-root",
+            "executable":"orchestrix-runtime-fixture.exe",
+            "home":"runtime-home",
+            "repository":"repository",
+            "worktrees":"worktrees"
+        });
+        for worker in ["hang", "quota-failure", "review-accept", "", "success"] {
+            let mut input = value.clone();
+            input["workerScenario"] = json!(worker);
+            let fixture: FixtureConfig = serde_json::from_value(input).unwrap();
+            assert_eq!(
+                fixture.validate_scenarios().unwrap_err(),
+                "native-fixture-scenario"
+            );
+        }
+        for worker in [json!(true), json!([]), json!({})] {
+            let mut input = value.clone();
+            input["workerScenario"] = worker;
+            assert!(serde_json::from_value::<FixtureConfig>(input).is_err());
+        }
+    }
+
     #[test]
     fn editor_mutations_revalidate_candidates_even_on_conflict_without_losing_disk_bytes() {
         let root = directory();
