@@ -48,3 +48,5 @@ html,body,#root{height:100%;overflow:hidden}body{font:1rem/1.45 var(--body)}butt
 .o-integration .o-table td:last-child{overflow-wrap:anywhere}.o-integration .o-task-summary code{font-size:.78rem;overflow-wrap:anywhere}
 @media(max-width:1000px){.o-task-heading{flex-direction:column;gap:8px}.o-task-steps{margin:0}.o-task-summary{grid-template-columns:120px minmax(0,1fr)}}
 @media(max-width:760px){.o-task-goals{grid-template-columns:1fr}.o-task-summary{grid-template-columns:1fr;gap:3px}.o-task-summary dd{margin-bottom:10px}.o-admission-notice{align-items:flex-start;flex-wrap:wrap}.o-admission-notice button{margin-left:0}}
+
+.o-review-card>header{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}.o-review-card>header h3{margin:0;font-size:1rem}.o-review-card>header .o-status{margin-left:0}.o-review-card>.o-actions{justify-content:flex-start}
