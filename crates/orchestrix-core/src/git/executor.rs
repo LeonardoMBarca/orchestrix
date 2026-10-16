@@ -123,6 +123,12 @@ pub struct GitExecutor {
     private: PathBuf,
     scope: Option<orchestrix_process::named_job::JobScope>,
 }
+
+pub(super) struct CaptureHead {
+    pub head: Vec<u8>,
+    pub index: PathBuf,
+}
+
 impl GitExecutor {
     /// Read only, fixed built-in for a host-granted repository. No arbitrary arguments.
     pub fn inspect_head(&self, repository: &Path) -> GitResult<String> {
@@ -452,6 +458,53 @@ impl GitExecutor {
     /// Unsupported features are refused before checkout/capture rather than
     /// running their configured programs or fetching missing objects.
     pub(crate) fn ensure_supported(&self, repo: &Path) -> GitResult<()> {
+        self.ensure_local_config(repo)?;
+        let raw = self
+            .run(
+                repo,
+                &strings(&[
+                    "rev-parse",
+                    "--path-format=absolute",
+                    "--absolute-git-dir",
+                    "--git-common-dir",
+                ]),
+            )?
+            .checked()?;
+        self.ensure_admin_stores(repository_directories(&raw)?)
+    }
+
+    /// One fresh capture observation; symbolic HEAD remains a separate native
+    /// symbolic-ref query because rev-parse's DWIM name output is not equivalent.
+    pub(super) fn capture_head(&self, repo: &Path) -> GitResult<CaptureHead> {
+        self.ensure_local_config(repo)?;
+        let output = self.run(
+            repo,
+            &strings(&[
+                "rev-parse",
+                "--path-format=absolute",
+                "--absolute-git-dir",
+                "--git-common-dir",
+                "--git-path",
+                "index",
+                "--verify",
+                "HEAD",
+            ]),
+        )?;
+        if output.status != 0 {
+            // A missing/unborn HEAD can fail after Git has printed its three
+            // paths. Keep the old support-check precedence without repeating
+            // a Git process or treating partial output as a successful frame.
+            if let Ok([admin, common, _]) = repository_paths::<3>(&output.stdout) {
+                self.ensure_admin_stores([admin, common])?;
+            }
+            return Err(GitError::Process);
+        }
+        let (directories, observation) = capture_head_fields(&output.stdout)?;
+        self.ensure_admin_stores(directories)?;
+        Ok(observation)
+    }
+
+    fn ensure_local_config(&self, repo: &Path) -> GitResult<()> {
         // Check the worktree marker too, not only the directory returned after
         // Git resolves it. A normal linked-worktree .git file is supported.
         let marker = repo.join(".git");
@@ -493,18 +546,11 @@ impl GitExecutor {
                 return Err(GitError::Unsupported);
             }
         }
-        let raw = self
-            .run(
-                repo,
-                &strings(&[
-                    "rev-parse",
-                    "--path-format=absolute",
-                    "--absolute-git-dir",
-                    "--git-common-dir",
-                ]),
-            )?
-            .checked()?;
-        for path in repository_directories(&raw)? {
+        Ok(())
+    }
+
+    fn ensure_admin_stores(&self, directories: [PathBuf; 2]) -> GitResult<()> {
+        for path in directories {
             let dir = canonical_directory(&path)?;
             for name in [
                 "config",
@@ -545,18 +591,57 @@ impl GitExecutor {
 /// batches only discovery; every support check still rereads config, paths and
 /// object-store metadata at its original observation boundary.
 fn repository_directories(raw: &[u8]) -> GitResult<[PathBuf; 2]> {
+    repository_paths(raw)
+}
+
+fn metadata_fields<const N: usize>(raw: &[u8]) -> GitResult<[&[u8]; N]> {
     let body = raw.strip_suffix(b"\n").ok_or(GitError::Path)?;
-    let mut directories = Vec::new();
+    let mut fields = Vec::new();
     for line in body.split(|byte| *byte == b'\n') {
-        let line = line.strip_suffix(b"\r").unwrap_or(line);
-        let text = std::str::from_utf8(line).map_err(|_| GitError::Path)?;
-        let path = PathBuf::from(text);
-        if !path.is_absolute() || text.chars().any(char::is_control) {
+        if fields.len() == N {
             return Err(GitError::Path);
         }
-        directories.push(path);
+        fields.push(line.strip_suffix(b"\r").unwrap_or(line));
+    }
+    fields.try_into().map_err(|_| GitError::Path)
+}
+
+fn metadata_path(raw: &[u8]) -> GitResult<PathBuf> {
+    let text = std::str::from_utf8(raw).map_err(|_| GitError::Path)?;
+    let path = PathBuf::from(text);
+    if !path.is_absolute() || text.chars().any(char::is_control) {
+        return Err(GitError::Path);
+    }
+    Ok(path)
+}
+
+fn repository_paths<const N: usize>(raw: &[u8]) -> GitResult<[PathBuf; N]> {
+    let mut directories = Vec::new();
+    for field in metadata_fields::<N>(raw)? {
+        directories.push(metadata_path(field)?);
     }
     directories.try_into().map_err(|_| GitError::Path)
+}
+
+fn capture_head_fields(raw: &[u8]) -> GitResult<([PathBuf; 2], CaptureHead)> {
+    let [admin, common, index, oid] = metadata_fields::<4>(raw)?;
+    if !matches!(oid.len(), 40 | 64)
+        || !oid
+            .iter()
+            .all(|byte| byte.is_ascii_hexdigit() && !byte.is_ascii_uppercase())
+    {
+        return Err(GitError::Base);
+    }
+    // Preserve the standalone rev-parse HEAD bytes used by Snapshot equality.
+    let mut head = oid.to_vec();
+    head.push(b'\n');
+    Ok((
+        [metadata_path(admin)?, metadata_path(common)?],
+        CaptureHead {
+            head,
+            index: metadata_path(index)?,
+        },
+    ))
 }
 
 #[cfg(test)]
@@ -585,6 +670,281 @@ mod metadata_batch_tests {
         ] {
             assert_eq!(repository_directories(bad.as_bytes()), Err(GitError::Path));
         }
+    }
+
+    #[test]
+    fn capture_frame_is_exact_typed_and_hash_width_independent() {
+        let directory = canonical_directory(&env::temp_dir()).unwrap();
+        let text = directory.to_str().unwrap();
+        for oid in ["a".repeat(40), "b".repeat(64)] {
+            for ending in ["\n", "\r\n"] {
+                let raw = format!("{text}{ending}{text}{ending}{text}{ending}{oid}{ending}");
+                let (directories, frame) = capture_head_fields(raw.as_bytes()).unwrap();
+                assert_eq!(directories, [directory.clone(), directory.clone()]);
+                assert_eq!(frame.index, directory);
+                assert_eq!(frame.head, format!("{oid}\n").as_bytes());
+            }
+        }
+        for raw in [
+            format!("{text}\n{text}\n{text}\n"),
+            format!("{text}\n{text}\n{text}\n{}", "a".repeat(40)),
+            format!("{text}\n{text}\n{text}\n{}\nextra\n", "a".repeat(40)),
+            format!("{text}\n{text}\nrelative-index\n{}\n", "a".repeat(40)),
+            format!("{text}\n{text}\n{text}\0\n{}\n", "a".repeat(40)),
+        ] {
+            assert!(matches!(
+                capture_head_fields(raw.as_bytes()),
+                Err(GitError::Path)
+            ));
+        }
+        for oid in [
+            "a".repeat(39),
+            "a".repeat(41),
+            "A".repeat(40),
+            "z".repeat(40),
+            "".into(),
+        ] {
+            assert!(matches!(
+                capture_head_fields(format!("{text}\n{text}\n{text}\n{oid}\n").as_bytes()),
+                Err(GitError::Base)
+            ));
+        }
+    }
+
+    #[test]
+    fn installed_capture_frame_matches_native_oid_paths_and_symbolic_head() {
+        let fixture = MetadataFixture::new();
+        let root = fixture.repository("repository");
+        assert!(matches!(
+            fixture.executor.capture_head(&root),
+            Err(GitError::Process)
+        ));
+        // Support restrictions precede the missing HEAD error without retries.
+        fs::write(root.join(".git/objects/info/alternates"), b"outside\n").unwrap();
+        assert!(matches!(
+            fixture.executor.capture_head(&root),
+            Err(GitError::Unsupported)
+        ));
+        fs::remove_file(root.join(".git/objects/info/alternates")).unwrap();
+        let base = fixture.seed_empty(&root, "main");
+        let frame = fixture.executor.capture_head(&root).unwrap();
+        assert_eq!(
+            frame.head,
+            fixture
+                .executor
+                .run(&root, &strings(&["rev-parse", "--verify", "HEAD"]))
+                .unwrap()
+                .checked()
+                .unwrap()
+        );
+        let standalone = fixture
+            .executor
+            .run(
+                &root,
+                &strings(&["rev-parse", "--path-format=absolute", "--git-path", "index"]),
+            )
+            .unwrap()
+            .checked()
+            .unwrap();
+        assert_eq!(
+            frame.index,
+            metadata_path(metadata_fields::<1>(&standalone).unwrap()[0]).unwrap()
+        );
+        assert_eq!(
+            fixture
+                .executor
+                .run(&root, &strings(&["symbolic-ref", "--quiet", "HEAD"]))
+                .unwrap()
+                .checked()
+                .unwrap(),
+            b"refs/heads/main\n"
+        );
+        // The symbolic name is deliberately read by the unchanged native
+        // command: chained HEAD and an ambiguous DWIM "HEAD" remain supported.
+        fs::write(
+            root.join(".git/refs/heads/alias"),
+            b"ref: refs/heads/main\n",
+        )
+        .unwrap();
+        fs::write(root.join(".git/HEAD"), b"ref: refs/heads/alias\n").unwrap();
+        assert_eq!(
+            fixture.executor.capture_head(&root).unwrap().head,
+            frame.head
+        );
+        assert_eq!(
+            fixture
+                .executor
+                .run(&root, &strings(&["symbolic-ref", "--quiet", "HEAD"]))
+                .unwrap()
+                .checked()
+                .unwrap(),
+            b"refs/heads/main\n"
+        );
+        fixture
+            .executor
+            .run(&root, &strings(&["update-ref", "refs/heads/HEAD", &base]))
+            .unwrap()
+            .checked()
+            .unwrap();
+        assert_eq!(
+            fixture.executor.capture_head(&root).unwrap().head,
+            frame.head
+        );
+        assert_eq!(
+            fixture
+                .executor
+                .run(&root, &strings(&["symbolic-ref", "--quiet", "HEAD"]))
+                .unwrap()
+                .checked()
+                .unwrap(),
+            b"refs/heads/main\n"
+        );
+        // Detached HEAD still has an OID, but symbolic-ref still rejects it.
+        fs::write(root.join(".git/HEAD"), format!("{base}\n")).unwrap();
+        assert_eq!(
+            fixture.executor.capture_head(&root).unwrap().head,
+            frame.head
+        );
+        assert_eq!(
+            fixture
+                .executor
+                .run(&root, &strings(&["symbolic-ref", "--quiet", "HEAD"]))
+                .unwrap()
+                .status,
+            1
+        );
+        let config_path = root.join(".git/config");
+        let config = fs::read(&config_path).unwrap();
+        let mut unsupported = config.clone();
+        unsupported.extend_from_slice(
+            b"\n[core]\nrepositoryFormatVersion = 1\n[extensions]\nobjectFormat = sha256\n",
+        );
+        fs::write(&config_path, unsupported).unwrap();
+        assert!(matches!(
+            fixture.executor.capture_head(&root),
+            Err(GitError::Unsupported)
+        ));
+        fs::write(config_path, config).unwrap();
+    }
+}
+
+/// Disposable repositories for the metadata grammar/race regressions only.
+#[cfg(test)]
+pub(super) struct MetadataFixture {
+    pub executor: GitExecutor,
+    pub root: PathBuf,
+    temporary: PathBuf,
+}
+#[cfg(test)]
+impl MetadataFixture {
+    pub fn new() -> Self {
+        let executor = GitExecutor::new().unwrap();
+        let temporary = canonical_directory(&env::temp_dir()).unwrap();
+        let root = executor.private.with_extension("metadata-fixture");
+        fs::create_dir(&root).unwrap();
+        Self {
+            executor,
+            root,
+            temporary,
+        }
+    }
+    pub fn repository(&self, name: &str) -> PathBuf {
+        assert!(
+            !name.is_empty()
+                && name
+                    .bytes()
+                    .all(|byte| byte.is_ascii_alphanumeric() || byte == b'-')
+        );
+        let root = self.root.join(name);
+        fs::create_dir(&root).unwrap();
+        let mut init = Command::new(&self.executor.binary);
+        init.env_clear();
+        for key in ["PATH", "SystemRoot", "WINDIR", "SystemDrive", "TEMP", "TMP"] {
+            if let Some(value) = env::var_os(key) {
+                init.env(key, value);
+            }
+        }
+        let null = if cfg!(windows) { "NUL" } else { "/dev/null" };
+        init.env("GIT_CONFIG_NOSYSTEM", "1")
+            .env("GIT_CONFIG_SYSTEM", null)
+            .env("GIT_CONFIG_GLOBAL", null)
+            .arg("-c")
+            .arg(format!(
+                "init.templateDir={}",
+                git_path(&self.executor.private).unwrap().to_string_lossy()
+            ))
+            .args(["init", "--quiet", "--initial-branch=main"])
+            .current_dir(&root);
+        #[cfg(windows)]
+        {
+            use std::os::windows::process::CommandExt;
+            init.creation_flags(0x0800_0000);
+        }
+        assert!(init.output().unwrap().status.success());
+        root
+    }
+    pub fn seed_empty(&self, root: &Path, branch: &str) -> String {
+        let tree = self
+            .executor
+            .run_with_input(
+                root,
+                &strings(&["hash-object", "-t", "tree", "-w", "--stdin"]),
+                b"",
+            )
+            .unwrap()
+            .checked()
+            .unwrap();
+        let tree = std::str::from_utf8(&tree).unwrap().trim();
+        let commit = format!(
+            "tree {tree}\nauthor Fixture <fixture@orchestrix.invalid> 1 +0000\ncommitter Fixture <fixture@orchestrix.invalid> 1 +0000\n\nCapture metadata fixture\n"
+        );
+        let base = self
+            .executor
+            .run_with_input(
+                root,
+                &strings(&["hash-object", "-t", "commit", "-w", "--stdin"]),
+                commit.as_bytes(),
+            )
+            .unwrap()
+            .checked()
+            .unwrap();
+        let base = std::str::from_utf8(&base).unwrap().trim().to_owned();
+        self.executor
+            .run(
+                root,
+                &strings(&["update-ref", &format!("refs/heads/{branch}"), &base]),
+            )
+            .unwrap()
+            .checked()
+            .unwrap();
+        fs::write(
+            root.join(".git/HEAD"),
+            format!("ref: refs/heads/{branch}\n"),
+        )
+        .unwrap();
+        self.executor
+            .run(root, &strings(&["read-tree", &base]))
+            .unwrap()
+            .checked()
+            .unwrap();
+        base
+    }
+}
+#[cfg(test)]
+impl Drop for MetadataFixture {
+    fn drop(&mut self) {
+        let root = fs::canonicalize(&self.root).unwrap();
+        assert!(
+            root.parent() == Some(self.temporary.as_path())
+                && root
+                    .file_name()
+                    .unwrap()
+                    .to_str()
+                    .unwrap()
+                    .starts_with("orchestrix-git-")
+        );
+        reject_links(&root).unwrap();
+        fs::remove_dir_all(root).unwrap();
     }
 }
 

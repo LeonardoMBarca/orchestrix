@@ -85,6 +85,7 @@ struct Snapshot {
     branch: Vec<u8>,
     base: BTreeMap<String, BlobEntry>,
     index: BTreeMap<String, BlobEntry>,
+    index_path: PathBuf,
     index_bytes: Vec<u8>,
     index_flags: Vec<u8>,
     untracked: BTreeSet<String>,
@@ -318,16 +319,16 @@ fn index_path(executor: &GitExecutor, root: &Path) -> GitResult<PathBuf> {
     super::paths::reject_links(&path)?;
     Ok(path)
 }
-fn raw_index(executor: &GitExecutor, root: &Path) -> GitResult<Vec<u8>> {
-    let path = index_path(executor, root)?;
+fn raw_index_at(path: &Path) -> GitResult<Vec<u8>> {
+    super::paths::reject_links(path)?;
     if path.with_extension("lock").exists() {
         return Err(GitError::Conflict);
     }
-    let metadata = fs::symlink_metadata(&path)?;
+    let metadata = fs::symlink_metadata(path)?;
     if !metadata.is_file() || metadata.len() > 16 * MAX_FILE_BYTES as u64 {
         return Err(GitError::Limit);
     }
-    let bytes = fs::read(&path)?;
+    let bytes = fs::read(path)?;
     if bytes.len() > 16 * MAX_FILE_BYTES {
         return Err(GitError::Limit);
     }
@@ -348,8 +349,8 @@ fn inspect_at(
     expected_head: &str,
     limits: CaptureLimits,
 ) -> GitResult<Snapshot> {
-    executor.ensure_supported(root)?;
-    let head = git(executor, root, &["rev-parse", "--verify", "HEAD"])?;
+    let observation = executor.capture_head(root)?;
+    let head = observation.head;
     if std::str::from_utf8(&head)
         .map_err(|_| GitError::Base)?
         .trim()
@@ -358,7 +359,7 @@ fn inspect_at(
         return Err(GitError::Base);
     }
     let branch = git(executor, root, &["symbolic-ref", "--quiet", "HEAD"])?;
-    let initial_index = raw_index(executor, root)?;
+    let initial_index = raw_index_at(&observation.index)?;
     let base_entries = parse_entries(
         &git(
             executor,
@@ -466,8 +467,11 @@ fn inspect_at(
         }
         files.insert(path, observed);
     }
-    let index_bytes = raw_index(executor, root)?;
-    if initial_index != index_bytes {
+    // Resolve again at the final edge, not only reread a cached index path.
+    // A .git retarget with identical index bytes is still a different source.
+    let final_index = index_path(executor, root)?;
+    let index_bytes = raw_index_at(&final_index)?;
+    if observation.index != final_index || initial_index != index_bytes {
         return Err(GitError::InconsistentCapture);
     }
     Ok(Snapshot {
@@ -475,6 +479,7 @@ fn inspect_at(
         branch,
         base: base_entries,
         index,
+        index_path: observation.index,
         index_bytes,
         index_flags,
         untracked,
@@ -837,5 +842,63 @@ mod metadata_batch_tests {
         ] {
             assert_eq!(staged_index(bad.as_bytes()), Err(GitError::Process));
         }
+    }
+
+    #[test]
+    fn retargeted_git_marker_with_identical_index_bytes_is_not_the_same_snapshot() {
+        let fixture = super::super::executor::MetadataFixture::new();
+        let first = fixture.repository("first");
+        let second = fixture.repository("second");
+        let branch = "orchestrix/capture-probe";
+        let base = fixture.seed_empty(&first, branch);
+        assert_eq!(fixture.seed_empty(&second, branch), base);
+        assert_eq!(
+            fs::read(first.join(".git/index")).unwrap(),
+            fs::read(second.join(".git/index")).unwrap()
+        );
+        let authorized = fixture.root.join("authorized");
+        fs::create_dir(&authorized).unwrap();
+        let checkout = authorized.join("checkout");
+        fs::create_dir(&checkout).unwrap();
+        let marker = |repository: &Path| {
+            format!(
+                "gitdir: {}\n",
+                super::super::paths::git_path(&repository.join(".git"))
+                    .unwrap()
+                    .to_string_lossy()
+                    .replace('\\', "/")
+            )
+        };
+        fs::write(checkout.join(".git"), marker(&first)).unwrap();
+        let text = |path: &Path| path.to_str().unwrap().to_owned();
+        let intent = WorktreeIntent {
+            operation_id: "capture-frame".into(),
+            project_id: "project".into(),
+            repository_id: "repository".into(),
+            run_id: "run".into(),
+            task_id: "task".into(),
+            attempt_id: "attempt".into(),
+            base_oid: base,
+            domain_base: "base".into(),
+            worktree_ref: "worktree".into(),
+            authorized_root: text(&authorized),
+            path: text(&checkout),
+            main_repository: text(&first),
+            branch: branch.into(),
+            common_git_dir: text(&first.join(".git")),
+            ownership_token: "a".repeat(64),
+        };
+        assert!(intent.validate());
+        let result = capture_with_observer(
+            &fixture.executor,
+            &checkout,
+            &intent,
+            CaptureLimits::default(),
+            || {
+                fs::write(checkout.join(".git"), marker(&second)).unwrap();
+                Ok(())
+            },
+        );
+        assert!(matches!(result, Err(GitError::InconsistentCapture)));
     }
 }

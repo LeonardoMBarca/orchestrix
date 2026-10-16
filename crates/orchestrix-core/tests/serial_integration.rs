@@ -719,7 +719,9 @@ fn crash_child(f: &Fixture, mode: &str, point: &str, request: Value) {
         .env("ORCHESTRIX_INTEGRATION_CHILD", config)
         .stdin(Stdio::null())
         .stdout(Stdio::null())
-        .stderr(Stdio::null());
+        .stderr(Stdio::from(
+            fs::File::create(f.root.join(format!("crash-{point}.stderr.log"))).unwrap(),
+        ));
     let mut child = c.spawn().unwrap();
     let start = Instant::now();
     loop {
@@ -890,7 +892,13 @@ fn integration_crash_child() {
     let mut store = Store::open(Path::new(config["database"].as_str().unwrap())).unwrap();
     let service = IntegrationService::new();
     let point = config["point"].as_str().unwrap();
+    let started = Instant::now();
+    eprintln!("integration child started; elapsed_ms=0");
     let checkpoint = |p| {
+        eprintln!(
+            "integration checkpoint={p:?}; elapsed_ms={}",
+            started.elapsed().as_millis()
+        );
         if matches!(
             (point, p),
             ("result", IntegrationCheckpoint::ResultRef)
