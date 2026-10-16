@@ -129,6 +129,13 @@ pub(super) struct CaptureHead {
     pub index: PathBuf,
 }
 
+/// Fresh paths from the same support observation, after local configuration,
+/// link and object-store checks. These facts are not retained by the executor.
+pub(super) struct SupportedDirectories {
+    pub admin: PathBuf,
+    pub common: PathBuf,
+}
+
 impl GitExecutor {
     /// Read only, fixed built-in for a host-granted repository. No arbitrary arguments.
     pub fn inspect_head(&self, repository: &Path) -> GitResult<String> {
@@ -458,6 +465,13 @@ impl GitExecutor {
     /// Unsupported features are refused before checkout/capture rather than
     /// running their configured programs or fetching missing objects.
     pub(crate) fn ensure_supported(&self, repo: &Path) -> GitResult<()> {
+        self.ensure_supported_directories(repo).map(|_| ())
+    }
+
+    pub(super) fn ensure_supported_directories(
+        &self,
+        repo: &Path,
+    ) -> GitResult<SupportedDirectories> {
         self.ensure_local_config(repo)?;
         let raw = self
             .run(
@@ -549,9 +563,12 @@ impl GitExecutor {
         Ok(())
     }
 
-    fn ensure_admin_stores(&self, directories: [PathBuf; 2]) -> GitResult<()> {
-        for path in directories {
-            let dir = canonical_directory(&path)?;
+    fn ensure_admin_stores(
+        &self,
+        mut directories: [PathBuf; 2],
+    ) -> GitResult<SupportedDirectories> {
+        for dir in &mut directories {
+            *dir = canonical_directory(dir)?;
             for name in [
                 "config",
                 "config.worktree",
@@ -582,7 +599,8 @@ impl GitExecutor {
             }
             inspect_object_store(&dir.join("objects"))?;
         }
-        Ok(())
+        let [admin, common] = directories;
+        Ok(SupportedDirectories { admin, common })
     }
 }
 

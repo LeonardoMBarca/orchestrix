@@ -14,7 +14,10 @@ use std::{
     fs::{self, OpenOptions},
     io::{Read, Write},
     path::{Path, PathBuf},
-    sync::atomic::{AtomicU64, Ordering},
+    sync::{
+        Arc,
+        atomic::{AtomicU64, Ordering},
+    },
     time::{SystemTime, UNIX_EPOCH},
 };
 
@@ -52,10 +55,14 @@ pub enum GitFaultPoint {
 }
 
 pub struct WorktreeService {
-    executor: GitExecutor,
+    executor: Arc<GitExecutor>,
 }
 impl WorktreeService {
     pub(super) fn with_executor(executor: GitExecutor) -> Self {
+        Self::with_shared_executor(Arc::new(executor))
+    }
+    /// Share only the bounded transport and its scope, never repository facts.
+    pub(super) fn with_shared_executor(executor: Arc<GitExecutor>) -> Self {
         Self { executor }
     }
     /// The caller owns a separate persisted integration intent. This does not
@@ -130,9 +137,7 @@ impl WorktreeService {
         Ok(())
     }
     pub fn new() -> GitResult<Self> {
-        Ok(Self {
-            executor: GitExecutor::new()?,
-        })
+        Ok(Self::with_executor(GitExecutor::new()?))
     }
 
     pub fn create(&self, store: &mut Store, request: &CreateWorktree) -> GitResult<WorktreeRecord> {
@@ -739,16 +744,8 @@ impl WorktreeService {
         if path_string(&repo)? != intent.main_repository {
             return Err(GitError::Ownership);
         }
-        self.executor.ensure_supported(&repo)?;
-        let common = path_output(
-            self.executor
-                .run(
-                    &repo,
-                    &args_of(&["rev-parse", "--path-format=absolute", "--git-common-dir"]),
-                )?
-                .checked()?,
-        )?;
-        if paths::canonical_directory(&common)? != Path::new(&intent.common_git_dir) {
+        let directories = self.executor.ensure_supported_directories(&repo)?;
+        if directories.common != Path::new(&intent.common_git_dir) {
             return Err(GitError::Ownership);
         }
         for relative in [
@@ -928,28 +925,17 @@ impl WorktreeService {
             return Err(GitError::Ownership);
         }
         paths::reject_links(&path.join(".git"))?;
-        let admin = path_output(
-            self.executor
-                .run(path, &args_of(&["rev-parse", "--absolute-git-dir"]))?
-                .checked()?,
-        )?;
-        let admin = paths::canonical_directory(&admin)?;
-        if !paths::strict_descendant(&Path::new(&intent.common_git_dir).join("worktrees"), &admin) {
+        let directories = self.executor.ensure_supported_directories(path)?;
+        if !paths::strict_descendant(
+            &Path::new(&intent.common_git_dir).join("worktrees"),
+            &directories.admin,
+        ) {
             return Err(GitError::Ownership);
         }
-        self.executor.ensure_supported(path)?;
-        let common = path_output(
-            self.executor
-                .run(
-                    path,
-                    &args_of(&["rev-parse", "--path-format=absolute", "--git-common-dir"]),
-                )?
-                .checked()?,
-        )?;
-        if paths::canonical_directory(&common)? != Path::new(&intent.common_git_dir) {
+        if directories.common != Path::new(&intent.common_git_dir) {
             return Err(GitError::Ownership);
         }
-        Ok((row, admin))
+        Ok((row, directories.admin))
     }
     fn require_removable(&self, intent: &WorktreeIntent, locked: bool) -> GitResult<()> {
         if !self.materialized(intent)? {
@@ -1527,6 +1513,153 @@ mod metadata_batch_tests {
             paths::reject_links(&root).unwrap();
             fs::remove_dir_all(root).unwrap();
         }
+    }
+
+    #[test]
+    fn shared_executor_reobserves_linked_directories_config_and_owned_refs() {
+        let fixture = Fixture::new();
+        let executor = Arc::new(GitExecutor::new().unwrap());
+        let service = WorktreeService::with_shared_executor(Arc::clone(&executor));
+        let second = WorktreeService::with_shared_executor(Arc::clone(&executor));
+        assert!(Arc::ptr_eq(&service.executor, &second.executor));
+        let tree =
+            text(fixture.git(&["hash-object", "-t", "tree", "-w", "--stdin"], Some(b""))).unwrap();
+        let commit = format!(
+            "tree {tree}\nauthor Fixture <fixture@orchestrix.invalid> 1 +0000\ncommitter Fixture <fixture@orchestrix.invalid> 1 +0000\n\nFresh supported directories\n"
+        );
+        let base = text(fixture.git(
+            &["hash-object", "-t", "commit", "-w", "--stdin"],
+            Some(commit.as_bytes()),
+        ))
+        .unwrap();
+        fixture.git(&["update-ref", "refs/heads/main", &base], None);
+        fixture.git(&["symbolic-ref", "HEAD", "refs/heads/main"], None);
+        fixture.git(&["read-tree", &base], None);
+
+        // The source is genuinely linked: its admin and common directories
+        // differ, and the shared executor must report both from fresh checks.
+        let source = fixture.root.join("linked-source");
+        let source_arg = paths::git_path(&source).unwrap();
+        fixture.git(
+            &[
+                "worktree",
+                "add",
+                "--quiet",
+                "--no-checkout",
+                "-b",
+                "source",
+                source_arg.to_str().unwrap(),
+                &base,
+            ],
+            None,
+        );
+        let source = paths::canonical_directory(&source).unwrap();
+        let common = paths::canonical_directory(&fixture.repo.join(".git")).unwrap();
+        let source_dirs = executor.ensure_supported_directories(&source).unwrap();
+        assert_eq!(source_dirs.common, common);
+        assert!(paths::strict_descendant(
+            &common.join("worktrees"),
+            &source_dirs.admin
+        ));
+        executor.ensure_supported(&source).unwrap();
+
+        let authorized = fixture.root.join("attempts");
+        fs::create_dir(&authorized).unwrap();
+        let intent = WorktreeIntent {
+            operation_id: "fresh-directories".into(),
+            project_id: "project".into(),
+            repository_id: "repository".into(),
+            run_id: "run".into(),
+            task_id: "task".into(),
+            attempt_id: "attempt".into(),
+            base_oid: base.clone(),
+            domain_base: "base".into(),
+            worktree_ref: "worktree".into(),
+            authorized_root: path_string(&authorized).unwrap(),
+            path: path_string(&authorized.join("checkout")).unwrap(),
+            main_repository: path_string(&source).unwrap(),
+            branch: "orchestrix/fresh-directories".into(),
+            common_git_dir: path_string(&common).unwrap(),
+            ownership_token: "b".repeat(64),
+        };
+        assert!(intent.validate());
+        service.ensure_refs(&intent).unwrap();
+        let target_arg = paths::git_path(Path::new(&intent.path)).unwrap();
+        fixture.git(
+            &[
+                "worktree",
+                "add",
+                "--quiet",
+                "--no-checkout",
+                "--lock",
+                "--reason",
+                &lock_reason(&intent),
+                target_arg.to_str().unwrap(),
+                &intent.branch,
+            ],
+            None,
+        );
+        let (_, admin) = service.inspect_registration(&intent, true).unwrap();
+        assert!(paths::strict_descendant(&common.join("worktrees"), &admin));
+
+        // Redirecting the linked source's actual common directory is observed
+        // on the next call, rather than accepting the previous support result.
+        let other = fixture.root.join("other-repository");
+        let other_arg = paths::git_path(&other).unwrap();
+        fixture.git(&["init", "--quiet", other_arg.to_str().unwrap()], None);
+        let other_common = paths::canonical_directory(&other.join(".git")).unwrap();
+        let commondir = source_dirs.admin.join("commondir");
+        let original_commondir = fs::read(&commondir).unwrap();
+        fs::write(
+            &commondir,
+            format!(
+                "{}\n",
+                paths::git_path(&other_common).unwrap().to_str().unwrap()
+            ),
+        )
+        .unwrap();
+        let redirected = executor.ensure_supported_directories(&source).unwrap();
+        assert_eq!(redirected.admin, source_dirs.admin);
+        assert_eq!(redirected.common, other_common);
+        let mismatched_common = second.validate_main(&intent);
+        fs::write(&commondir, original_commondir).unwrap();
+        assert_eq!(mismatched_common, Err(GitError::Ownership));
+        second.validate_main(&intent).unwrap();
+
+        // A checkout marker pointing at a supported main admin directory must
+        // not pass the owned linked-admin namespace check.
+        let marker = Path::new(&intent.path).join(".git");
+        let original_marker = fs::read(&marker).unwrap();
+        fs::write(
+            &marker,
+            format!(
+                "gitdir: {}\n",
+                paths::git_path(&common).unwrap().to_str().unwrap()
+            ),
+        )
+        .unwrap();
+        let mismatched_admin = second.inspect_registration(&intent, true).map(|_| ());
+        fs::write(&marker, original_marker).unwrap();
+        assert_eq!(mismatched_admin, Err(GitError::Ownership));
+        second.inspect_registration(&intent, true).unwrap();
+
+        let config_path = common.join("config");
+        let original_config = fs::read(&config_path).unwrap();
+        let mut changed_config = original_config.clone();
+        changed_config.extend_from_slice(b"\n[filter \"blocked\"]\nclean = never-run\n");
+        fs::write(&config_path, changed_config).unwrap();
+        let unsupported = service.inspect_registration(&intent, true).map(|_| ());
+        fs::write(&config_path, original_config).unwrap();
+        assert_eq!(unsupported, Err(GitError::Unsupported));
+        second.inspect_registration(&intent, true).unwrap();
+
+        let branch = common.join(format!("refs/heads/{}", intent.branch));
+        let original_branch = fs::read(&branch).unwrap();
+        fs::write(&branch, b"ref: refs/heads/main\n").unwrap();
+        let changed_ref = service.inspect_registration(&intent, true).map(|_| ());
+        fs::write(&branch, original_branch).unwrap();
+        assert_eq!(changed_ref, Err(GitError::Ownership));
+        second.inspect_registration(&intent, true).unwrap();
     }
 
     #[test]

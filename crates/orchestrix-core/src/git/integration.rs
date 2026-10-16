@@ -12,22 +12,28 @@ use std::{
     fs,
     io::{Read, Write},
     path::Path,
+    sync::Arc,
 };
 
 pub(crate) struct IntegrationGit {
-    pub executor: GitExecutor,
+    pub executor: Arc<GitExecutor>,
+    service: WorktreeService,
     scope: Option<JobScope>,
 }
 impl IntegrationGit {
     pub fn new(scope: JobScope) -> GitResult<Self> {
+        let executor = Arc::new(GitExecutor::scoped(scope.clone())?);
         Ok(Self {
-            executor: GitExecutor::scoped(scope.clone())?,
+            service: WorktreeService::with_shared_executor(Arc::clone(&executor)),
+            executor,
             scope: Some(scope),
         })
     }
     pub fn read_only() -> GitResult<Self> {
+        let executor = Arc::new(GitExecutor::new()?);
         Ok(Self {
-            executor: GitExecutor::new()?,
+            service: WorktreeService::with_shared_executor(Arc::clone(&executor)),
+            executor,
             scope: None,
         })
     }
@@ -37,11 +43,8 @@ impl IntegrationGit {
         }
         Ok(())
     }
-    fn service(&self) -> GitResult<WorktreeService> {
-        Ok(WorktreeService::with_executor(match &self.scope {
-            Some(scope) => GitExecutor::scoped(scope.clone())?,
-            None => GitExecutor::new()?,
-        }))
+    fn service(&self) -> &WorktreeService {
+        &self.service
     }
     pub fn target(
         &self,
@@ -59,8 +62,7 @@ impl IntegrationGit {
         )
     }
     pub fn inspect(&self, intent: &IntegrationIntent) -> GitResult<CapturedArtifact> {
-        self.service()?
-            .inspect_integration_owned(&intent.worktree)?;
+        self.service().inspect_integration_owned(&intent.worktree)?;
         super::capture(
             &self.executor,
             Path::new(&intent.worktree.path),
@@ -80,7 +82,7 @@ impl IntegrationGit {
         {
             return Err(GitError::Unsupported);
         }
-        self.service()?.create_integration_owned(&intent.worktree)?;
+        self.service().create_integration_owned(&intent.worktree)?;
         let initial = self.inspect(intent)?;
         if !initial.files.is_empty() || !initial.exclusions.is_empty() {
             return Err(GitError::UnpreservedWork);
