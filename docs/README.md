@@ -106,6 +106,7 @@ Sources retain their original results, failures, dates and limits. Offline repla
 | [D1 Prototype Delivery](./design/d1-delivery.md) | Initial Studio candidate, historical 36-case validation and simulation limits. Later shell revisions/pilot decision identify the subsequent build and human outcome. |
 | [Website Modernization Research](./research/site-modernization-2026-10-09.md) | Official visual references, observations and approved site increments; shared design-system is now the implementation reference. |
 | [API Provider Discovery Research](./research/api-provider-discovery-2026-10-10.md) | Official catalogs, credentials, capabilities and telemetry limitations; not a live entitlement proof. |
+| [Antigravity Runtime Assessment](./research/antigravity-runtime-assessment.md) | OX-002: official CLI surface, subscription eligibility/billing gates and scoped local metadata; no adapter or inference proof. |
 | [Resource Discovery Increment](./design/resource-discovery-increment.md) | Registration/catalog study, observed/unknown resources, host boundary and technical evidence. |
 | [Connection Diagnostics Increment](./design/connection-diagnostics-increment.md) | Provider-specific diagnostics UI/logical flow and offline validation; production gates stay separate. |
 
