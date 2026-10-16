@@ -66,6 +66,12 @@ impl Listener {
 }
 #[cfg(not(windows))]
 impl Stream {
+    pub(crate) fn startup_writer(&self) -> Result<std::process::Stdio> {
+        Err(Error::Unsupported)
+    }
+    pub(crate) fn startup_read_chunk(&mut self, _: usize, _: Duration) -> Result<Vec<u8>> {
+        Err(Error::Unsupported)
+    }
     pub fn connect(_: &str, _: Duration) -> Result<Self> {
         Err(Error::Unsupported)
     }

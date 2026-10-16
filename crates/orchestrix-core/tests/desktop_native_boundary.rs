@@ -1,4 +1,7 @@
 //! Actual host logic without a WebView. This is not a native-window acceptance proof.
+#[path = "../../../apps/desktop/src-tauri/src/daemon_startup.rs"]
+#[allow(dead_code)]
+mod daemon_startup;
 #[path = "../../../apps/desktop/src-tauri/src/editor.rs"]
 #[allow(dead_code)] // The production module is linked by the Tauri host, not this isolated harness.
 mod editor;

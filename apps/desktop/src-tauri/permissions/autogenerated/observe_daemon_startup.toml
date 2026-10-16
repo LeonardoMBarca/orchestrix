@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-observe-daemon-startup"
+description = "Enables the observe_daemon_startup command without any pre-configured scope."
+commands.allow = ["observe_daemon_startup"]
+
+[[permission]]
+identifier = "deny-observe-daemon-startup"
+description = "Denies the observe_daemon_startup command without any pre-configured scope."
+commands.deny = ["observe_daemon_startup"]

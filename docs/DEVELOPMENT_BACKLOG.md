@@ -8,6 +8,8 @@ Os critérios de aceite devem ser demonstrados antes de considerar uma tarefa co
 
 ## 1 Fila inicial e dependências
 
+No lote atual, startup ganhou acompanhamento nativo limitado e regressões reais de concorrência/histórico/recuperação; o novo runtime sintético sincronizado passou isoladamente. O próximo aceite continua sendo a prova nativa de Continue/Cancel/Suspend durante turno ativo, seguida das lacunas específicas de altura/DPI/editor e instalação isolada autorizada. Esses avanços não encerram OX-012/015/016/017 nem repetem OX-013/014 aceitos; [evidências atuais](DEVELOPMENT_STATUS.md#incremento-atual--entrega-nativa-e-pacote-windows).
+
 | Ticket | Entrega | Marco | Depende de |
 | --- | --- | --- | --- |
 | OX-D01 | Pesquisa comparativa de soluções | D0 | — |

@@ -2,6 +2,8 @@ fn main() {
     let attributes =
         tauri_build::Attributes::new().app_manifest(tauri_build::AppManifest::new().commands(&[
             "connect_daemon",
+            "observe_daemon_startup",
+            "native_qa_window_metrics",
             "desktop_request",
             "desktop_poll",
             "choose_document",

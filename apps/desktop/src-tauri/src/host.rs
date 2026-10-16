@@ -1,4 +1,5 @@
 //! Native API client and filesystem authority. No SQLite or second worker engine.
+use crate::daemon_startup::{StartupController, StartupLimits};
 use crate::editor::{Editor, EditorRequest};
 use orchestrix_core::{
     daemon::{API_VERSION, Client, Operation, Request, RuntimeChoice},
@@ -19,7 +20,6 @@ use std::{
     collections::HashMap,
     fs,
     path::PathBuf,
-    process::{Command, Stdio},
     sync::{Arc, Mutex},
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
@@ -50,7 +50,7 @@ pub struct Host {
     pub editor: Mutex<Editor>,
     bindings: Mutex<HashMap<String, Binding>>,
     prepared: Mutex<HashMap<String, Prepared>>,
-    startup: Mutex<()>,
+    startup: Mutex<StartupController>,
     metadata: CodexMetadataService,
     close_behavior: Mutex<String>,
     #[cfg(test)]
@@ -106,6 +106,7 @@ fn fixture_config() -> Result<Option<FixtureConfig>, String> {
         Some("review-invalid"),
         Some("quota-failure"),
         Some("hang"),
+        Some("qa-controlled"),
     ]
     .contains(&config.review_scenario.as_deref())
     {
@@ -333,7 +334,9 @@ impl Host {
             editor: Mutex::new(Editor::default()),
             bindings: Mutex::new(bindings),
             prepared: Mutex::new(HashMap::new()),
-            startup: Mutex::new(()),
+            startup: Mutex::new(StartupController::new(StartupLimits::new(
+                Duration::from_secs(15),
+            )?)),
             metadata: CodexMetadataService::new(Arc::new(SystemRefreshClock), Default::default())
                 .ok_or("metadata-bounds")?,
             close_behavior: Mutex::new(
@@ -374,53 +377,30 @@ impl Host {
         })
     }
     pub fn connect(&self) -> Result<Value, String> {
-        let _lock = self.startup.lock().map_err(|_| "startup-lock")?;
-        if let Ok(snapshot) = self.call(Operation::Snapshot) {
-            return compatible(snapshot);
-        }
+        let mut startup = self.startup.lock().map_err(|_| "startup-lock")?;
         let executable = std::env::current_exe().map_err(|_| "desktop-executable")?;
         let parent = executable.parent().ok_or("desktop-directory")?;
         let core = parent.join("orchestrix.exe");
         let keeper = parent.join("orchestrix-supervisor.exe");
-        if !core.is_file() || !keeper.is_file() {
-            return Err(err(
-                "core-and-supervisor-executables-required-beside-desktop",
-            ));
-        }
-        let mut command = Command::new(core);
-        command
-            .arg("daemon")
-            .arg("--database")
-            .arg(&self.database)
-            .stdin(Stdio::null())
-            .stdout(Stdio::null())
-            .stderr(Stdio::null());
-        #[cfg(windows)]
+        startup
+            .connect(&self.database, &core, &keeper, compatible)
+            .map(|update| update.into_value())
+    }
+    pub fn observe_startup(&self) -> Result<Value, String> {
+        self.startup
+            .lock()
+            .map_err(|_| "startup-lock")?
+            .observe(&self.database, compatible)
+            .map(|update| update.into_value())
+    }
+    pub fn native_qa_enabled(&self) -> bool {
+        #[cfg(feature = "test-fixtures")]
         {
-            use std::os::windows::process::CommandExt;
-            command.creation_flags(0x08000000 | 0x00000200);
+            self.fixture.is_some()
         }
-        let mut child = command.spawn().map_err(|_| err("daemon-start-failed"))?;
-        let deadline = std::time::Instant::now() + Duration::from_secs(15);
-        loop {
-            if let Ok(snapshot) = self.call(Operation::Snapshot) {
-                return compatible(snapshot);
-            }
-            if child
-                .try_wait()
-                .map_err(|_| "daemon-start-observation")?
-                .is_some()
-            {
-                // Another window may own startup; it is never killed or replaced.
-                if let Ok(snapshot) = self.call(Operation::Snapshot) {
-                    return compatible(snapshot);
-                }
-                return Err(err("daemon-start-failed-or-other-owner"));
-            }
-            if std::time::Instant::now() >= deadline {
-                return Err(err("daemon-start-not-confirmed"));
-            }
-            std::thread::sleep(Duration::from_millis(80));
+        #[cfg(not(feature = "test-fixtures"))]
+        {
+            false
         }
     }
     pub fn poll(

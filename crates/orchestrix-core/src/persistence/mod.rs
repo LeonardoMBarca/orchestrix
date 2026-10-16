@@ -137,6 +137,11 @@ pub struct Store {
     connection: Connection,
     path: std::path::PathBuf,
 }
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum StoreOpenPhase {
+    Database,
+    Restoration,
+}
 impl Store {
     /// Canonical database identity for the host's OS lease, never a domain permission.
     pub fn path(&self) -> &Path {
@@ -144,6 +149,14 @@ impl Store {
     }
     /// Parent directory must exist; no implicit app directory or in-memory database.
     pub fn open(path: impl AsRef<Path>) -> StoreResult<Self> {
+        Self::open_observed(path, |_| {})
+    }
+    /// Bounded phase observation outside SQLite transactions. It grants no access
+    /// or recovery authority and is unused by ordinary callers.
+    pub fn open_observed(
+        path: impl AsRef<Path>,
+        mut observe: impl FnMut(StoreOpenPhase),
+    ) -> StoreResult<Self> {
         let path = path.as_ref();
         if !path.is_absolute()
             || path.is_dir()
@@ -152,12 +165,14 @@ impl Store {
         {
             return Err(StoreError::InvalidPath);
         }
+        observe(StoreOpenPhase::Database);
         let mut connection = Connection::open(path)?;
         schema::initialize(&mut connection)?;
         let store = Self {
             connection,
             path: std::fs::canonicalize(path).map_err(|_| StoreError::InvalidPath)?,
         };
+        observe(StoreOpenPhase::Restoration);
         store.load()?; // Reject incompatible contents without rewriting the database.
         Ok(store)
     }

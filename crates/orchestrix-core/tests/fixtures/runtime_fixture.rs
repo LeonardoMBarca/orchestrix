@@ -3,6 +3,7 @@ use serde_json::{Value, json};
 use std::io::{BufRead, Write};
 use std::path::PathBuf;
 use std::time::Duration;
+mod controlled_turn;
 
 fn main() {
     let args: Vec<_> = std::env::args().skip(1).collect();
@@ -127,6 +128,7 @@ fn main() {
     let mut effort = "medium".to_owned();
     let mut turn = 0u64;
     let auth_home = PathBuf::from(std::env::var_os("CODEX_HOME").unwrap_or_default());
+    let mut controlled = None;
     for line in std::io::stdin().lock().lines() {
         let line = line.unwrap();
         let request: Value = serde_json::from_str(&line).unwrap();
@@ -316,6 +318,21 @@ fn main() {
                 send(
                     json!({"method":"turn/started","params":{"threadId":thread,"turn":{"id":turn_id,"status":"inProgress"}}}),
                 );
+                if scenario == "qa-controlled" {
+                    let watchdog = args
+                        .windows(2)
+                        .find(|pair| pair[0] == "--control-watchdog-ms")
+                        .map(|pair| pair[1].parse::<u64>().unwrap())
+                        .unwrap_or(85_000);
+                    controlled = Some(controlled_turn::ControlledTurn::start(
+                        &auth_home,
+                        &thread,
+                        &turn_id,
+                        &params["_orchestrixQa"],
+                        watchdog,
+                    ));
+                    continue;
+                }
                 if scenario == "crash" {
                     std::process::exit(23);
                 }
@@ -447,6 +464,10 @@ fn main() {
                 );
             }
             "turn/interrupt" => {
+                if let Some(controlled) = &controlled {
+                    controlled.interrupt(&id, params);
+                    continue;
+                }
                 if scenario == "ignore-interrupt" {
                     continue;
                 }
@@ -459,6 +480,9 @@ fn main() {
                 json!({"id":id,"error":{"code":-32601,"message":"unsupported fixture operation"}}),
             ),
         }
+    }
+    if let Some(controlled) = controlled {
+        controlled.input_closed();
     }
 }
 fn send(value: Value) {

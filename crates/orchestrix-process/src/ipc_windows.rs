@@ -26,6 +26,15 @@ struct Overlapped {
 unsafe extern "system" {
     fn CloseHandle(handle: Handle) -> i32;
     fn GetCurrentProcess() -> Handle;
+    fn DuplicateHandle(
+        source_process: Handle,
+        source: Handle,
+        target_process: Handle,
+        target: *mut Handle,
+        access: u32,
+        inherit: i32,
+        options: u32,
+    ) -> i32;
     fn OpenProcess(access: u32, inherit: i32, pid: u32) -> Handle;
     fn GetLastError() -> u32;
     fn LocalFree(memory: *mut c_void) -> *mut c_void;
@@ -259,6 +268,66 @@ impl Listener {
     }
 }
 impl Stream {
+    pub(crate) fn startup_writer(&self) -> Result<std::process::Stdio> {
+        use std::os::windows::io::FromRawHandle;
+        if self.server {
+            return Err(Error::Identity);
+        }
+        let mut copied = null_mut();
+        let process = unsafe { GetCurrentProcess() };
+        if unsafe { DuplicateHandle(process, self.handle.handle.0, process, &mut copied, 0, 0, 2) }
+            == 0
+        {
+            return Err(Error::Io);
+        }
+        Ok(std::process::Stdio::from(unsafe {
+            std::fs::File::from_raw_handle(copied)
+        }))
+    }
+    /// Single raw overlapped read for the private startup channel. Cancellation
+    /// completion is dequeued before the buffer is returned or released.
+    pub(crate) fn startup_read_chunk(
+        &mut self,
+        maximum: usize,
+        timeout: Duration,
+    ) -> Result<Vec<u8>> {
+        if !self.server || maximum == 0 || maximum > 2048 || timeout > Duration::from_millis(100) {
+            return Err(Error::Budget);
+        }
+        let deadline = checked_deadline(timeout)?;
+        let mut bytes = vec![0; maximum];
+        super::clear_diagnostic();
+        let count = match transfer(
+            self.handle.handle.0,
+            bytes.as_mut_ptr(),
+            bytes.len(),
+            false,
+            deadline,
+        ) {
+            Ok(count) => count,
+            Err(Error::Deadline) => {
+                let Some(fact) = super::last_diagnostic() else {
+                    return Err(Error::Deadline);
+                };
+                // A completion may win the race with cancellation. Those bytes
+                // have been consumed and must remain in the incremental decoder.
+                if fact.native_code.is_none() && fact.transferred_bytes > 0 {
+                    fact.transferred_bytes as usize
+                } else {
+                    return Err(Error::Deadline);
+                }
+            }
+            Err(error) => return Err(error),
+        };
+        if count == 0 {
+            return Err(Error::Closed);
+        }
+        if count > maximum {
+            return Err(Error::Budget);
+        }
+        bytes.truncate(count);
+        Ok(bytes)
+    }
     pub fn connect(scope: &str, timeout: Duration) -> Result<Self> {
         let deadline = checked_deadline(timeout)?;
         let name = endpoint(scope)?;

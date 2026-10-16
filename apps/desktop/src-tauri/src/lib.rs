@@ -1,3 +1,4 @@
+mod daemon_startup;
 mod editor;
 mod host;
 mod journal;
@@ -50,6 +51,34 @@ async fn connect_daemon(state: tauri::State<'_, Arc<Host>>) -> Result<Value, Str
     tauri::async_runtime::spawn_blocking(move || host.connect())
         .await
         .map_err(|_| "native-task-failed")?
+}
+#[tauri::command]
+async fn observe_daemon_startup(state: tauri::State<'_, Arc<Host>>) -> Result<Value, String> {
+    let host = state.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || host.observe_startup())
+        .await
+        .map_err(|_| "native-task-failed")?
+}
+#[tauri::command]
+fn native_qa_window_metrics(
+    window: tauri::WebviewWindow,
+    state: tauri::State<'_, Arc<Host>>,
+) -> Result<Value, String> {
+    if !state.native_qa_enabled() {
+        return Err("native-validation-unavailable".into());
+    }
+    let monitor = window
+        .current_monitor()
+        .map_err(|_| "monitor-unavailable")?
+        .ok_or("monitor-unavailable")?;
+    let inner = window.inner_size().map_err(|_| "window-size-unavailable")?;
+    let outer = window.outer_size().map_err(|_| "window-size-unavailable")?;
+    let scale = window
+        .scale_factor()
+        .map_err(|_| "window-scale-unavailable")?;
+    Ok(
+        serde_json::json!({"syntheticQa":true,"pid":std::process::id(),"scaleFactor":scale,"innerPhysical":inner,"outerPhysical":outer,"innerLogical":{"width":inner.width as f64/scale,"height":inner.height as f64/scale},"monitorPhysical":monitor.size(),"workAreaPhysical":monitor.work_area(),"maximized":window.is_maximized().map_err(|_| "window-state-unavailable")?}),
+    )
 }
 #[tauri::command]
 async fn desktop_request(
@@ -180,6 +209,8 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             connect_daemon,
+            observe_daemon_startup,
+            native_qa_window_metrics,
             desktop_request,
             desktop_poll,
             choose_document,

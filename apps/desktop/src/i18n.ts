@@ -10,6 +10,13 @@ import controls from '../../../prototypes/desktop/locales/chat-controls.json';
 export type Language = 'en'|'pt'|'es';
 const catalog = Object.assign({},chrome,shell,settings,activity,files,experience,sessions,controls) as Record<string,{en:string,es:string}>;
 const extra: Record<string,[string,string]> = {
+  'Initializing Core…':['Inicializando o Core…','Inicializando Core…'],
+  'Recovering saved work…':['Recuperando trabalho salvo…','Recuperando trabajo guardado…'],
+  'Startup is not yet confirmed':['A inicialização ainda não foi confirmada','El inicio aún no está confirmado'],
+  'Daemon startup failed':['Falha ao iniciar o daemon','Error al iniciar el daemon'],
+  'Readiness requires a compatible daemon handshake. No task has been started.':['A conexão requer confirmação de compatibilidade do daemon. Nenhuma tarefa foi iniciada.','La conexión requiere confirmar la compatibilidad del daemon. No se ha iniciado ninguna tarea.'],
+  'Startup phase':['Etapa de inicialização','Fase de inicio'],
+  'Check again':['Verificar novamente','Comprobar de nuevo'],
   'Attempt {number}':['Tentativa {number}','Intento {number}'],
   'Attempt identity':['Identidade da tentativa','Identidad del intento'],
   'Attempt':['Tentativa','Intento'],

@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-native-qa-window-metrics"
+description = "Enables the native_qa_window_metrics command without any pre-configured scope."
+commands.allow = ["native_qa_window_metrics"]
+
+[[permission]]
+identifier = "deny-native-qa-window-metrics"
+description = "Denies the native_qa_window_metrics command without any pre-configured scope."
+commands.deny = ["native_qa_window_metrics"]

@@ -368,20 +368,49 @@ impl Drop for Shutdown {
 /// Dedicated-process host, never embed inside Desktop. The final shutdown deadline
 /// terminates this host alone, releasing kill-on-close Jobs and preserving uncertainty.
 pub fn serve(database: &Path) -> Result<(), String> {
-    let _owner = owner_lease(database)?;
+    serve_with_startup_observer(database, |_| {})
+}
+/// Infrastructure phase hook for bounded startup diagnostics and explicit test
+/// barriers. Called before each operation, never from an open writer transaction.
+pub fn serve_with_startup_observer(
+    database: &Path,
+    mut observe: impl FnMut(crate::daemon_startup::Phase),
+) -> Result<(), String> {
+    use crate::daemon_startup::{Phase, StartupReporter};
     let scope = endpoint_scope(database)?;
-    let mut store = Store::open(database).map_err(|_| "database")?;
+    let mut report =
+        StartupReporter::from_environment(&scope).unwrap_or_else(|_| StartupReporter::silent());
+    let mut phase = |next| {
+        report.enter(next);
+        observe(next);
+    };
+    phase(Phase::Ownership);
+    let _owner = owner_lease(database)?;
+    let mut store = Store::open_observed(database, |next| {
+        phase(match next {
+            crate::persistence::StoreOpenPhase::Database => Phase::Database,
+            crate::persistence::StoreOpenPhase::Restoration => Phase::Restoration,
+        })
+    })
+    .map_err(|_| "database")?;
     store.daemon_start().map_err(|_| "daemon-start")?;
     // Recovery is deterministic. This startup never redispatches an accepted command.
+    phase(Phase::WorkerRecovery);
     let _recovery = crate::recovery::reconcile(&mut store).map_err(|_| "reconciliation")?;
+    phase(Phase::ReviewRecovery);
     crate::review::ReviewPipeline::reconcile(&mut store).map_err(|_| "review-reconciliation")?;
+    phase(Phase::IntegrationRecovery);
     crate::integration::IntegrationService::new()
         .reconcile(&mut store)
         .map_err(|_| "integration-reconciliation")?;
+    phase(Phase::PendingCommands);
     for (id, kind, _) in store.daemon_pending().map_err(|_| "pending-commands")? {
         store.daemon_finish(&id,&json!({"state":"interrupted-before-response","kind":kind,"resumeAutomatically":false,"inspectionRequired":true})).map_err(|_|"pending-reconciliation")?;
     }
+    phase(Phase::IpcBinding);
     let mut listener = ipc::Listener::bind(&scope).map_err(|_| "daemon-endpoint-in-use")?;
+    phase(Phase::IpcAvailable);
+    report.finish();
     let mut active: Option<Active> = None;
     let mut shutdown: Option<Shutdown> = None;
     let mut diagnostics = ControlDiagnostics {
@@ -1291,11 +1320,13 @@ impl RuntimeChoice {
                     "review-reject",
                     "review-invalid",
                     "review-mutate",
+                    "qa-controlled",
                 ]
                 .contains(&scenario.as_str())
                 {
                     return Err("synthetic-scenario".into());
                 }
+                let controlled = scenario == "qa-controlled";
                 let mut launch = RuntimeLaunch::fixture(
                     executable,
                     vec![
@@ -1309,8 +1340,15 @@ impl RuntimeChoice {
                     home,
                     directory.to_owned(),
                 );
-                launch.turn_timeout = Duration::from_secs(6);
-                launch.interrupt_grace = Duration::from_millis(300);
+                // Dedicated native QA uses the already supported production
+                // envelope, with its own earlier 85s safety watchdog. Existing
+                // synthetic profiles retain their original short bounds.
+                launch.turn_timeout = Duration::from_secs(if controlled { 90 } else { 6 });
+                launch.interrupt_grace = if controlled {
+                    Duration::from_secs(5)
+                } else {
+                    Duration::from_millis(300)
+                };
                 Ok(launch)
             }
         }

@@ -654,6 +654,11 @@ impl CodexAdapter {
             sink,
         )?;
         let mut turn_params = json!({"threadId":native_thread,"input":[{"type":"text","text":execution.prompt,"text_elements":[]}],"sandboxPolicy":configuration["sandbox"],"approvalPolicy":"never","approvalsReviewer":"user"});
+        // Private QA correlation only on this explicit synthetic executable
+        // profile. Native providers never receive these test-only fields.
+        if self.launch.fixture_arguments.as_ref().is_some_and(|args| args.windows(2).any(|pair| pair[0] == "--scenario" && pair[1] == "qa-controlled")) {
+            turn_params["_orchestrixQa"] = json!({"connectionId":request["connectionId"],"sessionId":request["sessionId"],"attemptId":request["attemptId"]});
+        }
         if let Some(schema) = output_schema {
             turn_params["outputSchema"] = schema.clone();
         }

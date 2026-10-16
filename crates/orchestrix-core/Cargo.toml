@@ -22,6 +22,12 @@ test = false
 bench = false
 
 [[bin]]
+name = "orchestrix-startup-fixture"
+path = "tests/fixtures/startup_fixture.rs"
+test = false
+bench = false
+
+[[bin]]
 name = "orchestrix-supervisor"
 path = "src/bin/orchestrix-supervisor.rs"
 test = false

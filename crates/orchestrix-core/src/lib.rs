@@ -2,6 +2,7 @@
 #![forbid(unsafe_code)]
 
 pub mod daemon;
+pub mod daemon_startup;
 pub mod desktop;
 pub mod domain;
 pub mod evaluator;
