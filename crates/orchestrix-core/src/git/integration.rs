@@ -552,6 +552,184 @@ mod diagnostics {
         }
     }
 
+    /// Runs the read-only validation phases, never approve or any persisted
+    /// operation. Historical keeper bindings in the export grant no authority.
+    #[test]
+    #[ignore = "requires an authorized exact Prepared record export and its SHA-256"]
+    fn prepared_validation_from_readonly_export() {
+        use crate::integration_records::{IntegrationRecord, IntegrationStatus};
+
+        let input = PathBuf::from(
+            env::var_os("ORCHESTRIX_DIAGNOSTIC_RECORD").expect("diagnostic-record-opt-in"),
+        );
+        paths::reject_links(&input).expect("diagnostic-record-link");
+        let input = fs::canonicalize(input).expect("diagnostic-record-path");
+        let expected =
+            env::var("ORCHESTRIX_DIAGNOSTIC_RECORD_SHA256").expect("diagnostic-record-sha-opt-in");
+        assert!(
+            expected.len() == 64 && expected.bytes().all(|byte| byte.is_ascii_hexdigit()),
+            "diagnostic-record-sha"
+        );
+        let bytes = fs::read(&input).expect("diagnostic-record-read");
+        assert!(bytes.len() <= 1_048_576, "diagnostic-record-limit");
+        let export_hash = content_hash(&bytes);
+        assert!(
+            export_hash == expected.to_ascii_lowercase(),
+            "diagnostic-record-hash"
+        );
+        let record: IntegrationRecord =
+            serde_json::from_slice(&bytes).expect("diagnostic-record-schema");
+        assert!(
+            record.validate() && record.status() == IntegrationStatus::Prepared,
+            "diagnostic-prepared-record"
+        );
+        let snapshot = record.snapshot().expect("diagnostic-snapshot");
+        assert!(snapshot.validate(), "diagnostic-snapshot-validation");
+        let tree = record
+            .detail("treeRevision")
+            .and_then(serde_json::Value::as_str)
+            .filter(|value| oid(value))
+            .expect("diagnostic-tree");
+        let result = record
+            .detail("resultRevision")
+            .and_then(serde_json::Value::as_str)
+            .filter(|value| oid(value))
+            .expect("diagnostic-result");
+        let fixture = input.parent().expect("diagnostic-fixture-root");
+        let roots = [
+            &record.intent.target.directory,
+            &record.intent.target.common_git_dir,
+            &record.intent.worktree.path,
+        ]
+        .map(|path| {
+            let root = paths::canonical_directory(Path::new(path)).expect("diagnostic-root");
+            assert!(
+                root.starts_with(fixture) && root != fixture,
+                "diagnostic-root-outside-fixture"
+            );
+            root
+        });
+        let before = fingerprint(&roots);
+        let started = Instant::now();
+        let mut phases = Vec::new();
+        let mut failure = None;
+        let mut git = None;
+        macro_rules! phase {
+            ($name:literal, $operation:expr) => {
+                if failure.is_none() {
+                    super::super::executor::test_timing::begin();
+                    let began = Instant::now();
+                    let outcome: GitResult<()> = $operation;
+                    let elapsed_micros = began.elapsed().as_micros();
+                    let samples = super::super::executor::test_timing::finish();
+                    phases.push(json!({
+                        "phase":$name,"elapsedMicros":elapsed_micros,
+                        "succeeded":outcome.is_ok(),"gitError":outcome.as_ref().err().map(code),
+                        "gitCallCount":samples.len(),"timings":samples
+                    }));
+                    if outcome.is_err() {
+                        failure = Some($name);
+                    }
+                }
+            };
+        }
+        phase!(
+            "read-only-transport",
+            match IntegrationGit::read_only() {
+                Ok(value) => {
+                    git = Some(value);
+                    Ok(())
+                }
+                Err(error) => Err(error),
+            }
+        );
+        phase!(
+            "inspect-snapshot",
+            git.as_ref()
+                .expect("diagnostic-transport")
+                .inspect(&record.intent)
+                .and_then(|actual| {
+                    if actual.revision == snapshot.revision {
+                        Ok(())
+                    } else {
+                        Err(GitError::InconsistentCapture)
+                    }
+                })
+        );
+        phase!(
+            "verify-commit",
+            git.as_ref()
+                .expect("diagnostic-transport")
+                .verify_commit(&record.intent, tree, result)
+        );
+        phase!(
+            "verify-snapshot-tree",
+            git.as_ref()
+                .expect("diagnostic-transport")
+                .verify_snapshot_tree(&record.intent, tree, &snapshot)
+        );
+        phase!(
+            "target-snapshot",
+            git.as_ref()
+                .expect("diagnostic-transport")
+                .target(
+                    &record.intent,
+                    &record.intent.input_base,
+                    &record.intent.input_base
+                )
+                .and_then(|actual| {
+                    if actual == record.intent.target {
+                        Ok(())
+                    } else {
+                        Err(GitError::Conflict)
+                    }
+                })
+        );
+        drop(git);
+        let elapsed = started.elapsed().as_micros();
+        let after = fingerprint(&roots);
+        let stable = before == after;
+        let directory = fixture.join(format!(
+            "readonly-validation-{}-{}",
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .expect("diagnostic-clock")
+                .as_nanos(),
+            std::process::id()
+        ));
+        fs::create_dir(&directory).expect("diagnostic-new-output");
+        let report = json!({
+            "schemaVersion":1,"diagnosticOnly":true,"exportSha256":export_hash,
+            "storeOpened":false,"runtimeCalls":0,"approveCalled":false,
+            "newKeeperCreated":false,"historicalKeeperReused":false,
+            "commandDeadlineMs":15000,"commandOutputLimitBytes":8388608,
+            "elapsedMicros":elapsed,"phases":phases,"failedPhase":failure,
+            "physicalStateUnchanged":stable,"fingerprintedEntries":before.len(),
+            "beforeSha256":content_hash(&serde_json::to_vec(&before).expect("diagnostic-hash")),
+            "afterSha256":content_hash(&serde_json::to_vec(&after).expect("diagnostic-hash")),
+            "sourceHashes":{
+                "gitExecutor":content_hash(include_bytes!("executor.rs")),
+                "gitIntegration":content_hash(include_bytes!("integration.rs")),
+                "gitCapture":content_hash(include_bytes!("capture.rs")),
+                "gitWorktrees":content_hash(include_bytes!("worktrees.rs"))
+            }
+        });
+        fs::write(
+            directory.join("result.json"),
+            serde_json::to_vec_pretty(&report).expect("diagnostic-report-json"),
+        )
+        .expect("diagnostic-report-write");
+        println!(
+            "Read-only Prepared validation diagnostic: {}",
+            directory.display()
+        );
+        assert!(stable, "diagnostic-physical-state-changed");
+        assert!(
+            failure.is_none(),
+            "diagnostic-validation-failed; see static phase report"
+        );
+    }
+
     /// Explicit, read-only timing of one existing owned integration checkout.
     /// No Store, reservation, materialize, result ref, check or reconciliation.
     #[test]

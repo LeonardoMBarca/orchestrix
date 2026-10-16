@@ -13,9 +13,10 @@ use crate::{
 };
 use serde_json::{Value, json};
 use std::{
+    io::Write,
     path::Path,
     sync::Arc,
-    time::{SystemTime, UNIX_EPOCH},
+    time::{Instant, SystemTime, UNIX_EPOCH},
 };
 type Result<T> = std::result::Result<T, WorkerError>;
 
@@ -405,26 +406,38 @@ impl IntegrationService {
         load_record(store, &input.integration_id)
     }
     fn validate_prepared(&self, record: &IntegrationRecord) -> Result<()> {
-        let git = IntegrationGit::read_only()?;
+        let mut diagnostics = PreparedValidationDiagnostics::new(
+            std::env::var_os("ORCHESTRIX_INTEGRATION_DIAGNOSTICS")
+                .is_some_and(|value| value == "1"),
+        );
+        let git =
+            diagnostics.measure(PreparedValidationPhase::ReadOnly, IntegrationGit::read_only)?;
         let snapshot = record.snapshot().ok_or(WorkerError("combined-snapshot"))?;
-        if git.inspect(&record.intent)?.revision != snapshot.revision {
+        if diagnostics
+            .measure(PreparedValidationPhase::Inspect, || {
+                git.inspect(&record.intent)
+            })?
+            .revision
+            != snapshot.revision
+        {
             return Err(WorkerError("combined-artifact-changed"));
         }
-        git.verify_commit(
-            &record.intent,
-            value_text(record, "treeRevision")?,
-            value_text(record, "resultRevision")?,
-        )?;
-        git.verify_snapshot_tree(
-            &record.intent,
-            value_text(record, "treeRevision")?,
-            &snapshot,
-        )?;
-        if git.target(
-            &record.intent,
-            &record.intent.input_base,
-            &record.intent.input_base,
-        )? != record.intent.target
+        let tree = value_text(record, "treeRevision")?;
+        let result = value_text(record, "resultRevision")?;
+        diagnostics.measure(PreparedValidationPhase::VerifyCommit, || {
+            git.verify_commit(&record.intent, tree, result)
+        })?;
+        let tree = value_text(record, "treeRevision")?;
+        diagnostics.measure(PreparedValidationPhase::VerifySnapshotTree, || {
+            git.verify_snapshot_tree(&record.intent, tree, &snapshot)
+        })?;
+        if diagnostics.measure(PreparedValidationPhase::Target, || {
+            git.target(
+                &record.intent,
+                &record.intent.input_base,
+                &record.intent.input_base,
+            )
+        })? != record.intent.target
         {
             return Err(WorkerError("target-changed-revalidation-required"));
         }
@@ -822,4 +835,154 @@ fn observe(store: &mut Store, id: &str, status: IntegrationStatus, details: Valu
             details,
         }),
     )
+}
+
+#[derive(Clone, Copy)]
+enum PreparedValidationPhase {
+    ReadOnly,
+    Inspect,
+    VerifyCommit,
+    VerifySnapshotTree,
+    Target,
+}
+
+/// Private, opt-in diagnostics: no record contents, paths or provider data.
+struct PreparedValidationDiagnostics {
+    remaining: u8,
+}
+impl PreparedValidationDiagnostics {
+    fn new(enabled: bool) -> Self {
+        Self {
+            remaining: if enabled { 5 } else { 0 },
+        }
+    }
+    fn measure<T>(
+        &mut self,
+        phase: PreparedValidationPhase,
+        action: impl FnOnce() -> std::result::Result<T, git::GitError>,
+    ) -> std::result::Result<T, git::GitError> {
+        if self.remaining == 0 {
+            return action();
+        }
+        let started = Instant::now();
+        let result = action();
+        let elapsed_ms = started.elapsed().as_millis().try_into().unwrap_or(u64::MAX);
+        if let Some(line) = self.line(phase, result.as_ref().err(), elapsed_ms) {
+            // A diagnostic sink failure must not change the operation's result.
+            let _ = std::io::stderr().lock().write_all(line.as_bytes());
+        }
+        result
+    }
+    fn line(
+        &mut self,
+        phase: PreparedValidationPhase,
+        error: Option<&git::GitError>,
+        elapsed_ms: u64,
+    ) -> Option<String> {
+        if self.remaining == 0 {
+            return None;
+        }
+        self.remaining -= 1;
+        let stage = match phase {
+            PreparedValidationPhase::ReadOnly => "read-only",
+            PreparedValidationPhase::Inspect => "inspect",
+            PreparedValidationPhase::VerifyCommit => "verify-commit",
+            PreparedValidationPhase::VerifySnapshotTree => "verify-snapshot-tree",
+            PreparedValidationPhase::Target => "target",
+        };
+        let code = match error {
+            None => "ok",
+            Some(git::GitError::Io) => "io",
+            Some(git::GitError::Path) => "path",
+            Some(git::GitError::Scope) => "scope",
+            Some(git::GitError::Link) => "link",
+            Some(git::GitError::Collision) => "collision",
+            Some(git::GitError::Unsupported) => "unsupported",
+            Some(git::GitError::NotRepository) => "not-repository",
+            Some(git::GitError::Base) => "base",
+            Some(git::GitError::Ownership) => "ownership",
+            Some(git::GitError::MissingAttempt) => "missing-attempt",
+            Some(git::GitError::Conflict) => "conflict",
+            Some(git::GitError::Process) => "process",
+            Some(git::GitError::Deadline) => "deadline",
+            Some(git::GitError::OutputLimit) => "output-limit",
+            Some(git::GitError::Limit) => "limit",
+            Some(git::GitError::InconsistentCapture) => "inconsistent-capture",
+            Some(git::GitError::SecretContent) => "secret-content",
+            Some(git::GitError::Pending) => "pending",
+            Some(git::GitError::UnpreservedWork) => "unpreserved-work",
+            Some(git::GitError::Injected) => "injected",
+            Some(git::GitError::Storage(_)) => "storage",
+        };
+        Some(format!(
+            "orchestrix-integration-validation stage={stage} code={code} elapsedMs={elapsed_ms}\n"
+        ))
+    }
+}
+
+#[cfg(test)]
+mod prepared_validation_diagnostics_tests {
+    use super::*;
+
+    #[test]
+    fn diagnostics_are_opt_in_bounded_and_static() {
+        let mut disabled = PreparedValidationDiagnostics::new(false);
+        assert_eq!(
+            disabled.line(
+                PreparedValidationPhase::Inspect,
+                Some(&git::GitError::Io),
+                1
+            ),
+            None
+        );
+        let mut enabled = PreparedValidationDiagnostics::new(true);
+        for (phase, expected) in [
+            (PreparedValidationPhase::ReadOnly, "read-only"),
+            (PreparedValidationPhase::Inspect, "inspect"),
+            (PreparedValidationPhase::VerifyCommit, "verify-commit"),
+            (
+                PreparedValidationPhase::VerifySnapshotTree,
+                "verify-snapshot-tree",
+            ),
+            (PreparedValidationPhase::Target, "target"),
+        ] {
+            let line = enabled.line(phase, None, u64::MAX).unwrap();
+            assert_eq!(
+                line,
+                format!(
+                    "orchestrix-integration-validation stage={expected} code=ok elapsedMs={}\n",
+                    u64::MAX
+                )
+            );
+            assert!(line.len() < 128);
+        }
+        assert_eq!(enabled.line(PreparedValidationPhase::Target, None, 0), None);
+
+        // Nested persistence details must never reach the private diagnostic line.
+        let mut storage = PreparedValidationDiagnostics::new(true);
+        assert_eq!(
+            storage.line(
+                PreparedValidationPhase::Inspect,
+                Some(&git::GitError::Storage(
+                    crate::persistence::StoreError::InvalidPath
+                )),
+                7,
+            ),
+            Some(
+                "orchestrix-integration-validation stage=inspect code=storage elapsedMs=7\n".into()
+            )
+        );
+        let mut process = PreparedValidationDiagnostics::new(true);
+        assert_eq!(
+            process.line(
+                PreparedValidationPhase::VerifyCommit,
+                Some(&git::GitError::Process),
+                3
+            ),
+            Some(
+                "orchestrix-integration-validation stage=verify-commit code=process elapsedMs=3\n"
+                    .into()
+            )
+        );
+    }
 }
