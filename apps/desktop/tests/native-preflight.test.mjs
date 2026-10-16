@@ -1,5 +1,6 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
+import {spawnSync} from 'node:child_process';
 import {loadedBinaryDiagnostic,ownBinaryPaths,parseOwnedProcesses,windowsProcessQuery} from '../scripts/native-preflight.mjs';
 
 const root='C:\\Users\\A developer\\orchestrix',desktop=root+'\\apps\\desktop';
@@ -37,4 +38,20 @@ test('malformed or unbounded process metadata blocks rather than pretending no b
  assert.throws(()=>parseOwnedProcesses(JSON.stringify(row({ProcessId:0})),allowed,root),/process-id/);
  assert.deepEqual(parseOwnedProcesses('[]',allowed,root),[]);
  assert.match(windowsProcessQuery,/exact\.Contains/);assert.ok(!windowsProcessQuery.includes('Stop-Process'));
+});
+
+test('Windows PowerShell filters each allowlisted path before returning process metadata',{skip:process.platform!=='win32'},()=>{
+ // Run the actual PowerShell query against synthetic CIM rows: no unrelated
+ // process command lines are read while reproducing the PS 5.1 array behavior.
+ const fixture=String.raw`function Get-CimInstance {
+  [pscustomobject]@{ProcessId=123;ExecutablePath=$env:ORCHESTRIX_PREFLIGHT_TEST_EXE;CommandLine='owned fixture'}
+  [pscustomobject]@{ProcessId=456;ExecutablePath='C:\unrelated\other.exe';CommandLine='unrelated fixture'}
+ }
+ `;
+ const execute=value=>spawnSync('powershell.exe',['-NoProfile','-NonInteractive','-Command',fixture+windowsProcessQuery],{windowsHide:true,encoding:'utf8',timeout:10000,maxBuffer:1048576,env:{...process.env,ORCHESTRIX_NATIVE_PREFLIGHT_PATHS:JSON.stringify(value),ORCHESTRIX_PREFLIGHT_TEST_EXE:executable}});
+ const result=execute(allowed);
+ assert.equal(result.error,undefined);assert.equal(result.status,0,result.stderr);
+ assert.deepEqual(parseOwnedProcesses(result.stdout,allowed,root),[{pid:123,executable,qaDatabase:null}]);
+ assert.ok(!result.stdout.includes('unrelated'),'filtering occurs inside PowerShell before serialization');
+ for(const malformed of [[],{},['valid',null]])assert.notEqual(execute(malformed).status,0,'invalid allowlist fails closed');
 });

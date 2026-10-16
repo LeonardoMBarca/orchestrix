@@ -15,9 +15,15 @@ export function ownBinaryPaths(root,desktop,triple){
 // anything; process names, other command lines and credentials are not logged.
 export const windowsProcessQuery=String.raw`
 $ErrorActionPreference = 'Stop'
-$allowed = @(ConvertFrom-Json -InputObject $env:ORCHESTRIX_NATIVE_PREFLIGHT_PATHS)
+$allowed = ConvertFrom-Json -InputObject $env:ORCHESTRIX_NATIVE_PREFLIGHT_PATHS
+if ($allowed -isnot [System.Array] -or $allowed.Count -eq 0 -or $allowed.Count -gt 32) { throw 'native-preflight-allowlist-schema' }
 $exact = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
-foreach ($binary in $allowed) { [void]$exact.Add([string]$binary) }
+# Windows PowerShell 5.1 returns a JSON array as one pipeline object.
+# Wrapping ConvertFrom-Json in @() nests it and joins every path into one key.
+foreach ($binary in $allowed) {
+  if ($binary -isnot [string] -or [string]::IsNullOrWhiteSpace($binary)) { throw 'native-preflight-allowlist-schema' }
+  [void]$exact.Add($binary)
+}
 $owned = @(Get-CimInstance -ClassName Win32_Process -OperationTimeoutSec 5 | Where-Object { $_.ExecutablePath -and $exact.Contains([string]$_.ExecutablePath) } | Select-Object ProcessId,ExecutablePath,CommandLine)
 ConvertTo-Json -InputObject $owned -Depth 3 -Compress
 `;
