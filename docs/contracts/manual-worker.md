@@ -31,6 +31,8 @@ The first review fixes the Task's review/correction count and elapsed-time budge
 
 Capture failures retain a bounded `captureDiagnostic` in the durable worker observation and its compact summary: schema version 1, the fixed stage `inspect`/`capture`/`persist`, a static Git error code and, for storage failures, a static storage code. Raw errors, paths, commands, process output and file content are excluded. This also preserves a capture failure when the runtime outcome was already uncertain. The diagnostic does not change the outcome, authorize another capture/dispatch, revalidate an artifact or retroactively diagnose an older generic failure.
 
+Later inspection distinguishes a successfully observed different artifact revision (`changed-after-verification`, with `observedArtifactRevision`) from inability to inspect (`uninspectable-after-verification`, with the same bounded diagnostic). The first negative worker observation retains historical checks and the physical-only distinction for an already completed Task; current evidence is withdrawn in either case. A matching recapture appends no invalidation. Older generic observations remain unchanged and do not prove that file bytes differed.
+
 ## Policy schema 1
 
 The precedence is System → User → Project → Profile → CategoryRisk → Execution → Task, with at most one layer per scope. Mode defaults enter at the system baseline and executor profile defaults at profile scope. Mandatory mode/layer restrictions accumulate rather than being removed by a later preference. Mode, executor profile, resource strategy and specialized preset have separate identities.

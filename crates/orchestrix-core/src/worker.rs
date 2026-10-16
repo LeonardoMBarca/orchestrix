@@ -930,22 +930,35 @@ impl ManualWorker {
             let artifact_revision = last.details["artifactRevision"]
                 .as_str()
                 .ok_or(WorkerError("artifact"))?;
-            let service = WorktreeService::new()?;
-            let checked = service.inspect(store, operation).and_then(|w| {
-                git::capture(
-                    &GitExecutor::new()?,
-                    Path::new(&w.intent.path),
-                    &w.intent,
-                    CaptureLimits::default(),
-                )
-            });
-            if !checked
+            let mut stage = "inspect";
+            let checked = WorktreeService::new()
+                .and_then(|service| service.inspect(store, operation))
+                .and_then(|w| {
+                    stage = "capture";
+                    git::capture(
+                        &GitExecutor::new()?,
+                        Path::new(&w.intent.path),
+                        &w.intent,
+                        CaptureLimits::default(),
+                    )
+                });
+            if checked
                 .as_ref()
-                .is_ok_and(|a| a.revision == artifact_revision)
+                .is_ok_and(|artifact| artifact.revision == artifact_revision)
             {
-                let state = store.load()?;
-                let artifact = state.runs()[&RunId::new(&current.intent.run_id)?]
-                    .task(&TaskId::new(&current.intent.task_id)?)?
+                return record(store, id);
+            }
+            let state = store.load()?;
+            let task = state.runs()[&RunId::new(&current.intent.run_id)?]
+                .task(&TaskId::new(&current.intent.task_id)?)?;
+            if let Some((reason, details)) = verification_failure_details(
+                &last.details,
+                artifact_revision,
+                checked.as_ref().map(|artifact| artifact.revision.as_str()),
+                stage,
+                task.state() == TaskState::Completed,
+            ) {
+                let artifact = task
                     .attempts()
                     .iter()
                     .find(|a| a.id().as_str() == current.intent.attempt_id)
@@ -956,17 +969,39 @@ impl ManualWorker {
                     })
                     .cloned()
                     .ok_or(WorkerError("artifact"))?;
-                invalidate_evidence(store, &current, &artifact, "changed-after-verification")?;
-                observe(
-                    store,
-                    id,
-                    WorkerStatus::Invalidated,
-                    json!({"reason":"changed-or-uninspectable-after-verification","artifactRevision":artifact_revision,"worktreeOperation":operation}),
-                )?;
+                drop(state);
+                // Publish the enriched negative summary first. invalidate_evidence
+                // sees Invalidated and preserves this sole observation while
+                // withdrawing current domain/review evidence as before.
+                observe(store, id, WorkerStatus::Invalidated, details)?;
+                invalidate_evidence(store, &current, &artifact, reason)?;
             }
         }
         record(store, id)
     }
+}
+fn verification_failure_details(
+    historical: &Value,
+    expected_revision: &str,
+    checked: std::result::Result<&str, &git::GitError>,
+    stage: &'static str,
+    integrated: bool,
+) -> Option<(&'static str, Value)> {
+    let mut details = historical.clone();
+    let reason = match checked {
+        Ok(revision) if revision == expected_revision => return None,
+        Ok(revision) => {
+            details["observedArtifactRevision"] = json!(revision);
+            "changed-after-verification"
+        }
+        Err(error) => {
+            CaptureDiagnostic::new(stage, error).attach(&mut details);
+            "uninspectable-after-verification"
+        }
+    };
+    details["reason"] = json!(reason);
+    details["sourcePhysicalOnly"] = json!(integrated);
+    Some((reason, details))
 }
 pub(crate) fn lease(store: &Store) -> Result<Option<orchestrix_process::lease::HostLease>> {
     let path = store.path();
@@ -1368,6 +1403,85 @@ pub(crate) fn diagnostic_input(
 mod capture_diagnostic_tests {
     use super::*;
     use crate::persistence::StoreError;
+
+    #[test]
+    fn exact_verification_does_not_prepare_an_invalidation() {
+        let revision = "a".repeat(64);
+        let historical = json!({"artifactRevision":revision,"checks":[{"id":"check-one","result":"passed"}],"review":"pending-independent-review","delivered":false});
+        let original = historical.clone();
+        assert!(
+            verification_failure_details(&historical, &revision, Ok(&revision), "capture", false,)
+                .is_none()
+        );
+        assert_eq!(historical, original);
+    }
+
+    #[test]
+    fn revision_mismatch_keeps_historical_checks_and_separates_observed_bytes() {
+        let expected = "a".repeat(64);
+        let observed = "b".repeat(64);
+        let historical = json!({"artifactRevision":expected,"worktreeOperation":"worktree-one","checks":[{"id":"check-one","artifact_revision":expected,"exit_code":0}],"delivered":false});
+        for integrated in [false, true] {
+            let (reason, details) = verification_failure_details(
+                &historical,
+                &expected,
+                Ok(&observed),
+                "capture",
+                integrated,
+            )
+            .unwrap();
+            assert_eq!(reason, "changed-after-verification");
+            assert_eq!(details["reason"], reason);
+            assert_eq!(details["artifactRevision"], expected);
+            assert_eq!(details["observedArtifactRevision"], observed);
+            assert_eq!(details["checks"], historical["checks"]);
+            assert_eq!(details["sourcePhysicalOnly"], integrated);
+            assert!(details.get("captureDiagnostic").is_none());
+            assert!(exact_safe(&details, 65_536));
+        }
+    }
+
+    #[test]
+    fn inspection_failure_retains_stage_and_codes_without_claiming_changed_bytes() {
+        let revision = "a".repeat(64);
+        let historical = json!({"artifactRevision":revision,"checks":[{"id":"check-one","exit_code":0}],"delivered":false});
+        let private = "private-path/provider-output-and-credential";
+        for (stage, error, expected) in [
+            (
+                "inspect",
+                git::GitError::Ownership,
+                json!({"schemaVersion":1,"stage":"inspect","gitCode":"ownership"}),
+            ),
+            (
+                "capture",
+                git::GitError::Deadline,
+                json!({"schemaVersion":1,"stage":"capture","gitCode":"deadline"}),
+            ),
+            (
+                "inspect",
+                git::GitError::Storage(StoreError::Busy),
+                json!({"schemaVersion":1,"stage":"inspect","gitCode":"storage","storageCode":"busy"}),
+            ),
+            (
+                "capture",
+                git::GitError::from(std::io::Error::other(private)),
+                json!({"schemaVersion":1,"stage":"capture","gitCode":"io"}),
+            ),
+        ] {
+            let (reason, details) =
+                verification_failure_details(&historical, &revision, Err(&error), stage, false)
+                    .unwrap();
+            assert_eq!(reason, "uninspectable-after-verification");
+            assert_eq!(details["reason"], reason);
+            assert_eq!(details["captureDiagnostic"], expected);
+            assert_eq!(details["checks"], historical["checks"]);
+            assert_eq!(details["artifactRevision"], revision);
+            assert_eq!(details["sourcePhysicalOnly"], false);
+            assert!(details.get("observedArtifactRevision").is_none());
+            assert!(exact_safe(&details, 65_536));
+            assert!(!details.to_string().contains(private));
+        }
+    }
 
     #[test]
     fn capture_diagnostic_contains_only_static_codes() {
