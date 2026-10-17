@@ -8,7 +8,7 @@ Os critérios de aceite devem ser demonstrados antes de considerar uma tarefa co
 
 ## 1 Fila inicial e dependências
 
-No lote atual, startup ganhou acompanhamento nativo limitado e regressões reais de concorrência/histórico/recuperação; o novo runtime sintético sincronizado passou isoladamente. O próximo aceite continua sendo a prova nativa de Continue/Cancel/Suspend durante turno ativo, seguida das lacunas específicas de altura/DPI/editor e instalação isolada autorizada. Esses avanços não encerram OX-012/015/016/017 nem repetem OX-013/014 aceitos; [evidências atuais](DEVELOPMENT_STATUS.md#incremento-atual--entrega-nativa-e-pacote-windows).
+No lote atual, startup ganhou acompanhamento nativo limitado e regressões reais de concorrência/histórico/recuperação. A convergência `fca1360` comprovou Continue, Cancel e Suspend durante turnos sintéticos ativos, fechamento local e resultados duráveis honestos. Janela mínima 900×620, maximizar/restaurar, Windows 125% e cold startup com histórico/Uncertain foram examinados nativamente. Permanecem a conferência da correção do rodapé a 200%, os casos independentes de editor/candidato e a instalação em ambiente isolado autorizado. Esses avanços não encerram OX-012/015/016/017 nem repetem OX-013/014 aceitos; [evidências atuais](DEVELOPMENT_STATUS.md#incremento-atual--entrega-nativa-e-pacote-windows).
 
 | Ticket | Entrega | Marco | Depende de |
 | --- | --- | --- | --- |
