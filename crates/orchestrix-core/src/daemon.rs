@@ -396,7 +396,8 @@ pub fn serve_with_startup_observer(
     store.daemon_start().map_err(|_| "daemon-start")?;
     // Recovery is deterministic. This startup never redispatches an accepted command.
     phase(Phase::WorkerRecovery);
-    let _recovery = crate::recovery::reconcile(&mut store).map_err(|_| "reconciliation")?;
+    let _recovery =
+        crate::recovery::reconcile_for_startup(&mut store).map_err(|_| "reconciliation")?;
     phase(Phase::ReviewRecovery);
     crate::review::ReviewPipeline::reconcile(&mut store).map_err(|_| "review-reconciliation")?;
     phase(Phase::IntegrationRecovery);

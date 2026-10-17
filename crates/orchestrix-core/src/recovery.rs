@@ -68,6 +68,25 @@ pub enum RecoveryAction {
 /// Daemon instance ownership must use a separate lease. An unavailable worker
 /// lease is a live owner, not evidence of a crash.
 pub fn reconcile(store: &mut Store) -> Result<RecoverySummary> {
+    reconcile_with_worktree_diagnostics(store, WorktreeDiagnostics::Inspect)
+}
+
+/// Startup keeps all required durable/process reconciliation and exact Verified
+/// artifact recapture. Other retained worktrees remain explicitly historical;
+/// their physical diagnostic enrichment grants no admission or usage authority.
+pub(crate) fn reconcile_for_startup(store: &mut Store) -> Result<RecoverySummary> {
+    reconcile_with_worktree_diagnostics(store, WorktreeDiagnostics::Historical)
+}
+
+enum WorktreeDiagnostics {
+    Inspect,
+    Historical,
+}
+
+fn reconcile_with_worktree_diagnostics(
+    store: &mut Store,
+    diagnostics: WorktreeDiagnostics,
+) -> Result<RecoverySummary> {
     let _lease = worker::lease(store)?.ok_or(WorkerError("worker-host-busy"))?;
     let ids = store.load()?.workers().keys().cloned().collect::<Vec<_>>();
     for id in &ids {
@@ -81,6 +100,9 @@ pub fn reconcile(store: &mut Store) -> Result<RecoverySummary> {
         }
     }
     let mut summary = snapshot(store)?;
+    if matches!(diagnostics, WorktreeDiagnostics::Historical) {
+        return Ok(summary);
+    }
     let service = summary
         .cases
         .iter()

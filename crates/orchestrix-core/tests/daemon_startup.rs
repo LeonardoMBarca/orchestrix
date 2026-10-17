@@ -6,11 +6,12 @@ mod startup_client;
 use orchestrix_core::{
     daemon::{self, API_VERSION, Client, Operation, Request},
     desktop::DesktopRequest,
+    evaluator::CheckSpec,
     persistence::Store,
     policy::{Fallback, PolicyDocument, TaskClassification, TaskKind},
     runtime::{CancellationToken, RuntimeLaunch},
     worker::{ContextFileRequest, ManualTaskRequest, ManualWorker, WorkerCheckpoint},
-    worker_records::WorkerStatus,
+    worker_records::{WorkerRecord, WorkerStatus},
 };
 use serde_json::{Value, json};
 use startup_client::{StartupController, StartupLimits};
@@ -747,4 +748,412 @@ fn legitimate_pending_history_is_reconciled_before_readiness_without_dispatch() 
     assert_eq!(restored.intent, original.intent);
     assert!(!home.join("dispatch-count").exists());
     assert_eq!(fs::read_dir(&worktrees).unwrap().count(), 0);
+}
+
+fn seed_history(scope: &Scope, scenario: &str, checked: bool) -> WorkerRecord {
+    let repository = scope.root.join("source");
+    let home = scope.root.join("synthetic-home");
+    let worktrees = scope.root.join("attempts");
+    for directory in [&repository, &home, &worktrees] {
+        fs::create_dir(directory).unwrap();
+    }
+    git(&repository, &["init", "--quiet", "--initial-branch=main"]);
+    fs::write(repository.join("fixture.txt"), "before\n").unwrap();
+    git(&repository, &["add", "--all"]);
+    git(
+        &repository,
+        &[
+            "commit",
+            "--quiet",
+            "-m",
+            "Startup historical worker fixture",
+        ],
+    );
+    let mut policy = PolicyDocument::default();
+    policy.mode_defaults.fallback = Some(Fallback::Compatible);
+    let binary = PathBuf::from(env!("CARGO_BIN_EXE_orchestrix-runtime-fixture"));
+    let request = ManualTaskRequest {
+        schema_version: 1,
+        id: "startup-history".into(),
+        project_id: "startup-project".into(),
+        repository_id: "startup-repository".into(),
+        repository_directory: repository.clone(),
+        authorized_worktree_directory: worktrees,
+        base_commit: git(&repository, &["rev-parse", "HEAD"]),
+        connection_id: "startup-account".into(),
+        connection_revision: 1,
+        objective: "fixture-edit: correct only the owned historical fixture".into(),
+        acceptance_criteria: vec!["fixture.txt contains after followed by newline".into()],
+        policy,
+        classification: TaskClassification::routine(TaskKind::Implementation, "explicit-user"),
+        context_files: vec![ContextFileRequest {
+            path: "fixture.txt".into(),
+            authorization_ref: "startup-history-read-fixture".into(),
+            required: true,
+        }],
+        instructions: vec!["Only edit the owned worktree and never delegate.".into()],
+        checks: if checked {
+            vec![CheckSpec {
+                id: "startup-history-check".into(),
+                executable: binary.clone(),
+                arguments: vec!["--check-fixture".into(), "after\n".into()],
+                authorization_ref: "explicit-startup-history-check".into(),
+                authorized: true,
+                timeout_ms: 2000,
+                executable_sha256: None,
+            }]
+        } else {
+            vec![]
+        },
+    };
+    let mut launch = RuntimeLaunch::fixture(
+        binary,
+        vec!["--scenario".into(), scenario.into()],
+        home,
+        repository,
+    );
+    launch.request_timeout = Duration::from_secs(2);
+    launch.turn_timeout = Duration::from_secs(3);
+    ManualWorker::run(
+        &mut Store::open(&scope.database).unwrap(),
+        &request,
+        launch,
+        &CancellationToken::new(),
+    )
+    .unwrap()
+}
+
+struct HistoryDaemon<'a> {
+    scope: &'a Scope,
+    child: std::process::Child,
+}
+impl<'a> HistoryDaemon<'a> {
+    fn start(scope: &'a Scope, without_git: bool) -> Self {
+        let mut command = Command::new(env!("CARGO_BIN_EXE_orchestrix"));
+        command
+            .arg("daemon")
+            .arg("--database")
+            .arg(&scope.database)
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(fs::File::create(scope.root.join("history-daemon.stderr")).unwrap());
+        if without_git {
+            // Only this absolute Core child's PATH changes. GitExecutor::new
+            // cannot find Git, so readiness proves the discarded historical
+            // enrichment did not run. No parent/global environment is edited.
+            let empty = scope.root.join("empty-executable-path");
+            fs::create_dir(&empty).unwrap();
+            command.env("PATH", empty);
+        }
+        Self {
+            scope,
+            child: command.spawn().unwrap(),
+        }
+    }
+    fn ready(&mut self) -> Value {
+        let started = Instant::now();
+        let deadline = started + Duration::from_secs(30);
+        loop {
+            if let Some(status) = self.child.try_wait().unwrap() {
+                panic!(
+                    "historical startup exited {status}: {}",
+                    fs::read_to_string(self.scope.root.join("history-daemon.stderr")).unwrap()
+                );
+            }
+            if let Ok(client) = Client::new(&self.scope.database)
+                && let Ok(response) = client.request(&Request {
+                    api_version: API_VERSION,
+                    operation: Operation::Snapshot,
+                })
+            {
+                assert!(response.ok, "{:?}", response.error);
+                eprintln!("startup-history readyMs={}", started.elapsed().as_millis());
+                return compatible(response.result).unwrap();
+            }
+            assert!(Instant::now() < deadline, "historical startup not ready");
+            std::thread::sleep(Duration::from_millis(20));
+        }
+    }
+    fn stop(mut self) {
+        self.scope.stop("history-startup-stop");
+        let deadline = Instant::now() + Duration::from_secs(15);
+        loop {
+            if let Some(status) = self.child.try_wait().unwrap() {
+                assert_eq!(status.code(), Some(0));
+                return;
+            }
+            assert!(
+                Instant::now() < deadline,
+                "own historical daemon did not exit"
+            );
+            std::thread::sleep(Duration::from_millis(10));
+        }
+    }
+}
+impl Drop for HistoryDaemon<'_> {
+    fn drop(&mut self) {
+        if self.child.try_wait().ok().flatten().is_some() {
+            return;
+        }
+        // Failure cleanup targets only this Child. This fixture daemon never
+        // accepts runtime work: it reads retained history and starts suspended.
+        let _ = Client::new(&self.scope.database).and_then(|client| {
+            client.request(&Request {
+                api_version: API_VERSION,
+                operation: Operation::Shutdown {
+                    command_id: "history-startup-failure-cleanup".into(),
+                },
+            })
+        });
+        let deadline = Instant::now() + Duration::from_secs(2);
+        while self.child.try_wait().ok().flatten().is_none() && Instant::now() < deadline {
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        if self.child.try_wait().ok().flatten().is_none() {
+            let _ = self.child.kill();
+            let _ = self.child.wait();
+        }
+    }
+}
+
+fn observe_verified_history(scope: &Scope) -> Value {
+    // The native Host's 15-second window is an observation boundary, not an
+    // assertion that mandatory Verified recapture must finish in that time.
+    // This test's separate finite cap covers explicit Check-again observations
+    // after the exhausted window: the previous 30-second guard interrupted
+    // recapture, while the recorded native recovery phase alone took 39.688s.
+    // It changes no production, Git, runtime, check or keeper deadline.
+    let mut controller = controller();
+    let started = Instant::now();
+    let cap = Duration::from_secs(120);
+    let mut value = controller
+        .connect(
+            &scope.database,
+            Path::new(env!("CARGO_BIN_EXE_orchestrix")),
+            Path::new(env!("CARGO_BIN_EXE_orchestrix-supervisor")),
+            compatible,
+        )
+        .unwrap()
+        .into_value();
+    let pid = value["startup"]["ownChildPid"].clone();
+    let nonce = value["startup"]["launchNonce"].clone();
+    assert!(pid.as_u64().is_some(), "one owned startup Child required");
+    assert!(nonce.as_str().is_some(), "one startup attempt required");
+    let mut last = Value::Null;
+    let mut followed_blocked_window = false;
+    loop {
+        let elapsed = started.elapsed();
+        assert!(
+            elapsed < cap,
+            "Verified startup observation cap exhausted: elapsedMs={} state={} phase={}",
+            elapsed.as_millis(),
+            value["startup"]["state"],
+            value["startup"]["phase"]
+        );
+        if value.get("startup").is_none() {
+            // A private phase trace never grants readiness. The compatible IPC
+            // Snapshot must already contain the negative recapture outcome.
+            let worker = value["workers"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|worker| worker["workerId"] == "startup-history")
+                .unwrap();
+            assert_eq!(worker["status"], "invalidated");
+            if value["startupDiagnostics"].is_object() {
+                assert_eq!(value["startupDiagnostics"]["reportedProcessPid"], pid);
+                assert_eq!(value["startupDiagnostics"]["daemonBindingConfirmed"], false);
+            }
+            eprintln!(
+                "startup-verified-history readyMs={} followedBlockedWindow={} diagnostics={}",
+                elapsed.as_millis(),
+                followed_blocked_window,
+                value["startupDiagnostics"]
+            );
+            return value;
+        }
+        let pending = &value["startup"];
+        assert_eq!(pending["ownChildPid"], pid);
+        assert!(
+            pending["launchNonce"] == nonce,
+            "same startup attempt required"
+        );
+        assert_eq!(pending["followUpBudgetMs"], 15_000);
+        assert_ne!(pending["state"], "failed");
+        if pending["state"] == "blocked" {
+            assert_eq!(pending["pastInitialWindow"], true);
+            assert_eq!(pending["automaticFollowUp"], false);
+            followed_blocked_window = true;
+        }
+        let phase = json!({"state":pending["state"],"phase":pending["phase"]});
+        if phase != last {
+            eprintln!(
+                "startup-verified-history observation={}",
+                json!({"elapsedMs":elapsed.as_millis(),"state":pending["state"],"phase":pending["phase"],
+                    "phaseSource":pending["phaseSource"],"daemonElapsedMs":pending["daemonElapsedMs"],"ownChildPid":pid})
+            );
+            last = phase;
+        }
+        std::thread::sleep(Duration::from_millis(500).min(cap.saturating_sub(elapsed)));
+        // This is explicit continued observation of the retained attempt,
+        // including after Blocked. Never call connect or launch another Child.
+        value = controller
+            .observe(&scope.database, compatible)
+            .unwrap()
+            .into_value();
+    }
+}
+
+#[test]
+fn startup_recovery_historical_worktrees_defer_git_but_public_reconcile_inspects() {
+    let scope = Scope::new();
+    let original = seed_history(&scope, "success", false);
+    assert_eq!(original.status(), WorkerStatus::NoChecks);
+    let dispatch = fs::read(scope.root.join("synthetic-home/dispatch-count")).ok();
+    let mut daemon = HistoryDaemon::start(&scope, true);
+    let snapshot = daemon.ready();
+    assert_eq!(snapshot["state"]["suspended"], true);
+    assert_eq!(snapshot["activeWorkerId"], Value::Null);
+    let historical = api(&scope.database, Operation::Recovery);
+    assert_eq!(historical["ready_for_admission"], true);
+    assert_eq!(historical["has_blocking_cases"], false);
+    assert_eq!(historical["cases"][0]["status"], "no-checks");
+    assert_eq!(
+        historical["cases"][0]["worktrees"]
+            .as_array()
+            .unwrap()
+            .len(),
+        1
+    );
+    assert_eq!(
+        historical["cases"][0]["worktrees"][0]["inspection"],
+        "historical-not-revalidated"
+    );
+    daemon.stop();
+    // The existing public API still performs its physical diagnostic pass.
+    let full =
+        orchestrix_core::recovery::reconcile(&mut Store::open(&scope.database).unwrap()).unwrap();
+    assert!(full.ready_for_admission);
+    assert_eq!(full.cases[0].status, WorkerStatus::NoChecks);
+    assert_eq!(full.cases[0].worktrees[0]["inspection"], "confirmed-owned");
+    assert_eq!(
+        fs::read(scope.root.join("synthetic-home/dispatch-count")).ok(),
+        dispatch
+    );
+}
+
+#[test]
+fn startup_recovery_uncertain_history_without_git_blocks_admission_without_dispatch() {
+    let scope = Scope::new();
+    let original = seed_history(&scope, "lost-reply", false);
+    assert_eq!(original.status(), WorkerStatus::Uncertain);
+    let dispatch = fs::read(scope.root.join("synthetic-home/dispatch-count")).ok();
+    let mut daemon = HistoryDaemon::start(&scope, true);
+    let snapshot = daemon.ready();
+    assert_eq!(snapshot["state"]["suspended"], true);
+    assert_eq!(snapshot["activeWorkerId"], Value::Null);
+    let recovery = api(&scope.database, Operation::Recovery);
+    assert_eq!(recovery["has_blocking_cases"], true);
+    assert_eq!(recovery["ready_for_admission"], false);
+    assert_eq!(recovery["cases"][0]["status"], "uncertain");
+    assert_eq!(
+        recovery["cases"][0]["worktrees"][0]["inspection"],
+        "historical-not-revalidated"
+    );
+    let resume = Client::new(&scope.database)
+        .unwrap()
+        .request(&Request {
+            api_version: API_VERSION,
+            operation: Operation::Resume {
+                command_id: "uncertain-history-resume-must-block".into(),
+            },
+        })
+        .unwrap();
+    assert!(!resume.ok);
+    assert_eq!(
+        resume.error.as_deref(),
+        Some("recovery-inspection-required")
+    );
+    daemon.stop();
+    let restored = Store::open(&scope.database).unwrap().load().unwrap();
+    assert_eq!(
+        restored.workers()["startup-history"].intent,
+        original.intent
+    );
+    assert_eq!(
+        restored.workers()["startup-history"].status(),
+        WorkerStatus::Uncertain
+    );
+    assert_eq!(
+        fs::read(scope.root.join("synthetic-home/dispatch-count")).ok(),
+        dispatch
+    );
+}
+
+#[test]
+fn startup_recovery_recaptures_changed_verified_artifacts_and_preserves_historical_checks() {
+    let scope = Scope::new();
+    let original = seed_history(&scope, "success", true);
+    assert_eq!(original.status(), WorkerStatus::Verified);
+    let before = Store::open(&scope.database).unwrap().load().unwrap();
+    let historical = original.observations.last().unwrap().details.clone();
+    let original_revision = historical["artifactRevision"].as_str().unwrap();
+    let original_artifact = serde_json::to_value(
+        before
+            .captured_artifacts()
+            .values()
+            .find(|artifact| artifact.revision == original_revision)
+            .unwrap(),
+    )
+    .unwrap();
+    let worktree = PathBuf::from(
+        &before
+            .worktrees()
+            .values()
+            .find(|worktree| worktree.intent.attempt_id == original.intent.attempt_id)
+            .unwrap()
+            .intent
+            .path,
+    )
+    .canonicalize()
+    .unwrap();
+    assert!(worktree.starts_with(scope.root.join("attempts")));
+    drop(before);
+    let dispatch = fs::read(scope.root.join("synthetic-home/dispatch-count")).ok();
+    fs::write(worktree.join("fixture.txt"), "changed after verification\n").unwrap();
+    let snapshot = observe_verified_history(&scope);
+    assert_eq!(snapshot["state"]["suspended"], true);
+    assert_eq!(snapshot["activeWorkerId"], Value::Null);
+    let worker = api(
+        &scope.database,
+        Operation::Desktop {
+            request: Box::new(DesktopRequest::InspectWorker {
+                worker_id: "startup-history".into(),
+            }),
+        },
+    );
+    assert_eq!(worker["summary"]["status"], "invalidated");
+    assert_eq!(
+        worker["summary"]["details"]["reason"],
+        "changed-after-verification"
+    );
+    assert_eq!(worker["artifact"]["revision"], original_revision);
+    assert_eq!(worker["summary"]["details"]["checks"], historical["checks"]);
+    scope.stop("verified-history-startup-stop");
+    let restored = Store::open(&scope.database).unwrap().load().unwrap();
+    assert_eq!(
+        serde_json::to_value(
+            restored
+                .captured_artifacts()
+                .values()
+                .find(|artifact| artifact.revision == original_revision)
+                .unwrap()
+        )
+        .unwrap(),
+        original_artifact
+    );
+    assert_eq!(
+        fs::read(scope.root.join("synthetic-home/dispatch-count")).ok(),
+        dispatch
+    );
 }
