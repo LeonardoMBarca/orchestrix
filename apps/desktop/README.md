@@ -77,6 +77,8 @@ For active-turn controls, add `--controls` when creating a **fresh** native fixt
 
 For an independent editor/candidate invalidation case, `--accepted-review` selects the existing synthetic accepted-review output instead. It still requires a real authorized task, checks, a distinct review session, candidate preparation and explicit approval; the script does not write approvals or change immutable records. All three scenario flags are mutually exclusive.
 
+An explicit QA fixture also emits `ORCHESTRIX_QA_STARTUP` on the Desktop's redirected stderr after a compatible handshake, retaining only the bounded startup phase diagnostics. It does not log the Snapshot, paths or conversation content. These phases describe the reporting Child/nonce; they do not assert that it serves the separately validated Snapshot. Normal builds do not emit this QA record. Capture the process's stderr when measuring a cold opening, since reconnecting to an already ready daemon is a different case.
+
 ## Visual sources and icon provenance
 
 Tokens/themes are imported from the approved `identity.css`, `styles.css` and `experience.css`; locales reuse the existing JSON catalogs. Imported assets are bundled by Vite. This keeps the approved Studio identity, eight themes, English default and Português/Español without copying the prototype's execution simulation.

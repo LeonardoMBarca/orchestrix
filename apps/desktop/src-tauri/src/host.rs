@@ -407,14 +407,28 @@ impl Host {
         let keeper = parent.join("orchestrix-supervisor.exe");
         startup
             .connect(&self.database, &core, &keeper, compatible)
-            .map(|update| update.into_value())
+            .map(|update| self.startup_value(update.into_value()))
     }
     pub fn observe_startup(&self) -> Result<Value, String> {
         self.startup
             .lock()
             .map_err(|_| "startup-lock")?
             .observe(&self.database, compatible)
-            .map(|update| update.into_value())
+            .map(|update| self.startup_value(update.into_value()))
+    }
+    fn startup_value(&self, value: Value) -> Value {
+        // Private QA output only: preserve the bounded child phase trace after
+        // the renderer bootstraps, without logging a Snapshot or user content.
+        #[cfg(feature = "test-fixtures")]
+        if self.fixture.is_some() {
+            if let Some(diagnostics) = value.get("startupDiagnostics") {
+                eprintln!(
+                    "ORCHESTRIX_QA_STARTUP {}",
+                    json!({"hostPid":std::process::id(),"diagnostics":diagnostics})
+                );
+            }
+        }
+        value
     }
     pub fn native_qa_enabled(&self) -> bool {
         #[cfg(feature = "test-fixtures")]
