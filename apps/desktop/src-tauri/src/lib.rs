@@ -2,6 +2,8 @@ mod daemon_startup;
 mod editor;
 mod host;
 mod journal;
+#[cfg(feature = "test-fixtures")]
+mod native_reply_fixture;
 use editor::{EditorRequest, Grant};
 use host::{Host, HostRequest};
 use serde_json::Value;
@@ -86,9 +88,22 @@ async fn desktop_request(
     request: HostRequest,
 ) -> Result<Value, String> {
     let host = state.inner().clone();
-    tauri::async_runtime::spawn_blocking(move || host.handle(request))
-        .await
-        .map_err(|_| "native-task-failed")?
+    tauri::async_runtime::spawn_blocking(move || {
+        #[cfg(feature = "test-fixtures")]
+        let inspected = match &request {
+            HostRequest::InspectIntegration { integration_id } => Some(integration_id.clone()),
+            _ => None,
+        };
+        // handle() has returned and dropped its guards before any QA-only hold.
+        let response = host.handle(request)?;
+        #[cfg(feature = "test-fixtures")]
+        if let Some(integration_id) = inspected {
+            native_reply_fixture::after_inspect(host.native_qa_root(), &integration_id, &response)?;
+        }
+        Ok(response)
+    })
+    .await
+    .map_err(|_| "native-task-failed")?
 }
 #[tauri::command]
 async fn desktop_poll(

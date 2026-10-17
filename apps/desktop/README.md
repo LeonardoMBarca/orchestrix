@@ -79,6 +79,8 @@ For an independent editor/candidate invalidation case, `--accepted-review` selec
 
 An explicit QA fixture also emits `ORCHESTRIX_QA_STARTUP` on the Desktop's redirected stderr after a compatible handshake, retaining only the bounded startup phase diagnostics. It does not log the Snapshot, paths or conversation content. These phases describe the reporting Child/nonce; they do not assert that it serves the separately validated Snapshot. Normal builds do not emit this QA record. Capture the process's stderr when measuring a cold opening, since reconnecting to an already ready daemon is a different case.
 
+For delayed-read QA, a fixture may arm one real Approved integration inspection reply with `native-reply-arm.json` (`integrationId`, ASCII `nonce`). After `Host::handle` releases its guards, a create-new claim and `native-reply-held.json` identify the exact historical response; `native-reply-release.json` must match its nonce, integration and `candidateRevision`. Publish complete files by temporary-file rename. The unchanged response returns on release or after a fixed 40 seconds, with `native-reply-finished.json` recording which occurred. A deadline is not proof of Save-before-reply. This one-shot instrumentation cannot change Core state and is absent from normal builds; never rearm a consumed fixture to manufacture a successful ordering.
+
 ## Visual sources and icon provenance
 
 Tokens/themes are imported from the approved `identity.css`, `styles.css` and `experience.css`; locales reuse the existing JSON catalogs. Imported assets are bundled by Vite. This keeps the approved Studio identity, eight themes, English default and Português/Español without copying the prototype's execution simulation.

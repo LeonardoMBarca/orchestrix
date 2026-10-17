@@ -440,6 +440,10 @@ impl Host {
             false
         }
     }
+    #[cfg(feature = "test-fixtures")]
+    pub fn native_qa_root(&self) -> Option<&std::path::Path> {
+        self.fixture.as_ref().map(|fixture| fixture.root.as_path())
+    }
     pub fn poll(
         &self,
         cursor: orchestrix_core::persistence::DaemonCursor,

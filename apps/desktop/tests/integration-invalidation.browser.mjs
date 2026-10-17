@@ -68,6 +68,6 @@ try{
  await page.locator('.o-rail').getByRole('button',{name:'Files',exact:true}).click();assert.equal(await buffer.inputValue(),'my unsaved buffer');assert.equal(await page.evaluate(()=>window.__qa.external),'external bytes');
  assert.deepEqual(errors,[]);console.log('Integration edit regression passed: save conflict preserves buffer, candidate becomes stale, historical refresh cannot approve, original deterministic retry invalidates while suspended.');
 }catch(error){
- const output=fileURLToPath(new URL('../../../artifacts/desktop-renderer-qa/integration-invalidation-failure/',import.meta.url));mkdirSync(output,{recursive:true});
+ const output=fileURLToPath(new URL(`../../../artifacts/desktop-renderer-qa/integration-invalidation-failure-${Date.now()}/`,import.meta.url));mkdirSync(output,{recursive:true});
  await page.screenshot({path:output+'screen.png',fullPage:true});console.error(await page.locator('body').ariaSnapshot());throw error;
 }finally{await browser.close();}
