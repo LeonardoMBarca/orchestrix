@@ -27,7 +27,12 @@ try{
    if(command==='desktop_request'){
     const r=args.request;calls.push(structuredClone(r));
     if(r.type==='bootstrap')return {revision:sequence+1,projects:[],conversations:[],settings,connections:[],eventCursor:{database:'edit-candidate',sequence},admissionsSuspended:suspended,daemon:daemon()};
-    if(r.type==='inspect-worker')return structuredClone(worker);if(r.type==='inspect-integration')return structuredClone(integration);
+    if(r.type==='inspect-worker')return structuredClone(worker);
+    if(r.type==='inspect-integration'){
+     const historical=structuredClone(integration);
+     if(window.__qa.deferInspect){window.__qa.deferInspect=false;window.__qa.inspectHeld=true;return new Promise(resolve=>{window.__qa.releaseInspect=()=>{window.__qa.inspectHeld=false;resolve(historical);};});}
+     return historical;
+    }
     if(r.type==='artifact-text')return {text:'',nextOffset:0,more:false,immutable:true};
     if(r.type==='revalidate-integration'){summary.status='invalidated';summary.reason='target-changed';sequence++;events.push({sequence,kind:'command-finished',body:{commandId:r.commandId,workerId:summary.id,state:'finished'}});return {integrationId:summary.id,receipt:{outcome:{state:'finished',status:'invalidated'}}};}
    }
@@ -39,6 +44,9 @@ try{
  await page.locator('.o-rail').getByRole('button',{name:'Studio',exact:true}).click();await page.locator('.o-dock').getByRole('button',{name:'Work',exact:true}).click();await page.locator('.o-page>.o-work-card').first().click();
  await page.locator('.o-integration-history button').click();
  await page.getByLabel('I authorize applying this exact candidate to the selected checkout after Core revalidation.',{exact:true}).check();
+ await page.evaluate(()=>{window.__qa.deferInspect=true;});
+ await page.getByRole('button',{name:'Refresh integration history',exact:true}).click();
+ await page.waitForFunction(()=>window.__qa.inspectHeld===true);
  await page.getByRole('button',{name:'File',exact:true}).click();await page.getByRole('menuitem',{name:'Open file',exact:true}).click();
  const buffer=page.getByRole('textbox',{name:'Edit candidate.txt',exact:true});await buffer.fill('my unsaved buffer');await buffer.press('Control+s');
  const conflict=page.locator('.o-editor').getByRole('alert');await conflict.waitFor();
@@ -52,6 +60,10 @@ try{
  const revalidate=page.getByRole('button',{name:'Revalidate candidate',exact:true});assert.equal(await revalidate.isEnabled(),true,'deterministic revalidation remains available while admissions are suspended');
  await revalidate.click();await page.getByText('target-changed',{exact:true}).waitFor();
  assert.equal(await page.getByRole('button',{name:'Apply approved candidate',exact:true}).count(),0);
+ await page.evaluate(()=>{window.__qa.releaseInspect();});
+ await page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));
+ assert.equal(await page.getByRole('button',{name:'Apply approved candidate',exact:true}).count(),0,'an Approved reply started before Save and delivered after confirmed invalidation cannot restore authority');
+ await page.getByText('target-changed',{exact:true}).waitFor();
  assert.equal(await page.evaluate(()=>window.__qa.calls.find(request=>request.type==='revalidate-integration').commandId),'edit-revalidation-one','retry preserves the original uncertain command identity');
  await page.locator('.o-rail').getByRole('button',{name:'Files',exact:true}).click();assert.equal(await buffer.inputValue(),'my unsaved buffer');assert.equal(await page.evaluate(()=>window.__qa.external),'external bytes');
  assert.deepEqual(errors,[]);console.log('Integration edit regression passed: save conflict preserves buffer, candidate becomes stale, historical refresh cannot approve, original deterministic retry invalidates while suspended.');
