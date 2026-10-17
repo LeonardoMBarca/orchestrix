@@ -420,13 +420,13 @@ impl Host {
         // Private QA output only: preserve the bounded child phase trace after
         // the renderer bootstraps, without logging a Snapshot or user content.
         #[cfg(feature = "test-fixtures")]
-        if self.fixture.is_some() {
-            if let Some(diagnostics) = value.get("startupDiagnostics") {
-                eprintln!(
-                    "ORCHESTRIX_QA_STARTUP {}",
-                    json!({"hostPid":std::process::id(),"diagnostics":diagnostics})
-                );
-            }
+        if self.fixture.is_some()
+            && let Some(diagnostics) = value.get("startupDiagnostics")
+        {
+            eprintln!(
+                "ORCHESTRIX_QA_STARTUP {}",
+                json!({"hostPid":std::process::id(),"diagnostics":diagnostics})
+            );
         }
         value
     }
