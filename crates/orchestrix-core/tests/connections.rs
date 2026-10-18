@@ -263,7 +263,10 @@ fn two_clients_share_one_flight_and_cache_without_creating_threads_or_turns() {
     );
     let after_select = d.raw(Operation::Snapshot).unwrap()["state"]["cursor"].clone();
     d.request(select);
-    assert_eq!(d.raw(Operation::Snapshot).unwrap()["state"]["cursor"], after_select);
+    assert_eq!(
+        d.raw(Operation::Snapshot).unwrap()["state"]["cursor"],
+        after_select
+    );
     let receipt = d
         .raw(Operation::CommandReceipt {
             command_id: "diagnose-second-window".into(),
