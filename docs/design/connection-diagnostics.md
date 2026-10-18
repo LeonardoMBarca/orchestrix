@@ -4,7 +4,7 @@ Contrato de **10 de outubro de 2026** para o diagnóstico automático no cadastr
 
 **Alinhamento de 13/10:** a atualização periódica e orientada a eventos abaixo é um **requisito novo planejado**, além do cadastro e Recheck já previstos. Não está implementada no protótipo ou no harness; não muda o contrato wire 1.1 nem autoriza probes. Esta seção é a especificação central de validade/atualização, consumida pelos tickets existentes.
 
-O incremento usa uma lógica de diagnóstico separada da execução. A bridge de desenvolvimento pode ler catálogos API; o relatório reúne essas respostas, configuração e observações autorizadas de adapters. O cadastro de um runtime sem adapter autenticado produz verificações bloqueadas ou desconhecidas, em vez de simular login. Não há inferência, execução de ferramentas ou alteração de permissões durante esse diagnóstico. Autenticação de produção, cofre, worker confiável e gates existentes continuam pendentes.
+O incremento usa uma lógica de diagnóstico separada da execução. A bridge de desenvolvimento pode ler catálogos API; o relatório reúne essas respostas, configuração e observações autorizadas de adapters. O cadastro de um runtime sem adapter autenticado produz verificações bloqueadas ou desconhecidas, em vez de simular login. Não há inferência, execução de ferramentas ou alteração de permissões durante esse diagnóstico. Esse registro descreve o estado histórico de 10/10. O caminho Codex gerido pelo runtime e o worker receberam provas posteriores, registradas no status; OAuth/cofre próprios e modalidades adicionais conservam seus gates.
 
 ## Fluxo automático e nova verificação
 
@@ -21,6 +21,14 @@ A sequência é:
 **Recheck** repete o diagnóstico no mesmo escopo. Não troca conta, região, endpoint, origem de cobrança ou permissões para obter um resultado melhor. Se a credencial transitória já não está disponível, a interface informa que a leitura depende de fornecê-la novamente; isso não revoga a conexão no provedor. Edição de identidade, desconexão ou remoção invalida a revisão em andamento. Uma resposta tardia não pode preencher outra conexão nem restaurar um recurso removido.
 
 O relatório anterior pode ser mantido como evidência histórica, com sua data e alcance. Falha no recheck não transforma informação antiga em observação atual. Cancelamento encerra a rodada sem declarar que a capacidade foi reprovada. Limites de concorrência, duração, páginas e tamanho de resposta continuam sob responsabilidade do host/adapter.
+
+## Recorte implementado de cadastro — 17/10/2026
+
+O Desktop usa a extensão `connections-v1` do [daemon](../contracts/local-daemon.md#runtime-managed-connections-extension): cadastro explícito do Codex instalado, diagnóstico após consentimento, Recheck, cancelamento da rodada exata e escopo separado para preparação de tarefa. As janelas compartilham o serviço existente de metadata; não mantêm outro catálogo autoritativo. CAS de cadastro e revisão de vinculação são distintos: renomear não troca a identidade das tentativas; desabilitar/desvincular/reconfirmar retira elegibilidade futura e preserva histórico.
+
+A instalação é candidata até sua verificação; o login continua gerido pelo runtime. O perfil instalado expõe apenas detalhes limitados da conta, sem ID remoto estável de conta/workspace. A interface não importa tokens, não promete contas/cotas independentes e não executa login. Uma rodada agrupa as leituras disponíveis; seu resultado distingue fonte sintética/oficial, idade, completude, falha, cancelamento e fatos desconhecidos. `model/list` não comprova entitlement, e permissões declaradas/configuradas não são observações de um turno executado.
+
+O recorte entrega cadastro/Recheck e revalidação necessária à preparação/admissão, com cache/limites/backoff já existentes. Não implementa outro scheduler nem configura uma cadência periódica completa pelo Control Center. O requisito ampliado abaixo permanece válido; resultados efetivamente executados, inclusive provas nativas/autenticadas, pertencem ao [status](../DEVELOPMENT_STATUS.md).
 
 ## Atualização periódica e orientada a eventos — requisito planejado
 
