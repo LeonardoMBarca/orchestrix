@@ -11,7 +11,12 @@ export type Conversation={id:string,title:string,projectId?:string|null,messageC
 export type ConversationWork={runId:string,taskId?:string,attemptId?:string,workerId?:string,revision?:string};
 export type ConversationDetail={id:string,projectId?:string|null,messages:Message[],draft?:string|null,nextOrdinal:number,more:boolean,work:ConversationWork[]};
 export type Project={id:string,name:string,directory?:string};
-export type Connection={id:string,label:string,provider:string,mode:string,status:string,models?:{id:string,name:string,efforts?:string[]}[]};
+export type DiagnosticStage={stage:string,state:string,source?:string,reason?:string,observedAtMs?:number};
+export type DiagnosticRun={id:string,state:string,connectionRevision:number,startedAtMs?:number,finishedAtMs?:number,observedAtMs?:number,validUntilMs?:number,nextAllowedAtMs?:number,complete?:boolean,cached?:boolean,current?:boolean,errorCode?:string,identityChanged?:boolean,provenance?:string,stages?:DiagnosticStage[],descriptor?:Record<string,unknown>,[key:string]:unknown};
+export type ConnectionDiagnostic={latest?:DiagnosticRun|null,lastSuccessful?:DiagnosticRun|null,lastSuccessfulAtMs?:number,identityChanged?:boolean,history?:DiagnosticRun[],observationRenewedOnRead?:false,catalog?:Record<string,any>|null,catalogDiagnosticId?:string|null,catalogObservedAtMs?:number|null,catalogLabels?:{id:string,label:string,nativeEfforts:string[]}[]|null,controlObservations?:string[]|null,structuredResultSupport?:boolean|null};
+export type Connection={id:string,label:string,name?:string,revision?:number,bindingRevision?:number,provider:string,mode:string,status:string,enabled?:boolean,linked?:boolean,selected?:boolean,adapterId?:string,runtimeVersion?:string,identityAssurance?:string,identityStatus?:string,diagnostics?:ConnectionDiagnostic,models?:{id:string,name:string,efforts?:string[],nativeEfforts?:string[]}[]};
+export type NativeCandidate={id:string,kind:'executable'|'home',location:string,source:string};
+export type RuntimeVersion={version:string,executableSha256:string,supported:boolean,inferenceUsed:false,authenticationRead:false};
 export type WorkerSummary={workerId:string,status:string};
 export type Cursor={database:string,sequence:number};
 export type DaemonSnapshot={state:{suspended:boolean,generation:number,cursor:Cursor},workers:WorkerSummary[],workerCount:number,nextWorker?:string|null,workerFactsHistorical:true,activeWorkerId?:string|null,activeCancellable?:boolean,activeOperationKind?:string|null,features?:string[]};
@@ -36,6 +41,13 @@ export type DesktopRequest=
  |{type:'prepare-task',draft:TaskDraft}
  |{type:'submit-task',commandId:string,preparationId:string,authorizeRuntime:boolean,authorizeChecks:boolean}
  |{type:'save-connection',commandId:string,label:string,version:string,executableGrant:string,homeGrant:string}
+ |{type:'detect-codex-candidates'}
+ |{type:'inspect-runtime-version',executableRef:string}
+ |{type:'link-connection',commandId:string,id?:string,expectedRevision?:number,name:string,version:string,executableRef:string,homeRef:string,executableSha256:string,allowMetadataRead:boolean}
+ |{type:'update-connection',commandId:string,id:string,expectedRevision:number,change:'rename'|'select'|'disable'|'enable'|'unlink'|'reconfirm-identity',name?:string,diagnosticId?:string}
+ |{type:'diagnose-connection',commandId:string,id:string,expectedRevision:number,allowMetadataRead:boolean}
+ |{type:'cancel-connection-diagnostic',commandId:string,id:string,expectedRevision:number,diagnosticId:string}
+ |{type:'connection-diagnostics',id:string}
  |{type:'control',action:'suspend'|'resume'|'cancel'|'recheck-recovery'|'revalidate-artifact',commandId:string,workerId?:string}
  |{type:'intervene',commandId:string,workerId:string,expectedRevision:number,action:'record-inspection'|'set-aside',authorize:boolean}
  |{type:'set-aside-review',commandId:string,reviewId:string,expectedRevision:number,authorize:boolean}
@@ -43,7 +55,7 @@ export type DesktopRequest=
  |{type:'request-review',commandId:string,workerId:string,authorizeRuntime:boolean}
  |{type:'authorize-correction',commandId:string,workerId:string,reviewId:string,authorizeRuntime:boolean};
 export type CheckDraft={id:string,executable:string,args:string[],timeoutSeconds:number};
-export type TaskDraft={conversationId:string,projectId?:string|null,repositoryGrant:string,worktreeGrant:string,connectionId:string,objective:string,acceptanceCriteria:string[],contextFiles:{grant:string,relative:string}[],checks:CheckDraft[],strategy:string,preset:string,model:string,effort:string,correctionBudget:number,fallback:string};
+export type TaskDraft={conversationId:string,projectId?:string|null,repositoryGrant:string,worktreeGrant:string,connectionId:string,connectionRevision?:number,objective:string,acceptanceCriteria:string[],contextFiles:{grant:string,relative:string}[],checks:CheckDraft[],strategy:string,preset:string,model:string,effort:string,correctionBudget:number,fallback:string,allowMetadataRead?:boolean};
 export type PreparedTask={id:string,task:unknown,decision?:unknown,context?:unknown,warning?:string};
 export async function request<T>(request:DesktopRequest):Promise<T>{return invoke<T>('desktop_request',{request});}
 export async function poll(cursor:Cursor):Promise<{daemon:DaemonSnapshot,cursor:Cursor,events:{sequence:number,kind:string,body:unknown}[],resyncRequired:boolean}>{return invoke('desktop_poll',{cursor});}

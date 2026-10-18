@@ -7,7 +7,7 @@ test('preparation belongs to the exact authorized draft, including commands and 
  const draft={conversationId:'conversation-one',projectId:'project-one',objective:'Fix the function',acceptanceCriteria:['Arithmetic passes'],repositoryGrant:'repo-grant',worktreeGrant:'work-grant',connectionId:'connection-one',contextFiles:[],checks:[{id:'check-one',executable:'trusted-executable',args:['--check'],timeoutSeconds:30}],strategy:'balanced',preset:'',model:'',effort:'',correctionBudget:0,fallback:'block'};
  const expected=taskFingerprint(draft);
  assert.equal(preparationStillCurrent(expected,structuredClone(draft)),true);
- for(const patch of [{projectId:'project-other'},{objective:'Changed objective'},{connectionId:'connection-two'},{correctionBudget:1},{fallback:'compatible'},{checks:[{...draft.checks[0],args:['--execute']}]}])assert.equal(preparationStillCurrent(expected,{...draft,...patch}),false);
+ for(const patch of [{projectId:'project-other'},{objective:'Changed objective'},{connectionId:'connection-two'},{connectionRevision:2},{allowMetadataRead:true},{correctionBudget:1},{fallback:'compatible'},{checks:[{...draft.checks[0],args:['--execute']}]}])assert.equal(preparationStillCurrent(expected,{...draft,...patch}),false);
 });
 
 test('New file follows the active authorized directory or requires explicit selection',()=>{

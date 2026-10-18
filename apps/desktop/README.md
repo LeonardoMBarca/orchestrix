@@ -67,6 +67,18 @@ After a native grant, file labels distinguish a unique recorded project or worke
 
 Host command records retain exact authorized operations and request hashes for lost replies/reopen, excluding credentials and rejected secret patterns. They are distinct from provider context and Core's authoritative journal. Subscription Only has no paid API fallback. The first validated subscription surface uses an explicitly selected, already authenticated Codex home; this is not OAuth or an independent account vault. Unknown quotas remain unknown. API adapters and unsupported connection modes are visibly unavailable.
 
+## Managed Codex connections
+
+Open **Connections → Connect account → Subscription → Codex**. Select a detected installation and Codex home, or use the native file/folder picker. **Check runtime version** inspects the executable without reading authentication. The supported production profile is `0.162.0-alpha.17.2`. After explicit metadata consent, **Link and diagnose** registers a stable local Connection and starts the daemon-owned bounded read. Codex must already be signed in through its own official flow; Orchestrix neither imports tokens nor supplies its own OAuth login in this mode.
+
+Connections and Settings expose selection, rename, disable/enable, unlink and Recheck. Unlink is local and does not log out of Codex. Rename preserves the binding used by existing work; binding changes invalidate prepared work without killing an active attempt. The same Codex home cannot be registered twice as separate linked capacity. Other homes may still share the system credential store, so neither independent accounts nor quotas are asserted.
+
+The diagnostic separates read state, date/validity, completeness, source, configured restrictions and unknown facts. Catalog labels and native reasoning names come from the same metadata response as the normalized choices; they do not establish model entitlement or applied turn settings. A failed recheck preserves the last successful date. A restarted daemon treats previous observations as historical, without automatically replaying a read. Polling views never starts diagnostics.
+
+Task preparation pins the Connection binding revision seen in the form and requires its own authorized project-directory metadata scope. A changed, disabled or unlinked binding is refused before dispatch; existing attempts retain their original identity/snapshots. API modalities and Orchestrix-owned Sign in with ChatGPT remain separate, unimplemented paths. Subscription Only never falls back to paid APIs.
+
+For focused offline coverage, run `node tests/connections.browser.mjs` (its own Vite server and mocked bridge). For native onboarding QA, generate `node scripts/native-fixture.mjs --connections --release` after a QA build and pass the emitted configuration through `ORCHESTRIX_DESKTOP_FIXTURE_CONFIG`. This mode starts with no registered connection and uses only the explicitly labelled synthetic runtime. It does not read a real account or certify provider behavior.
+
 ## Explicit synthetic native QA
 
 The nondefault Rust feature `test-fixtures` is reserved for controlled tests. Normal builds ignore `ORCHESTRIX_DESKTOP_FIXTURE_CONFIG` and expose no synthetic runtime registration action. A test build reads only an explicit fixture configuration prepared by `scripts/native-fixture.mjs`, uses separate app data, and labels the window as native synthetic validation.

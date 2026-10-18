@@ -1,7 +1,10 @@
 //! Native API client and filesystem authority. No SQLite or second worker engine.
+#[path = "connection_discovery.rs"]
+mod connection_discovery;
 use crate::daemon_startup::{StartupController, StartupLimits};
 use crate::editor::{Editor, EditorRequest};
 use orchestrix_core::{
+    connections::{ConnectionChange, ConnectionRequest},
     daemon::{API_VERSION, Client, Operation, Request, RuntimeChoice},
     desktop::{DesktopRequest, Settings},
     evaluator::CheckSpec,
@@ -9,22 +12,21 @@ use orchestrix_core::{
     integration_records::{ApplicationRequest, ApprovalRequest, IntegrationRequest},
     policy::{TaskClassification, TaskKind},
     review_records::{CorrectionRequest, ReviewBudget, ReviewRequest},
-    runtime::{
-        CancellationToken, CodexMetadataService, MetadataRead, RuntimeLaunch, SystemRefreshClock,
-    },
     worker::{ContextFileRequest, ManualTaskRequest},
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
+#[cfg(test)]
+use std::sync::Arc;
 use std::{
     collections::HashMap,
     fs,
     path::PathBuf,
-    sync::{Arc, Mutex},
+    sync::Mutex,
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct Binding {
     id: String,
@@ -51,7 +53,7 @@ pub struct Host {
     bindings: Mutex<HashMap<String, Binding>>,
     prepared: Mutex<HashMap<String, Prepared>>,
     startup: Mutex<StartupController>,
-    metadata: CodexMetadataService,
+    discovery: Mutex<connection_discovery::Discovery>,
     close_behavior: Mutex<String>,
     #[cfg(test)]
     test_transport: Option<TestTransport>,
@@ -71,6 +73,8 @@ struct FixtureConfig {
     review_scenario: Option<String>,
     #[serde(default)]
     worker_scenario: Option<String>,
+    #[serde(default)]
+    connections_onboarding: bool,
 }
 #[cfg(feature = "test-fixtures")]
 impl FixtureConfig {
@@ -145,6 +149,8 @@ pub struct TaskDraft {
     pub repository_grant: String,
     pub worktree_grant: String,
     pub connection_id: String,
+    #[serde(default)]
+    pub connection_revision: Option<u64>,
     pub objective: String,
     pub acceptance_criteria: Vec<String>,
     pub context_files: Vec<ContextDraft>,
@@ -155,6 +161,8 @@ pub struct TaskDraft {
     pub effort: String,
     pub correction_budget: u32,
     pub fallback: String,
+    #[serde(default)]
+    pub allow_metadata_read: bool,
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -275,6 +283,44 @@ pub enum HostRequest {
         executable_grant: String,
         home_grant: String,
     },
+    DetectCodexCandidates,
+    InspectRuntimeVersion {
+        executable_ref: String,
+    },
+    LinkConnection {
+        command_id: String,
+        id: Option<String>,
+        expected_revision: Option<u64>,
+        name: String,
+        version: String,
+        executable_ref: String,
+        home_ref: String,
+        executable_sha256: String,
+        allow_metadata_read: bool,
+    },
+    UpdateConnection {
+        command_id: String,
+        id: String,
+        expected_revision: u64,
+        change: String,
+        name: Option<String>,
+        diagnostic_id: Option<String>,
+    },
+    DiagnoseConnection {
+        command_id: String,
+        id: String,
+        expected_revision: u64,
+        allow_metadata_read: bool,
+    },
+    CancelConnectionDiagnostic {
+        command_id: String,
+        id: String,
+        expected_revision: u64,
+        diagnostic_id: String,
+    },
+    ConnectionDiagnostics {
+        id: String,
+    },
     Control {
         action: String,
         command_id: String,
@@ -319,6 +365,10 @@ fn id(prefix: &str) -> String {
 fn message_limit() -> usize {
     16
 }
+#[cfg(feature = "test-fixtures")]
+fn version_for_synthetic(runtime: &RuntimeChoice) -> bool {
+    matches!(runtime,RuntimeChoice::Codex{version,..}if version=="synthetic-rust-1")
+}
 fn stable(prefix: &str, command: &str) -> String {
     format!("{prefix}-{}", &sha(command.as_bytes())[..32])
 }
@@ -341,16 +391,7 @@ impl Host {
         let directory = directory
             .canonicalize()
             .map_err(|_| err("app-data-directory"))?;
-        let bindings = match fs::read(directory.join("runtime-bindings.json")) {
-            Ok(bytes) => {
-                if bytes.len() > 65_536 {
-                    return Err(err("runtime-binding-limit"));
-                }
-                serde_json::from_slice(&bytes).map_err(|_| err("runtime-binding-schema"))?
-            }
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => HashMap::new(),
-            Err(_) => return Err(err("runtime-binding-read")),
-        };
+        let bindings = HashMap::new();
         Ok(Self {
             database: directory.join("orchestrix.sqlite"),
             directory: directory.clone(),
@@ -360,8 +401,7 @@ impl Host {
             startup: Mutex::new(StartupController::new(StartupLimits::new(
                 Duration::from_secs(15),
             )?)),
-            metadata: CodexMetadataService::new(Arc::new(SystemRefreshClock), Default::default())
-                .ok_or("metadata-bounds")?,
+            discovery: Mutex::new(connection_discovery::Discovery::default()),
             close_behavior: Mutex::new(
                 fs::read_to_string(directory.join("window-preferences.json"))
                     .ok()
@@ -560,13 +600,8 @@ impl Host {
         Ok(result)
     }
     fn binding(&self, id: &str, allow_live: bool, purpose: &str) -> Result<RuntimeChoice, String> {
-        let binding = self
-            .load_bindings()?
-            .get(id)
-            .cloned()
-            .ok_or("native-runtime-binding-required")?;
-        let bytes = fs::read(&binding.executable).map_err(|_| "runtime-executable-unavailable")?;
-        if sha(&bytes) != binding.executable_hash {
+        let binding = self.linked_binding(id, None)?;
+        if connection_discovery::binary_hash(&binding.executable)? != binding.executable_hash {
             return Err(err("runtime-executable-changed-reconfigure"));
         }
         #[cfg(feature = "test-fixtures")]
@@ -600,6 +635,43 @@ impl Host {
     }
     fn replay(&self, effect: crate::journal::Effect) -> Result<Value, String> {
         let mut known = None;
+        if let Operation::Connections { request } = &effect.operation
+            && let ConnectionRequest::Link {
+                command_id,
+                runtime,
+                executable_sha256,
+                ..
+            } = &**request
+        {
+            let receipt = self.call(Operation::CommandReceipt {
+                command_id: command_id.clone(),
+                fingerprint: sha(
+                    &serde_json::to_vec(&effect.operation).map_err(|_| "desktop-command-schema")?
+                ),
+            })?;
+            if receipt["found"] == true {
+                known = Some(receipt["receipt"].clone());
+            } else {
+                let executable = match runtime {
+                    RuntimeChoice::Codex { executable, .. } => executable,
+                    RuntimeChoice::Synthetic { executable, .. } => {
+                        #[cfg(not(feature = "test-fixtures"))]
+                        {
+                            let _ = executable;
+                            return Err("synthetic-runtime-not-allowed".into());
+                        }
+                        #[cfg(feature = "test-fixtures")]
+                        {
+                            if self.fixture.is_none() {
+                                return Err("native-fixture-config-required".into());
+                            }
+                            executable
+                        }
+                    }
+                };
+                validate_runtime_pin(executable, Some(executable_sha256))?;
+            }
+        }
         let integration_id = match &effect.operation {
             Operation::PrepareIntegration { request, .. } => Some(request.id.clone()),
             Operation::ApproveIntegration { request, .. } => Some(request.integration_id.clone()),
@@ -685,8 +757,7 @@ impl Host {
     ) -> Result<Value, String> {
         let runtime_sha256 = if let Some(runtime) = effect_runtime(&operation) {
             let key = runtime_connection.ok_or("runtime-connection-required")?;
-            let bindings = self.load_bindings()?;
-            let selected = bindings.get(key).ok_or("native-runtime-binding-required")?;
+            let selected = self.linked_binding(key, None)?;
             let matches = match runtime {
                 RuntimeChoice::Codex {
                     executable,
@@ -827,8 +898,28 @@ impl Host {
                 self.cache_close_preference(&snapshot)?;
                 let daemon = self.call(Operation::Snapshot)?;
                 snapshot["daemon"] = daemon;
-                let labels = self.load_bindings()?;
-                let normalized:Vec<Value>=snapshot["connections"].as_array().into_iter().flatten().map(|d|{let id=d["connection"]["id"].as_str().unwrap_or_default();let models=d["models"].as_array().into_iter().flatten().map(|m|json!({"id":m["id"],"name":m["name"].as_str().or(m["id"].as_str()),"efforts":m["reasoningLevels"]})).collect::<Vec<_>>();json!({"id":id,"label":labels.get(id).map(|b|b.label.as_str()).unwrap_or("Codex"),"provider":"Codex","mode":"subscription","status":"historical; revalidation required","models":models,"descriptor":d})}).collect();
+                let links = self.connections(ConnectionRequest::List)?;
+                let mut normalized = Vec::new();
+                for link in links["connections"].as_array().into_iter().flatten() {
+                    let mut row = link.clone();
+                    row["label"] = row["name"].clone();
+                    row["provider"] = json!("Codex");
+                    row["mode"] = json!("subscription");
+                    row["status"] = if row["linked"] == false {
+                        json!("unlinked")
+                    } else if row["enabled"] == false {
+                        json!("disabled")
+                    } else {
+                        row["identityStatus"].clone()
+                    };
+                    normalized.push(row);
+                }
+                for d in snapshot["connections"].as_array().into_iter().flatten() {
+                    let id = d["connection"]["id"].as_str().unwrap_or_default();
+                    if !normalized.iter().any(|r| r["id"] == id) {
+                        normalized.push(json!({"id":id,"revision":d["connection"]["revision"],"label":"Codex (historical)","provider":"Codex","mode":"subscription","status":"relink-required","linked":false,"enabled":false,"models":[],"identityAssurance":"unknown"}));
+                    }
+                }
                 snapshot["connections"] = json!(normalized);
                 #[cfg(feature = "test-fixtures")]
                 {
@@ -1054,20 +1145,137 @@ impl Host {
                 limit,
             }),
             HostRequest::PrepareTask { draft } => self.prepare(*draft),
-            HostRequest::SaveConnection {
+            HostRequest::DetectCodexCandidates => {
+                #[cfg(feature = "test-fixtures")]
+                if let Some(fixture) = &self.fixture
+                    && fixture.connections_onboarding
+                {
+                    let candidates = self
+                        .discovery
+                        .lock()
+                        .map_err(|_| "discovery-lock")?
+                        .detect_fixture(fixture.executable.clone(), fixture.home.clone());
+                    return Ok(
+                        json!({"candidates":candidates,"syntheticQa":true,"authenticationRead":false,"executablesStarted":false}),
+                    );
+                }
+                let linked = Vec::new();
+                #[cfg(feature = "test-fixtures")]
+                let linked = if let Some(fixture) = &self.fixture {
+                    vec![(fixture.executable.clone(), fixture.home.clone())]
+                } else {
+                    linked
+                };
+                let candidates = self
+                    .discovery
+                    .lock()
+                    .map_err(|_| "discovery-lock")?
+                    .detect(&linked);
+                Ok(
+                    json!({"candidates":candidates,"authenticationRead":false,"executablesStarted":false}),
+                )
+            }
+            HostRequest::InspectRuntimeVersion { executable_ref } => {
+                let executable = self.connection_path(&executable_ref, "executable")?;
+                #[cfg(feature = "test-fixtures")]
+                if self.fixture.as_ref().is_some_and(|f| {
+                    f.connections_onboarding
+                        && f.executable.canonicalize().ok().as_ref() == Some(&executable)
+                }) {
+                    return connection_discovery::synthetic_version(
+                        executable,
+                        self.directory.clone(),
+                    );
+                }
+                connection_discovery::version(executable, self.directory.clone())
+            }
+            request @ HostRequest::LinkConnection { .. } => {
+                self.link_connection(request, fingerprint)
+            }
+            HostRequest::UpdateConnection {
                 command_id,
-                label,
-                version,
-                executable_grant,
-                home_grant,
-            } => self.configure(
+                id,
+                expected_revision,
+                change,
+                name,
+                diagnostic_id,
+            } => {
+                let change = match change.as_str() {
+                    "rename" => ConnectionChange::Rename {
+                        name: name.ok_or("connection-name")?,
+                    },
+                    "select" => ConnectionChange::Select,
+                    "disable" => ConnectionChange::Disable,
+                    "enable" => ConnectionChange::Enable,
+                    "unlink" => ConnectionChange::Unlink,
+                    "reconfirm-identity" => ConnectionChange::Reconfirm {
+                        diagnostic_id: diagnostic_id.ok_or("diagnostic-id")?,
+                    },
+                    _ => return Err("connection-change-not-allowed".into()),
+                };
+                self.effect(
+                    &command_id,
+                    fingerprint,
+                    Operation::Connections {
+                        request: Box::new(ConnectionRequest::Update {
+                            command_id: command_id.clone(),
+                            id,
+                            expected_revision,
+                            change,
+                        }),
+                    },
+                    None,
+                    None,
+                    None,
+                )
+            }
+            HostRequest::DiagnoseConnection {
                 command_id,
-                label,
-                version,
-                executable_grant,
-                home_grant,
+                id,
+                expected_revision,
+                allow_metadata_read,
+            } => self.effect(
+                &command_id,
                 fingerprint,
+                Operation::Connections {
+                    request: Box::new(ConnectionRequest::Diagnose {
+                        command_id: command_id.clone(),
+                        id,
+                        expected_revision,
+                        allow_metadata_read,
+                    }),
+                },
+                None,
+                None,
+                None,
             ),
+            HostRequest::CancelConnectionDiagnostic {
+                command_id,
+                id,
+                expected_revision,
+                diagnostic_id,
+            } => self.effect(
+                &command_id,
+                fingerprint,
+                Operation::Connections {
+                    request: Box::new(ConnectionRequest::CancelDiagnostic {
+                        command_id: command_id.clone(),
+                        id,
+                        expected_revision,
+                        diagnostic_id,
+                    }),
+                },
+                None,
+                None,
+                None,
+            ),
+            HostRequest::ConnectionDiagnostics { id } => {
+                self.connections(ConnectionRequest::Diagnostics {
+                    id,
+                    diagnostic_id: None,
+                })
+            }
+            HostRequest::SaveConnection { .. } => Err("connection-onboarding-required".into()),
             HostRequest::SubmitTask {
                 command_id,
                 preparation_id,
@@ -1087,6 +1295,10 @@ impl Host {
                 if !prepared.task.checks.is_empty() && !authorize_checks {
                     return Err(err("explicit-check-authorization-required"));
                 }
+                self.linked_binding(
+                    &prepared.connection_id,
+                    Some(prepared.task.connection_revision),
+                )?;
                 let runtime = self.binding(&prepared.connection_id, true, "implementation")?;
                 let result = self.effect(
                     &command_id,
@@ -1277,90 +1489,239 @@ impl Host {
             }
         }
     }
-    fn configure(
-        &self,
-        command_id: String,
-        label: String,
-        version: String,
-        executable_grant: String,
-        home_grant: String,
-        fingerprint: &str,
-    ) -> Result<Value, String> {
-        let (executable, home) = {
-            let editor = self.editor.lock().map_err(|_| "editor-lock")?;
-            (
-                editor.file(&executable_grant)?,
-                editor.directory(&home_grant)?,
-            )
-        };
-        if label.trim().is_empty() || label.len() > 120 {
-            return Err(err("connection-label"));
+    fn connections(&self, request: ConnectionRequest) -> Result<Value, String> {
+        self.call(Operation::Connections {
+            request: Box::new(request),
+        })
+    }
+    fn connection_path(&self, reference: &str, kind: &str) -> Result<PathBuf, String> {
+        if reference.starts_with("native-candidate-") {
+            return self
+                .discovery
+                .lock()
+                .map_err(|_| "discovery-lock")?
+                .resolve(reference, kind);
         }
-        let key = format!("codex-{}", &sha(home.to_string_lossy().as_bytes())[..24]);
-        let snapshot = self.desktop(DesktopRequest::Bootstrap)?;
-        let revision = snapshot["connections"]
+        let editor = self.editor.lock().map_err(|_| "editor-lock")?;
+        if kind == "executable" {
+            editor.file(reference)
+        } else {
+            editor.directory(reference)
+        }
+    }
+    fn linked_binding(&self, id: &str, expected: Option<u64>) -> Result<Binding, String> {
+        let list = self.connections(ConnectionRequest::List)?;
+        let row = list["connections"]
             .as_array()
             .into_iter()
             .flatten()
-            .filter(|d| d["connection"]["id"] == key)
-            .filter_map(|d| d["connection"]["revision"].as_u64())
-            .max()
-            .unwrap_or(0)
-            .max(self.load_bindings()?.get(&key).map_or(0, |b| b.revision))
-            + 1;
-        let executable_hash =
-            sha(&fs::read(&executable).map_err(|_| "runtime-executable-unavailable")?);
-        let launch = RuntimeLaunch::codex(
-            executable.clone(),
-            home.clone(),
-            self.directory.clone(),
-            version.clone(),
-        );
-        let MetadataRead::Ready {
-            metadata, complete, ..
-        } = self
-            .metadata
-            .read(launch, &key, revision, true, &CancellationToken::new())
-            .map_err(|e| e.code().to_owned())?
-        else {
-            return Err(err("metadata-not-ready"));
+            .find(|c| c["id"] == id)
+            .ok_or("connection-relink-required")?;
+        let registration = row["revision"].as_u64().ok_or("connection-revision")?;
+        let resolved = self.connections(ConnectionRequest::Resolve {
+            id: id.into(),
+            expected_revision: registration,
+        })?;
+        let revision = resolved["bindingRevision"]
+            .as_u64()
+            .ok_or("connection-binding-revision")?;
+        if expected.is_some_and(|expected| expected != revision) {
+            return Err("connection-binding-revision-changed".into());
+        }
+        let runtime: RuntimeChoice = serde_json::from_value(resolved["runtime"].clone())
+            .map_err(|_| "connection-runtime-schema")?;
+        let (executable, home, version) = match runtime {
+            RuntimeChoice::Codex {
+                executable,
+                home,
+                version,
+                ..
+            } => (executable, home, version),
+            RuntimeChoice::Synthetic {
+                executable, home, ..
+            } => (executable, home, "synthetic-rust-1".into()),
         };
-        let snapshot = self.desktop(DesktopRequest::Bootstrap)?;
-        validate_runtime_pin(&executable, Some(&executable_hash))?;
-        let binding = Binding {
-            id: key.clone(),
-            label,
-            executable_hash,
+        Ok(Binding {
+            id: id.into(),
+            label: row["name"].as_str().unwrap_or("Codex").into(),
+            revision,
             executable,
             home,
             version,
-            revision,
+            executable_hash: resolved["executableSha256"]
+                .as_str()
+                .ok_or("connection-executable-pin")?
+                .into(),
+        })
+    }
+    fn link_connection(&self, request: HostRequest, fingerprint: &str) -> Result<Value, String> {
+        let HostRequest::LinkConnection {
+            command_id,
+            id,
+            expected_revision,
+            name,
+            version,
+            executable_ref,
+            home_ref,
+            executable_sha256,
+            allow_metadata_read,
+        } = request
+        else {
+            return Err("connection-request".into());
         };
-        // Nonsecret paths/labels only. Authentication files remain in the provider's
-        // selected home and are never copied, serialized or returned to the renderer.
-        let receipt = self.effect(
+        let executable = self.connection_path(&executable_ref, "executable")?;
+        let home = self.connection_path(&home_ref, "home")?;
+        if !allow_metadata_read {
+            return Err("metadata-read-not-authorized".into());
+        }
+        let supported = connection_discovery::SUPPORTED_VERSIONS.contains(&version.as_str());
+        #[cfg(feature = "test-fixtures")]
+        let supported = supported
+            || self.fixture.as_ref().is_some_and(|f| {
+                f.connections_onboarding
+                    && version == "synthetic-rust-1"
+                    && f.executable.canonicalize().ok().as_ref() == Some(&executable)
+                    && f.home.canonicalize().ok().as_ref() == Some(&home)
+            });
+        if !supported {
+            return Err("runtime-version-not-supported".into());
+        }
+        if connection_discovery::binary_hash(&executable)? != executable_sha256 {
+            return Err("runtime-executable-changed".into());
+        }
+        let runtime = RuntimeChoice::Codex {
+            executable,
+            home,
+            version,
+            allow_live: false,
+        };
+        #[cfg(feature = "test-fixtures")]
+        let runtime = if version_for_synthetic(&runtime) {
+            let RuntimeChoice::Codex {
+                executable, home, ..
+            } = runtime
+            else {
+                return Err("fixture-runtime".into());
+            };
+            RuntimeChoice::Synthetic {
+                executable,
+                home,
+                scenario: "connection-metadata".into(),
+            }
+        } else {
+            runtime
+        };
+        self.effect(
             &command_id,
             fingerprint,
-            Operation::Desktop {
-                request: Box::new(DesktopRequest::RegisterConnection {
+            Operation::Connections {
+                request: Box::new(ConnectionRequest::Link {
                     command_id: command_id.clone(),
-                    expected_revision: snapshot["revision"].as_u64().ok_or("desktop-revision")?,
-                    descriptor: metadata.descriptor.as_json().clone(),
+                    id: id.unwrap_or_else(|| stable("connection", &command_id)),
+                    expected_revision,
+                    name,
+                    runtime,
+                    metadata_directory: self.directory.clone(),
+                    executable_sha256,
+                    allow_metadata_read,
                 }),
             },
-            Some(binding),
             None,
             None,
-        )?;
-        Ok(
-            json!({"receipt":receipt,"complete":complete,"inferenceUsed":false,"quota":"unknown","descriptor":metadata.descriptor.as_json()}),
+            None,
         )
+    }
+    fn preparation_scope(
+        &self,
+        id: &str,
+        binding_revision: u64,
+        directory: PathBuf,
+        authorized: bool,
+    ) -> Result<Value, String> {
+        if !authorized {
+            return Err("project-metadata-read-not-authorized".into());
+        }
+        let list = self.connections(ConnectionRequest::List)?;
+        let row = list["connections"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .find(|r| r["id"] == id)
+            .ok_or("connection-not-found")?;
+        let registration = row["revision"].as_u64().ok_or("connection-revision")?;
+        if row["bindingRevision"].as_u64() != Some(binding_revision) {
+            return Err("connection-binding-revision-changed".into());
+        }
+        let started = self.connections(ConnectionRequest::DiagnoseScope {
+            command_id: stable(
+                "prepare-metadata",
+                &format!(
+                    "{}-{}",
+                    id,
+                    SystemTime::now()
+                        .duration_since(UNIX_EPOCH)
+                        .unwrap_or_default()
+                        .as_nanos()
+                ),
+            ),
+            id: id.into(),
+            expected_revision: registration,
+            metadata_directory: directory,
+            allow_metadata_read: true,
+        })?;
+        let diagnostic = started["diagnosticId"]
+            .as_str()
+            .ok_or("preparation-diagnostic-required")?;
+        let began = std::time::Instant::now();
+        loop {
+            let report = self.connections(ConnectionRequest::Diagnostics {
+                id: id.into(),
+                diagnostic_id: Some(diagnostic.into()),
+            })?;
+            let current = &report["latest"];
+            if current["id"] != diagnostic
+                || current["registrationRevision"].as_u64() != Some(registration)
+                || current["connectionRevision"].as_u64() != Some(binding_revision)
+                || current["purpose"] != "task-preparation"
+            {
+                return Err("preparation-diagnostic-scope-changed".into());
+            }
+            match current["state"].as_str() {
+                Some("complete" | "partial")
+                    if current["current"] == true && current["identityChanged"] == false =>
+                {
+                    return Ok(
+                        json!({"diagnosticId":diagnostic,"registrationRevision":registration,"connectionRevision":binding_revision,"scopeKey":current["scopeKey"],"observedAtMs":current["observedAtMs"],"validUntilMs":current["validUntilMs"],"effectiveRuntimeConfirmed":false}),
+                    );
+                }
+                Some("running") => {}
+                _ => {
+                    return Err(current["errorCode"]
+                        .as_str()
+                        .unwrap_or("project-metadata-revalidation-required")
+                        .into());
+                }
+            }
+            if began.elapsed() >= Duration::from_secs(20) {
+                return Err("project-metadata-pending-recheck".into());
+            }
+            std::thread::sleep(Duration::from_millis(100));
+        }
+    }
+    fn preparation_binding(
+        &self,
+        connection_id: &str,
+        revision: Option<u64>,
+    ) -> Result<Binding, String> {
+        let revision = revision.ok_or("connection-binding-revision-required")?;
+        self.linked_binding(connection_id, Some(revision))
     }
     fn prepare(&self, draft: TaskDraft) -> Result<Value, String> {
         if draft.correction_budget > 3 || draft.context_files.len() > 32 || draft.checks.len() > 16
         {
             return Err(err("task-budget"));
         }
+        let binding = self.preparation_binding(&draft.connection_id, draft.connection_revision)?;
         let snapshot = self.desktop(DesktopRequest::Bootstrap)?;
         let settings: Settings =
             serde_json::from_value(snapshot["settings"].clone()).map_err(|_| "settings-schema")?;
@@ -1410,11 +1771,12 @@ impl Host {
         let base = GitExecutor::new()
             .and_then(|g| g.inspect_head(&repository))
             .map_err(|_| "git-head-inspection")?;
-        let binding = self
-            .load_bindings()?
-            .get(&draft.connection_id)
-            .cloned()
-            .ok_or("native-runtime-binding-required")?;
+        let scope_evidence = self.preparation_scope(
+            &draft.connection_id,
+            binding.revision,
+            repository.clone(),
+            draft.allow_metadata_read,
+        )?;
         let mut policy = settings.policy;
         policy.revision = policy
             .revision
@@ -1488,7 +1850,7 @@ impl Host {
             checks,
         };
         let key = id("preparation");
-        let public = json!({"id":key,"task":task,"warning":"Preparation is not execution. Policy/capability/context admission is authoritatively revalidated by Core before any turn."});
+        let public = json!({"id":key,"task":task,"scopeEvidence":scope_evidence,"warning":"Preparation is not execution. Policy/capability/context admission is authoritatively revalidated by Core before any turn."});
         let mut prepared = self.prepared.lock().map_err(|_| "preparation-lock")?;
         if prepared.len() >= 32 {
             return Err(err("preparation-limit"));
@@ -1533,51 +1895,31 @@ impl Host {
             .canonicalize()
             .map_err(|_| "native-fixture-home")?;
         let mut snapshot = self.desktop(DesktopRequest::Bootstrap)?;
-        let exists = snapshot["connections"]
-            .as_array()
-            .into_iter()
-            .flatten()
-            .any(|d| d["connection"]["id"] == "native-fixture-account");
-        if !exists {
-            let launch = RuntimeLaunch::fixture(
-                executable.clone(),
-                vec![
-                    "--scenario".into(),
-                    fixture.scenario("implementation").into(),
-                ],
-                home.clone(),
-                fixture.repository.clone(),
-            );
-            let MetadataRead::Ready { metadata, .. } = self
-                .metadata
-                .read(
-                    launch,
-                    "native-fixture-account",
-                    1,
-                    true,
-                    &CancellationToken::new(),
-                )
-                .map_err(|e| e.code().to_owned())?
-            else {
-                return Err("fixture-metadata-unavailable".into());
-            };
-            self.desktop(DesktopRequest::RegisterConnection {
-                command_id: id("fixture-register"),
-                expected_revision: snapshot["revision"].as_u64().ok_or("desktop-revision")?,
-                descriptor: metadata.descriptor.as_json().clone(),
-            })?;
+        if !fixture.connections_onboarding {
+            let links = self.connections(ConnectionRequest::List)?;
+            if !links["connections"]
+                .as_array()
+                .into_iter()
+                .flatten()
+                .any(|r| r["id"] == "native-fixture-account")
+            {
+                self.connections(ConnectionRequest::Link {
+                    command_id: id("fixture-link"),
+                    id: "native-fixture-account".into(),
+                    expected_revision: None,
+                    name: "Synthetic native validation".into(),
+                    runtime: RuntimeChoice::Synthetic {
+                        executable: executable.clone(),
+                        home: home.clone(),
+                        scenario: "connection-metadata".into(),
+                    },
+                    metadata_directory: self.directory.clone(),
+                    executable_sha256: connection_discovery::binary_hash(&executable)?,
+                    allow_metadata_read: true,
+                })?;
+            }
             snapshot = self.desktop(DesktopRequest::Bootstrap)?;
         }
-        let binding = Binding {
-            id: "native-fixture-account".into(),
-            label: "Synthetic native validation".into(),
-            executable_hash: sha(&fs::read(&executable).map_err(|_| "native-fixture-executable")?),
-            executable: executable.clone(),
-            home,
-            version: "synthetic-rust-1".into(),
-            revision: 1,
-        };
-        self.persist_binding(binding)?;
         if !snapshot["projects"]
             .as_array()
             .into_iter()
@@ -1615,7 +1957,21 @@ impl Host {
                 editor.grant_dialog_selection(executable)?,
             )
         };
-        let draft = json!({"conversationId":"","projectId":"native-fixture-project","repositoryGrant":repository.id,"worktreeGrant":worktrees.id,"connectionId":"native-fixture-account","objective":"fixture-edit: update fixture.txt while preserving the project","acceptanceCriteria":["fixture.txt contains after and the authorized check passes"],"contextFiles":[],"checks":[{"id":"fixture-check","executable":check.id,"args":["--check-fixture","after\n"],"timeoutSeconds":30}],"strategy":"balanced","preset":"","model":"","effort":"","correctionBudget":1,"fallback":"compatible"});
+        let connection_revision = if fixture.connections_onboarding {
+            None
+        } else {
+            let links = self.connections(ConnectionRequest::List)?;
+            Some(
+                links["connections"]
+                    .as_array()
+                    .into_iter()
+                    .flatten()
+                    .find(|link| link["id"] == "native-fixture-account")
+                    .and_then(|link| link["bindingRevision"].as_u64())
+                    .ok_or("native-fixture-binding-revision")?,
+            )
+        };
+        let draft = json!({"conversationId":"","projectId":"native-fixture-project","repositoryGrant":repository.id,"worktreeGrant":worktrees.id,"connectionId":if fixture.connections_onboarding{""}else{"native-fixture-account"},"connectionRevision":connection_revision,"allowMetadataRead":!fixture.connections_onboarding,"objective":"fixture-edit: update fixture.txt while preserving the project","acceptanceCriteria":["fixture.txt contains after and the authorized check passes"],"contextFiles":[],"checks":[{"id":"fixture-check","executable":check.id,"args":["--check-fixture","after\n"],"timeoutSeconds":30}],"strategy":"balanced","preset":"","model":"","effort":"","correctionBudget":1,"fallback":"compatible"});
         Ok(
             json!({"nativeTestMode":true,"grants":[repository,worktrees,check],"projectId":"native-fixture-project","draft":draft,"prompt":"fixture-edit: update fixture.txt while preserving the project"}),
         )
@@ -1737,7 +2093,10 @@ fn compatible(snapshot: Value) -> Result<Value, String> {
     let features = snapshot["features"]
         .as_array()
         .ok_or("daemon-upgrade-required-close-explicitly-before-upgrade")?;
-    if !features.iter().any(|f| f == "desktop-v1") || !features.iter().any(|f| f == "review-v1") {
+    if !features.iter().any(|f| f == "desktop-v1")
+        || !features.iter().any(|f| f == "review-v1")
+        || !features.iter().any(|f| f == "connections-v1")
+    {
         return Err(err("daemon-version-incompatible"));
     }
     Ok(snapshot)
@@ -1747,7 +2106,7 @@ fn validate_runtime_pin(
     executable: &std::path::Path,
     expected: Option<&str>,
 ) -> Result<(), String> {
-    let current = sha(&fs::read(executable).map_err(|_| "runtime-executable-unavailable")?);
+    let current = connection_discovery::binary_hash(executable)?;
     if expected != Some(current.as_str()) {
         return Err("runtime-executable-changed-reconfigure".into());
     }
@@ -2257,6 +2616,172 @@ mod tests {
             .is_err()
         );
         assert_eq!(operations.lock().unwrap().len(), 2);
+        fs::remove_dir_all(root).unwrap();
+    }
+    #[test]
+    fn renderer_connection_refs_do_not_grant_paths_and_legacy_binding_is_not_authority() {
+        let root = directory();
+        let exe = root.join("codex.exe");
+        fs::write(&exe, b"owned fixture bytes").unwrap();
+        let mut host = Host::new(root.clone()).unwrap();
+        assert!(
+            host.connection_path(exe.to_str().unwrap(), "executable")
+                .is_err()
+        );
+        host.persist_binding(Binding {
+            id: "legacy".into(),
+            label: "Legacy".into(),
+            executable: exe,
+            executable_hash: sha(b"owned fixture bytes"),
+            home: root.clone(),
+            version: "0.162.0-alpha.17.2".into(),
+            revision: 1,
+        })
+        .unwrap();
+        host.test_transport = Some(Arc::new(|operation| match operation {
+            Operation::Connections { request } if matches!(*request, ConnectionRequest::List) => {
+                Ok(json!({"connections":[]}))
+            }
+            _ => panic!("unexpected native operation"),
+        }));
+        assert_eq!(
+            host.linked_binding("legacy", None).unwrap_err(),
+            "connection-relink-required"
+        );
+        fs::remove_dir_all(root).unwrap();
+    }
+    #[test]
+    fn binding_revision_pin_survives_rename_and_refuses_configuration_change() {
+        let root = directory();
+        let exe = root.join("codex.exe");
+        fs::write(&exe, b"owned fixture bytes").unwrap();
+        let mut host = Host::new(root.clone()).unwrap();
+        let runtime = RuntimeChoice::Codex {
+            executable: exe.clone(),
+            home: root.clone(),
+            version: "0.162.0-alpha.17.2".into(),
+            allow_live: false,
+        };
+        let hash = sha(b"owned fixture bytes");
+        host.test_transport = Some(Arc::new(move |operation| match operation {
+            Operation::Connections { request } => match *request {
+                ConnectionRequest::List => Ok(
+                    json!({"connections":[{"id":"account","revision":5,"bindingRevision":3,"name":"Renamed"}]}),
+                ),
+                ConnectionRequest::Resolve {
+                    expected_revision, ..
+                } => {
+                    assert_eq!(expected_revision, 5);
+                    Ok(json!({"runtime":runtime,"bindingRevision":3,"executableSha256":hash}))
+                }
+                _ => panic!("unexpected connection operation"),
+            },
+            _ => panic!("unexpected native operation"),
+        }));
+        assert_eq!(host.linked_binding("account", Some(3)).unwrap().revision, 3);
+        assert_eq!(
+            host.preparation_binding("account", Some(3))
+                .unwrap()
+                .revision,
+            3
+        );
+        assert_eq!(
+            host.preparation_binding("account", None).unwrap_err(),
+            "connection-binding-revision-required"
+        );
+        assert_eq!(
+            host.preparation_binding("account", Some(2)).unwrap_err(),
+            "connection-binding-revision-changed"
+        );
+        assert_eq!(
+            host.linked_binding("account", Some(2)).unwrap_err(),
+            "connection-binding-revision-changed"
+        );
+        assert!(host.binding("account", false, "implementation").is_ok());
+        fs::write(&exe, b"changed binary").unwrap();
+        assert_eq!(
+            host.binding("account", false, "implementation")
+                .unwrap_err(),
+            "runtime-executable-changed-reconfigure"
+        );
+        fs::remove_dir_all(root).unwrap();
+    }
+    #[test]
+    fn lost_link_reply_replays_exact_original_operation_and_checks_binary_before_new_dispatch() {
+        let root = directory();
+        let exe = root.join("codex.exe");
+        fs::write(&exe, b"owned fixture bytes").unwrap();
+        let mut host = Host::new(root.clone()).unwrap();
+        let executable_ref = host
+            .editor
+            .lock()
+            .unwrap()
+            .grant_dialog_selection(exe.clone())
+            .unwrap()
+            .id;
+        let home_ref = host
+            .editor
+            .lock()
+            .unwrap()
+            .grant_dialog_selection(root.clone())
+            .unwrap()
+            .id;
+        let request = HostRequest::LinkConnection {
+            command_id: "original-link".into(),
+            id: None,
+            expected_revision: None,
+            name: "Local label".into(),
+            version: "0.162.0-alpha.17.2".into(),
+            executable_ref,
+            home_ref,
+            executable_sha256: sha(b"owned fixture bytes"),
+            allow_metadata_read: true,
+        };
+        let operations = Arc::new(Mutex::new(Vec::new()));
+        let recorded = operations.clone();
+        host.test_transport = Some(Arc::new(move |operation| match operation {
+            Operation::CommandReceipt { .. } => Ok(json!({"found":false})),
+            Operation::Connections { .. } => {
+                recorded
+                    .lock()
+                    .unwrap()
+                    .push(serde_json::to_value(operation).unwrap());
+                Err("daemon-unavailable".into())
+            }
+            _ => panic!("unexpected operation"),
+        }));
+        assert_eq!(
+            host.handle(request.clone()).unwrap_err(),
+            "daemon-unavailable"
+        );
+        assert_eq!(operations.lock().unwrap().len(), 1);
+        fs::write(&exe, b"changed after uncertain reply").unwrap();
+        assert_eq!(
+            host.handle(request.clone()).unwrap_err(),
+            "runtime-executable-changed-reconfigure"
+        );
+        assert_eq!(
+            operations.lock().unwrap().len(),
+            1,
+            "changed binary cannot receive another link dispatch"
+        );
+        fs::write(&exe, b"owned fixture bytes").unwrap();
+        let original = operations.lock().unwrap()[0].clone();
+        let replayed = Arc::new(Mutex::new(Vec::new()));
+        let seen = replayed.clone();
+        let mut reopened = Host::new(root.clone()).unwrap();
+        reopened.test_transport = Some(Arc::new(move |operation| match operation {
+            Operation::CommandReceipt { .. } => Ok(json!({"found":false})),
+            Operation::Connections { .. } => {
+                let actual = serde_json::to_value(operation).unwrap();
+                assert_eq!(actual, original);
+                seen.lock().unwrap().push(actual);
+                Ok(json!({"id":"original","linked":true}))
+            }
+            _ => panic!("unexpected operation"),
+        }));
+        assert_eq!(reopened.handle(request).unwrap()["linked"], true);
+        assert_eq!(replayed.lock().unwrap().len(), 1);
         fs::remove_dir_all(root).unwrap();
     }
 }

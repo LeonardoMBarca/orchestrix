@@ -3,16 +3,17 @@ import {Icon} from './icons';
 import {pick,type Grant} from './editor';
 import {request,type Bootstrap,type PreparedTask,type TaskDraft} from './protocol';
 import {preparationStillCurrent,taskFingerprint} from './task-preparation';
+import {selectableConnection} from './connection-state';
 
 type Props={
  task:TaskDraft,setTask:(task:TaskDraft)=>void,prepared:PreparedTask|null,setPrepared:(prepared:PreparedTask|null)=>void,
  grants:Grant[],setGrants:React.Dispatch<React.SetStateAction<Grant[]>>,connections:Bootstrap['connections'],projects:Bootstrap['projects'],
  runtimeConsent:boolean,checkConsent:boolean,setRuntimeConsent:(consent:boolean)=>void,setCheckConsent:(consent:boolean)=>void,
  busy:boolean,setBusy:(busy:boolean)=>void,t:(text:string)=>string,onError:(error:string)=>void,onSubmit:()=>Promise<void>,
- suspended:boolean,onResume:()=>Promise<void>,onAttach:(projectId:string)=>Promise<void>,onCreateProject:()=>void
+ suspended:boolean,onResume:()=>Promise<void>,onAttach:(projectId:string)=>Promise<void>,onCreateProject:()=>void,onLoadCatalog:(id:string)=>Promise<void>
 };
 
-export function TaskForm({task,setTask,prepared,setPrepared,grants,setGrants,connections,projects,runtimeConsent,checkConsent,setRuntimeConsent,setCheckConsent,busy,setBusy,t,onError,onSubmit,suspended,onResume,onAttach,onCreateProject}:Props){
+export function TaskForm({task,setTask,prepared,setPrepared,grants,setGrants,connections,projects,runtimeConsent,checkConsent,setRuntimeConsent,setCheckConsent,busy,setBusy,t,onError,onSubmit,suspended,onResume,onAttach,onCreateProject,onLoadCatalog}:Props){
  const current=useRef(task);current.current=task;
  const generation=useRef(0),[projectChoice,setProjectChoice]=useState(task.projectId??'');
  const mounted=useRef(true);
@@ -29,6 +30,10 @@ export function TaskForm({task,setTask,prepared,setPrepared,grants,setGrants,con
  const preparedChecks=Array.isArray(source?.checks)?source.checks as {id:string,executable?:string,arguments?:string[],timeout_ms?:number}[]:[];
  const grantName=(id:string)=>grants.find(grant=>grant.id===id)?.name??t('Not selected');
  const connection=connections.find(connection=>connection.id===task.connectionId);
+ const model=connection?.models?.find(model=>model.id===task.model);
+ useEffect(()=>{if(task.connectionRevision!==undefined&&(!connection||connection.linked===false||connection.enabled===false||connection.bindingRevision!==task.connectionRevision)){patch({connectionId:'',connectionRevision:undefined,allowMetadataRead:false,model:'',effort:''});}},[task.connectionRevision,connection?.bindingRevision,connection?.linked,connection?.enabled]);
+ useEffect(()=>{if(task.connectionId)void onLoadCatalog(task.connectionId);},[task.connectionId]);
+ useEffect(()=>{const pinned=(prepared?.task as {connection_revision?:number}|undefined)?.connection_revision;if(pinned!==undefined&&connection&&(connection.linked===false||connection.enabled===false||(connection.bindingRevision??pinned)!==pinned)){setPrepared(null);setRuntimeConsent(false);setCheckConsent(false);}},[prepared,connection?.bindingRevision,connection?.linked,connection?.enabled]);
  return <section className="o-page o-task-form">
   <header className="o-task-heading"><div><h1>{t('Prepare task')}</h1><p>{t('Define the result, inspect the request, then authorize execution.')}</p></div><ol className="o-task-steps" aria-label={t('Task preparation')}><li aria-current={!prepared?'step':undefined}>{t('Define')}</li><li aria-current={prepared?'step':undefined}>{t('Review & authorize')}</li></ol></header>
   {!task.projectId&&<section className="o-task-attach" aria-label={t('Attach conversation')}><strong>{t('Choose a project for this task')}</strong><p>{t('This conversation is independent. Attach it to a project before preparing a task.')}</p><div className="o-actions"><select aria-label={t('Project')} value={projectChoice} onChange={event=>setProjectChoice(event.target.value)} disabled={busy}><option value="">{t('Select project')}</option>{projects.map(project=><option key={project.id} value={project.id}>{project.name}</option>)}</select><button className="o-secondary" disabled={!projectChoice||busy} onClick={()=>void onAttach(projectChoice)}>{t('Attach conversation')}</button><button disabled={busy} onClick={onCreateProject}><Icon name="plus"/>{t('New project')}</button></div></section>}
@@ -37,10 +42,13 @@ export function TaskForm({task,setTask,prepared,setPrepared,grants,setGrants,con
    <div className="o-field-grid">
     <label>{t('Repository')}<button className="o-secondary o-path-picker" onClick={async()=>{const grant=await pick('folder');if(grant){setGrants(all=>[...all,grant]);patch({repositoryGrant:grant.id});}}}><Icon name="folder"/><span>{task.repositoryGrant?grantName(task.repositoryGrant):t('Select repository')}</span></button></label>
     <label>{t('Worktree folder')}<button className="o-secondary o-path-picker" onClick={async()=>{const grant=await pick('folder');if(grant){setGrants(all=>[...all,grant]);patch({worktreeGrant:grant.id});}}}><Icon name="folder"/><span>{task.worktreeGrant?grantName(task.worktreeGrant):t('Grant worktree folder')}</span></button></label>
-    <label>{t('Connection')}<select value={task.connectionId} onChange={event=>patch({connectionId:event.target.value})}><option value="">{t('Select connection')}</option>{connections.map(connection=><option key={connection.id} value={connection.id}>{connection.label}</option>)}</select></label>
+    <label>{t('Connection')}<select value={task.connectionId} onChange={event=>patch({connectionId:event.target.value,connectionRevision:connections.find(c=>c.id===event.target.value)?.bindingRevision,allowMetadataRead:false,model:'',effort:''})}><option value="">{t('Select connection')}</option>{connections.filter(selectableConnection).map(connection=><option key={connection.id} value={connection.id}>{connection.label}</option>)}</select></label>
+    <label>{t('Model')}<select value={task.model} onChange={event=>patch({model:event.target.value,effort:''})}><option value="">{t('Automatic selection')}</option>{connection?.models?.map(model=><option key={model.id} value={model.id}>{model.name}</option>)}</select></label>
+    <label>{t('Reasoning effort')}<select value={task.effort} onChange={event=>patch({effort:event.target.value})}><option value="">{t('Runtime default')}</option>{model?.efforts?.map(effort=><option key={effort} value={effort}>{effort}</option>)}</select></label>
     <label>{t('Correction budget')}<input type="number" min={0} max={3} value={task.correctionBudget} onChange={event=>patch({correctionBudget:Number(event.target.value)})}/></label>
    </div>
    <label className="o-checkbox"><input type="checkbox" checked={task.fallback==='compatible'} onChange={event=>patch({fallback:event.target.checked?'compatible':'block'})}/>{t('Allow compatible runtime defaults when model access is unconfirmed')}</label><p className="o-footnote">{t('Fallback')}: {task.fallback} · {t('No fallback to paid APIs')}</p>
+   <label className="o-checkbox"><input type="checkbox" checked={!!task.allowMetadataRead} onChange={event=>patch({allowMetadataRead:event.target.checked})}/>{t('Allow a bounded runtime metadata read in this project before preparing, without a model turn.')}</label><p className="o-footnote">{t('The linked-home catalog does not confirm project-specific runtime configuration. Preparation pins the current connection revision.')}</p>
    <div className="o-task-section-heading"><h2>{t('Authorized checks')}</h2><button className="o-secondary" onClick={()=>patch({checks:[...task.checks,{id:`check-${crypto.randomUUID()}`,executable:'',args:[],timeoutSeconds:30}]})}><Icon name="plus"/>{t('Add check')}</button></div>
    {!task.checks.length&&<p className="o-footnote">{t('No checks configured. The result will not be presented as tested.')}</p>}
    {task.checks.map((check,index)=><section key={check.id} className="o-work-card o-check-card" aria-label={`${t('Check')} ${index+1}`}><header><strong>{t('Check')} {index+1}</strong><button onClick={()=>patch({checks:task.checks.filter((_,item)=>item!==index)})}>{t('Remove')}</button></header><div className="o-field-grid"><label>{t('Executable')}<button className="o-secondary o-path-picker" onClick={async()=>{const grant=await pick('file');if(grant){setGrants(all=>[...all,grant]);patch({checks:current.current.checks.map(item=>item.id===check.id?{...item,executable:grant.id}:item)});}}}><Icon name="files"/><span>{check.executable?grantName(check.executable):t('Select executable')}</span></button></label><label>{t('Timeout (seconds)')}<input min={1} max={90} type="number" value={check.timeoutSeconds} onChange={event=>patch({checks:task.checks.map(item=>item.id===check.id?{...item,timeoutSeconds:Number(event.target.value)}:item)})}/></label></div><label>{t('Arguments (one per line)')}<textarea rows={2} value={check.args.join('\n')} onChange={event=>patch({checks:task.checks.map(item=>item.id===check.id?{...item,args:event.target.value.split('\n').filter(Boolean)}:item)})}/></label></section>)}
