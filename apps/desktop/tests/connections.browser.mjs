@@ -9,6 +9,19 @@ const {chromium}=require('playwright');
 const browser=await chromium.launch({channel:'chrome',headless:true});
 const page=await browser.newPage({viewport:{width:1442,height:794}});
 const errors=[];page.on('pageerror',error=>errors.push(error.message));
+async function assertConsentAdjacency(context){
+ const geometry=await page.locator('.o-connection-detail label.o-checkbox').evaluate(label=>{
+  const input=label.querySelector('input'),control=input.getBoundingClientRect();
+  const text=[...label.childNodes].find(node=>node.nodeType===Node.TEXT_NODE&&node.textContent.trim());
+  if(!text)throw Error('The consent label must expose its text beside the checkbox');
+  const index=text.textContent.search(/\S/u),range=document.createRange();range.setStart(text,index);range.setEnd(text,index+1);
+  const first=range.getBoundingClientRect(),style=getComputedStyle(label);
+  return {controlWidth:control.width,textGap:first.left-control.right,labelFont:parseFloat(style.fontSize)};
+ });
+ assert(geometry.controlWidth>0&&geometry.controlWidth<=24,`consent control must retain its intrinsic width: ${JSON.stringify({context,geometry})}`);
+ assert(geometry.textGap>=0&&geometry.textGap<=16,`consent text must be adjacent to its checkbox: ${JSON.stringify({context,geometry})}`);
+ return geometry;
+}
 try{
  await page.addInitScript(settings=>{
   let sequence=0,grant=0;const calls=[],events=[];
@@ -58,6 +71,7 @@ try{
  await dialog.getByLabel('Allow a bounded metadata read for this connection, without a model turn.',{exact:true}).check();
  await dialog.getByRole('button',{name:'Link and diagnose',exact:true}).click();
  await page.locator('.o-connection-detail').waitFor();
+ await assertConsentAdjacency('normal English 100%');
  await page.getByRole('status').filter({hasText:'Diagnostic state: Reading runtime metadata'}).waitFor();
  const linked=await page.evaluate(()=>window.__qa.calls.find(r=>r.type==='link-connection'));
  assert.equal(linked.executableRef,'opaque-executable');assert.equal(linked.homeRef,'opaque-home');assert.equal(linked.allowMetadataRead,true);
@@ -96,6 +110,8 @@ try{
   await page.waitForFunction(({language,scale})=>document.documentElement.lang===language&&getComputedStyle(document.documentElement).fontSize===`${14*scale/100}px`,{language,scale});
   const translate=key=>language==='en'?key:connectionTranslations[key]?.[language==='pt-BR'?0:1]??key;
   await page.getByRole('region',{name:translate('Connection details'),exact:true}).waitFor();
+  const consentGeometry=await assertConsentAdjacency({language,scale,width:900,height:620});
+  assert.equal(consentGeometry.labelFont,14*scale/100,'consent text must preserve the requested font scale');
   const geometry=await page.locator('.o-settings-content').evaluate(element=>({width:element.clientWidth,scrollWidth:element.scrollWidth,font:parseFloat(getComputedStyle(element).fontSize)}));
   assert(geometry.scrollWidth<=geometry.width+1,`connections content must not clip horizontally: ${JSON.stringify({language,scale,geometry})}`);
   await page.getByText(translate('Authentication ownership'),{exact:true}).waitFor();

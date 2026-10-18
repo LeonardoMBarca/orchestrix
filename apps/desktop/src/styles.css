@@ -56,3 +56,5 @@ html,body,#root{height:100%;overflow:hidden}body{font:1rem/1.45 var(--body)}butt
 .o-conversation-work{display:grid;gap:12px;min-width:0}.o-conversation-attempt{width:min(100%,40rem);min-width:0;margin:0;box-sizing:border-box}.o-conversation-attempt>header{flex-wrap:wrap}.o-conversation-attempt h3{margin:0;font-size:1rem}.o-conversation-attempt>.o-footnote{margin:0}.o-conversation-attempt>.o-actions{margin-top:0}.o-attempt-identity{display:grid;grid-template-columns:max-content minmax(0,1fr);gap:5px 14px;margin:8px 0}.o-attempt-identity dt{color:var(--muted)}.o-attempt-identity dd{margin:0;overflow-wrap:anywhere}
 /* Settings labels scale with their text; arbitrary wrapping remains for user content. */
 .o-settings-nav{width:min-content;min-width:180px;max-width:45%;overflow:auto}.o-settings-nav button{overflow-wrap:normal;word-break:normal;flex-shrink:0}
+/* Checkbox controls keep their intrinsic width beside wrapping consent text. */
+.o-checkbox input[type=checkbox]{width:auto;flex:0 0 auto}
