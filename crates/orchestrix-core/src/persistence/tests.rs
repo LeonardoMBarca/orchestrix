@@ -410,9 +410,9 @@ fn integration_migration_preserves_v6_rows_and_rolls_back_collisions() {
             .connection
             .query_row("SELECT checkpoint FROM projects", [], |r| r.get(0))
             .unwrap();
-        // Migrations 1..6 are unchanged. Remove only the empty v7 extension
+        // Migrations 1..6 are unchanged. Remove the empty later extensions
         // in this private fixture to exercise both migration outcomes.
-        store.connection.execute_batch("DROP TABLE integration_observations;DROP TABLE serial_integrations;PRAGMA user_version=6;").unwrap();
+        store.connection.execute_batch("DROP TABLE connection_diagnostic_runs;DROP TABLE connection_links;DROP TABLE connection_selection;DROP TABLE connection_commands;DROP TABLE integration_observations;DROP TABLE serial_integrations;PRAGMA user_version=6;").unwrap();
         if collision {
             store.connection.execute_batch("CREATE TABLE serial_integrations(sentinel TEXT);INSERT INTO serial_integrations VALUES('preserve');").unwrap();
         }
@@ -454,7 +454,7 @@ fn integration_migration_preserves_v6_rows_and_rolls_back_collisions() {
                     .connection
                     .pragma_query_value(None, "user_version", |r| r.get::<_, i64>(0))
                     .unwrap(),
-                7
+                SCHEMA_VERSION
             );
             assert_eq!(
                 store
@@ -465,6 +465,76 @@ fn integration_migration_preserves_v6_rows_and_rolls_back_collisions() {
                 before
             );
             assert!(store.load().unwrap().integrations().is_empty());
+            assert_eq!(store.load().unwrap().projects().len(), 1);
+        }
+    }
+}
+
+#[test]
+fn connection_migration_preserves_v7_rows_and_rolls_back_collisions() {
+    for collision in [false, true] {
+        let temp = TempDb::new();
+        let mut store = Store::open(&temp.path).unwrap();
+        store
+            .execute(&add("before-connections", 0, "preserved-v7-project"))
+            .unwrap();
+        let before: String = store
+            .connection
+            .query_row("SELECT checkpoint FROM projects", [], |r| r.get(0))
+            .unwrap();
+        store.connection.execute_batch("DROP TABLE connection_diagnostic_runs;DROP TABLE connection_links;DROP TABLE connection_selection;DROP TABLE connection_commands;PRAGMA user_version=7;").unwrap();
+        if collision {
+            store.connection.execute_batch("CREATE TABLE connection_links(sentinel TEXT);INSERT INTO connection_links VALUES('preserve');").unwrap();
+        }
+        drop(store);
+        let opened = Store::open(&temp.path);
+        if collision {
+            assert!(opened.is_err());
+            let db = Connection::open(&temp.path).unwrap();
+            assert_eq!(
+                db.pragma_query_value(None, "user_version", |r| r.get::<_, i64>(0))
+                    .unwrap(),
+                7
+            );
+            assert_eq!(
+                db.query_row("SELECT sentinel FROM connection_links", [], |r| r
+                    .get::<_, String>(0))
+                    .unwrap(),
+                "preserve"
+            );
+            assert_eq!(
+                db.query_row(
+                    "SELECT count(*) FROM sqlite_master WHERE name='connection_commands'",
+                    [],
+                    |r| r.get::<_, i64>(0)
+                )
+                .unwrap(),
+                0
+            );
+            assert_eq!(
+                db.query_row("SELECT checkpoint FROM projects", [], |r| r
+                    .get::<_, String>(0))
+                    .unwrap(),
+                before
+            );
+        } else {
+            let store = opened.unwrap();
+            assert_eq!(
+                store
+                    .connection
+                    .pragma_query_value(None, "user_version", |r| r.get::<_, i64>(0))
+                    .unwrap(),
+                SCHEMA_VERSION
+            );
+            assert_eq!(
+                store
+                    .connection
+                    .query_row("SELECT checkpoint FROM projects", [], |r| r
+                        .get::<_, String>(0))
+                    .unwrap(),
+                before
+            );
+            assert_eq!(store.connection_list().unwrap()["connections"], json!([]));
             assert_eq!(store.load().unwrap().projects().len(), 1);
         }
     }

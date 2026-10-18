@@ -82,6 +82,18 @@ impl RuntimeLaunch {
         launch.fixture_arguments = Some(arguments);
         launch
     }
+    pub(crate) fn matches_registration(
+        &self,
+        executable: &Path,
+        home: &Path,
+        version: &str,
+    ) -> bool {
+        self.version == version
+            && self.executable.canonicalize().ok() == executable.canonicalize().ok()
+            && self.codex_home.canonicalize().ok() == home.canonicalize().ok()
+            && self.executable.canonicalize().is_ok()
+            && self.codex_home.canonicalize().is_ok()
+    }
     pub fn is_synthetic(&self) -> bool {
         self.fixture_arguments.is_some()
     }
@@ -135,7 +147,7 @@ impl RuntimeLaunch {
         }
         Ok(())
     }
-    pub(super) fn metadata_scope(&self) -> RuntimeResult<String> {
+    pub(crate) fn metadata_scope(&self) -> RuntimeResult<String> {
         self.validate()?;
         let value = json!({"profile":"codex-local-v1","executable":std::fs::canonicalize(&self.executable).map_err(|_| RuntimeError::new("policy","not-sent"))?,"home":std::fs::canonicalize(&self.codex_home).map_err(|_| RuntimeError::new("policy","not-sent"))?,"cwd":std::fs::canonicalize(&self.cwd).map_err(|_| RuntimeError::new("policy","not-sent"))?,"version":self.version,"fixtureArguments":self.fixture_arguments});
         Ok(format!(
@@ -202,6 +214,13 @@ impl RuntimeLaunch {
         })?))
     }
 }
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct RuntimeModelPresentation {
+    pub id: String,
+    pub label: String,
+    pub native_efforts: Vec<String>,
+}
 #[derive(Clone)]
 pub struct RuntimeMetadata {
     pub descriptor: RuntimeDescriptor,
@@ -209,6 +228,8 @@ pub struct RuntimeMetadata {
     /// Configuration-backed restrictions; adapter rechecks the effective per-thread response.
     pub controls: Vec<String>,
     pub synthetic: bool,
+    /// Display-only rows from the same official catalog read; not admission authority.
+    pub model_presentation: Vec<RuntimeModelPresentation>,
     account_fingerprint: String,
 }
 impl std::fmt::Debug for RuntimeMetadata {
@@ -234,7 +255,19 @@ impl RuntimeMetadata {
                 == other.descriptor.as_json()["runtimeVersion"]
             && self.synthetic == other.synthetic
     }
-    /// Historical connection identity is checked without exposing native account data.
+    /// Opaque account/read observation fence, not proof of provider account identity.
+    /// The supported schema exposes labels (email/plan), not an immutable account ID.
+    pub fn observation_fingerprint(&self) -> &str {
+        &self.account_fingerprint
+    }
+    pub fn identity_assurance(&self) -> &'static str {
+        if self.synthetic {
+            "synthetic"
+        } else {
+            "observed-label"
+        }
+    }
+    /// Historical connection observation is checked without exposing native account data.
     pub fn matches_binding(&self, binding: &SessionBinding) -> bool {
         self.account_fingerprint == binding.account_fingerprint
             && self.descriptor.as_json()["connection"]["id"] == binding.connection_id
@@ -656,7 +689,10 @@ impl CodexAdapter {
         let mut turn_params = json!({"threadId":native_thread,"input":[{"type":"text","text":execution.prompt,"text_elements":[]}],"sandboxPolicy":configuration["sandbox"],"approvalPolicy":"never","approvalsReviewer":"user"});
         // Private QA correlation only on this explicit synthetic executable
         // profile. Native providers never receive these test-only fields.
-        if self.launch.fixture_arguments.as_ref().is_some_and(|args| args.windows(2).any(|pair| pair[0] == "--scenario" && pair[1] == "qa-controlled")) {
+        if self.launch.fixture_arguments.as_ref().is_some_and(|args| {
+            args.windows(2)
+                .any(|pair| pair[0] == "--scenario" && pair[1] == "qa-controlled")
+        }) {
             turn_params["_orchestrixQa"] = json!({"connectionId":request["connectionId"],"sessionId":request["sessionId"],"attemptId":request["attemptId"]});
         }
         if let Some(schema) = output_schema {
@@ -1071,16 +1107,19 @@ fn discover(
     let email = account["account"]["email"]
         .as_str()
         .filter(|text| !text.is_empty());
-    let account_id = account["account"]["accountId"]
-        .as_str()
-        .filter(|text| !text.is_empty());
-    if email.is_none() && account_id.is_none() {
+    // The pinned account/read schema has no immutable account ID. An email is
+    // only an observation fence; never infer an independent account/quota from it.
+    let fixture_identity = launch
+        .is_synthetic()
+        .then(|| account["account"]["accountId"].as_str())
+        .flatten();
+    if email.is_none() && fixture_identity.is_none() {
         return Err(RuntimeError::new("ownership", "not-sent"));
     }
     let account_fingerprint = format!(
         "{:x}",
         Sha256::digest(
-            json!({"email":email,"id":account_id,"plan":account["account"]["planType"]})
+            json!({"email":email,"id":fixture_identity,"plan":account["account"]["planType"]})
                 .to_string()
                 .as_bytes()
         )
@@ -1259,6 +1298,14 @@ fn discover(
             .map(Into::into)
             .collect(),
             synthetic: launch.is_synthetic(),
+            model_presentation: models
+                .iter()
+                .map(|(id, m)| RuntimeModelPresentation {
+                    id: id.clone(),
+                    label: m.name.clone(),
+                    native_efforts: m.efforts.clone(),
+                })
+                .collect(),
             account_fingerprint: account_fingerprint.clone(),
         },
         models,

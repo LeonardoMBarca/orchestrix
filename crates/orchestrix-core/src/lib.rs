@@ -1,6 +1,7 @@
 //! Portable domain/policy with separate persistence, Git, runtime and manual-worker infrastructure.
 #![forbid(unsafe_code)]
 
+pub mod connections;
 pub mod daemon;
 pub mod daemon_startup;
 pub mod desktop;

@@ -322,6 +322,13 @@ impl ManualWorker {
         if input.classification.kind.is_mechanical() {
             return Err(WorkerError("use-authorized-deterministic-query"));
         }
+        crate::connections::guard_launch(
+            store,
+            &input.connection_id,
+            input.connection_revision,
+            &launch,
+        )
+        .map_err(|_| WorkerError("connection-not-eligible"))?;
         let hash = content_hash(input.id.as_bytes());
         let suffix = &hash[..24];
         let diagnostic_id = format!("diagnostic-{suffix}");
@@ -344,6 +351,13 @@ impl ManualWorker {
             crate::runtime::MetadataRead::Ready { metadata, .. } => metadata,
             _ => return Err(WorkerError("metadata-refresh-pending")),
         };
+        crate::connections::guard_metadata(
+            store,
+            &input.connection_id,
+            input.connection_revision,
+            &metadata,
+        )
+        .map_err(|_| WorkerError("connection-observation-not-eligible"))?;
         if let Some(origin) = &correction {
             let old = record(store, &origin.source_worker_id)?;
             if !metadata.matches_binding(&crate::review::source_binding(&old)?) {
@@ -644,6 +658,13 @@ impl ManualWorker {
             json!({"worktreeOperation":worktree.intent.operation_id,"ownedJobKeeperReady":true}),
         )?;
         checkpoint(WorkerCheckpoint::SupervisorRecorded);
+        crate::connections::guard_launch(
+            store,
+            &input.connection_id,
+            input.connection_revision,
+            &launch,
+        )
+        .map_err(|_| WorkerError("connection-changed-before-runtime"))?;
         let mut adapter = CodexAdapter::connect(
             launch
                 .with_cwd(path.clone())
@@ -658,6 +679,13 @@ impl ManualWorker {
             checkpoint(WorkerCheckpoint::KeeperLostAfterRuntimeConnect);
         }
         checkpoint(WorkerCheckpoint::RuntimeConnected);
+        crate::connections::guard_metadata(
+            store,
+            &input.connection_id,
+            input.connection_revision,
+            adapter.metadata(),
+        )
+        .map_err(|_| WorkerError("connection-changed-before-dispatch"))?;
         if !expected_metadata.same_identity(adapter.metadata())
             || expected_metadata.descriptor.as_json() != adapter.metadata().descriptor.as_json()
             || expected_metadata.controls != adapter.metadata().controls

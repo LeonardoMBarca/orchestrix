@@ -5,8 +5,8 @@ mod metadata_schedule;
 pub mod refresh;
 mod rpc;
 pub use codex::{
-    AttemptExecution, CodexAdapter, RuntimeLaunch, RuntimeMetadata, RuntimeReport,
-    SUPPORTED_CODEX_VERSIONS, SessionBinding, native_effort, neutral_effort,
+    AttemptExecution, CodexAdapter, RuntimeLaunch, RuntimeMetadata, RuntimeModelPresentation,
+    RuntimeReport, SUPPORTED_CODEX_VERSIONS, SessionBinding, native_effort, neutral_effort,
 };
 pub use metadata::{
     CodexMetadataService, ManualRefreshClock, MetadataRead, RefreshClock, SystemRefreshClock,

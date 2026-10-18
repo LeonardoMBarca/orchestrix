@@ -143,6 +143,8 @@ impl ReviewPipeline {
         let cancel = &budget_cancel.token;
         let source_binding = source_binding(&source)?;
         let path = PathBuf::from(&worktree.intent.path);
+        crate::connections::guard_launch(store, &connection_id, connection_revision, &launch)
+            .map_err(|_| WorkerError("connection-not-eligible"))?;
         let metadata_adapter = CodexAdapter::connect(
             launch.clone().with_cwd(path.clone()),
             &connection_id,
@@ -152,6 +154,8 @@ impl ReviewPipeline {
         )?;
         let metadata = metadata_adapter.metadata().clone();
         drop(metadata_adapter);
+        crate::connections::guard_metadata(store, &connection_id, connection_revision, &metadata)
+            .map_err(|_| WorkerError("connection-observation-not-eligible"))?;
         if !metadata.matches_binding(&source_binding) {
             return Err(WorkerError("review-connection-identity-changed"));
         }
@@ -248,6 +252,8 @@ impl ReviewPipeline {
             launch.turn_timeout = launch
                 .turn_timeout
                 .min(std::time::Duration::from_millis(remaining));
+            crate::connections::guard_launch(store, &connection_id, connection_revision, &launch)
+                .map_err(|_| WorkerError("connection-changed-before-runtime"))?;
             let mut adapter = CodexAdapter::connect(
                 launch
                     .with_cwd(path.clone())
@@ -257,6 +263,13 @@ impl ReviewPipeline {
                 crate::worker::now()?,
                 cancel,
             )?;
+            crate::connections::guard_metadata(
+                store,
+                &connection_id,
+                connection_revision,
+                adapter.metadata(),
+            )
+            .map_err(|_| WorkerError("connection-changed-before-dispatch"))?;
             if !metadata.same_identity(adapter.metadata())
                 || metadata.descriptor.as_json() != adapter.metadata().descriptor.as_json()
                 || metadata.controls != adapter.metadata().controls

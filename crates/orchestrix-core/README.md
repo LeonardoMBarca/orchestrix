@@ -14,6 +14,8 @@ OX-003 is accepted for the first local single-account runtime under [portable in
 
 The consumer preserves requested/effective settings, model-specific levels/unknowns, local connection/revision/session/attempt/turn references, sequence/version/budgets, legacy strict and factual 1.1 transitions, typed errors/quarantine, interruption and independent process/helper/stream/tree evidence. It never derives a remote terminal from process termination. No hidden reasoning or runtime conversation memory is required.
 
+The application-layer [`connections`](src/connections.rs) service adds daemon-owned runtime-managed linking, lifecycle revisions, metadata diagnostics and future-admission guards. It reuses the existing runtime metadata service and Core store (migration 8), preserving local edit versus binding revisions, exact command receipts and historical observations. The [daemon connection extension](../../docs/contracts/local-daemon.md#runtime-managed-connections-extension) defines its host-only/private boundary; it does not implement an OAuth engine, credential vault or independent quota.
+
 ## Run
 
 Requires Rust/Cargo and the platform's linker/toolchain. The development Windows environment uses Rust **1.99.0**, x64/MSVC; no MSRV or macOS/Linux execution is certified by that result. Cargo.lock fixes dependency versions; it does not install providers or run inference.

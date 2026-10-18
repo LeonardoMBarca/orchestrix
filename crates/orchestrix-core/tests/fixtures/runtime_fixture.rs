@@ -53,7 +53,14 @@ fn main() {
         .map(|args| args[1].as_str())
         .unwrap_or("success");
     if args.first().map(String::as_str) == Some("--version") {
-        println!("codex-cli 0.162.0-alpha.2");
+        println!(
+            "codex-cli {}",
+            if scenario == "connection-metadata" {
+                "synthetic-rust-1"
+            } else {
+                "0.162.0-alpha.2"
+            }
+        );
         return;
     }
     if scenario == "child-hold" {
@@ -152,13 +159,18 @@ fn main() {
                 if scenario == "metadata-pause" {
                     std::thread::sleep(Duration::from_millis(100));
                 }
+                if scenario == "connection-metadata"
+                    && auth_home.join("connection-metadata-hang").exists()
+                {
+                    std::thread::sleep(Duration::from_secs(60));
+                }
                 if scenario == "metadata-hang" {
                     std::thread::sleep(Duration::from_secs(60));
                 }
                 send(json!({"id":id,"result":{"userAgent":"orchestrix-rust-fixture/1"}}))
             }
             "account/read" => send(
-                json!({"id":id,"result":{"account":if scenario == "auth-failure" {Value::Null} else {json!({"type":if scenario == "api" {"apiKey"} else {"chatgpt"},"accountId":if scenario == "wrong-account" {"different-fixture-identity"} else {"synthetic-identity"},"planType":"pro"})},"requiresOpenaiAuth":true}}),
+                json!({"id":id,"result":{"account":if scenario == "auth-failure" || (scenario=="connection-metadata"&&auth_home.join("connection-auth-invalid").exists()) {Value::Null} else {json!({"type":if scenario == "api" {"apiKey"} else {"chatgpt"},"accountId":if scenario == "connection-metadata" {std::fs::read_to_string(auth_home.join("connection-identity")).unwrap_or_else(|_|"synthetic-identity".into())} else if scenario == "wrong-account" {"different-fixture-identity".into()} else {"synthetic-identity".into()},"planType":"pro"})},"requiresOpenaiAuth":true}}),
             ),
             "account/rateLimits/read" => {
                 send(json!({"id":id,"result":{"ordinaryUsageAllowed":scenario != "quota-failure"}}))
@@ -178,7 +190,16 @@ fn main() {
                         data.push(row);
                     }
                 }
-                send(json!({"id":id,"result":{"data":data,"nextCursor":null}}));
+                if scenario == "connection-metadata"
+                    && auth_home.join("connection-partial").exists()
+                {
+                    if params.get("cursor").is_some() {
+                        data.clear();
+                    }
+                    send(json!({"id":id,"result":{"data":data,"nextCursor":"partial-fixture"}}));
+                } else {
+                    send(json!({"id":id,"result":{"data":data,"nextCursor":null}}));
+                }
             }
             "thread/start" | "thread/resume" => {
                 cwd = params["cwd"].as_str().map(PathBuf::from).unwrap_or(cwd);

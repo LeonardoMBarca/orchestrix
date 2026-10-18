@@ -25,6 +25,9 @@ pub struct Request {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "kebab-case", deny_unknown_fields)]
 pub enum Operation {
+    Connections {
+        request: Box<crate::connections::ConnectionRequest>,
+    },
     PrepareIntegration {
         command_id: String,
         expected_revision: u64,
@@ -291,6 +294,7 @@ impl ControlDiagnostics {
 }
 fn operation_tag(operation: &Operation) -> &'static str {
     match operation {
+        Operation::Connections { .. } => "connections",
         Operation::PrepareIntegration { .. } => "integration-prepare",
         Operation::RevalidateIntegration { .. } => "integration-revalidate",
         Operation::InspectIntegration { .. } => "integration-inspect",
@@ -412,6 +416,10 @@ pub fn serve_with_startup_observer(
     let mut listener = ipc::Listener::bind(&scope).map_err(|_| "daemon-endpoint-in-use")?;
     phase(Phase::IpcAvailable);
     report.finish();
+    store
+        .connection_interrupt_pending()
+        .map_err(|_| "connection-read-recovery")?;
+    let mut connections = crate::connections::ConnectionService::new();
     let mut active: Option<Active> = None;
     let mut shutdown: Option<Shutdown> = None;
     let mut diagnostics = ControlDiagnostics {
@@ -420,6 +428,7 @@ pub fn serve_with_startup_observer(
         ..ControlDiagnostics::default()
     };
     loop {
+        connections.drain(&mut store)?;
         if active.as_ref().is_some_and(|a| a.thread.is_finished()) {
             let completed = active.take().expect("checked active");
             let outcome = completed
@@ -463,6 +472,7 @@ pub fn serve_with_startup_observer(
         }
         if let Some(shutdown) = &shutdown
             && active.is_none()
+            && connections.is_idle()
         {
             store
                 .daemon_finish(
@@ -499,6 +509,7 @@ pub fn serve_with_startup_observer(
                         request.operation,
                         &mut active,
                         &mut shutdown,
+                        &mut connections,
                     )
                 }
                 Ok(_) => Response::error("api-version"),
@@ -529,8 +540,9 @@ fn handle(
     operation: Operation,
     active: &mut Option<Active>,
     shutdown: &mut Option<Shutdown>,
+    connections: &mut crate::connections::ConnectionService,
 ) -> Response {
-    match handle_inner(store, database, operation, active, shutdown) {
+    match handle_inner(store, database, operation, active, shutdown, connections) {
         Ok(value) => Response::value(value),
         Err(code) => Response::error(&code),
     }
@@ -541,16 +553,35 @@ fn handle_inner(
     operation: Operation,
     active: &mut Option<Active>,
     shutdown: &mut Option<Shutdown>,
+    connections: &mut crate::connections::ConnectionService,
 ) -> Result<Value, String> {
     match &operation {
+        Operation::Connections { request } => {
+            return connections.handle(store, request, shutdown.is_some());
+        }
         Operation::CommandReceipt {
             command_id,
             fingerprint,
         } => {
-            return store
+            let mut receipt = store
                 .daemon_receipt(command_id, fingerprint)
-                .map(|receipt| json!({"found":receipt.is_some(),"receipt":receipt}))
-                .map_err(|_| "command-id-conflict".into());
+                .map_err(|_| "command-id-conflict")?;
+            if receipt.is_none()
+                && let Some(response) = store
+                    .connection_command(command_id, fingerprint)
+                    .map_err(|_| "command-id-conflict")?
+            {
+                receipt = Some(DaemonCommandReceipt {
+                    replayed: true,
+                    outcome: if response["state"] == "accepted" {
+                        None
+                    } else {
+                        Some(response.clone())
+                    },
+                    response,
+                });
+            }
+            return Ok(json!({"found":receipt.is_some(),"receipt":receipt}));
         }
         Operation::InspectIntegration { integration_id } => {
             return store
@@ -564,7 +595,12 @@ fn handle_inner(
             snapshot["activeOperationKind"] = json!(active.as_ref().map(|a| a.kind));
             snapshot["activeCancellable"] = json!(active.as_ref().is_some_and(|a| a.cancellable));
             snapshot["shuttingDown"] = json!(shutdown.is_some());
-            snapshot["features"] = json!(["desktop-v1", "review-v1", "integration-v1"]);
+            snapshot["features"] = json!([
+                "desktop-v1",
+                "review-v1",
+                "integration-v1",
+                "connections-v1"
+            ]);
             return Ok(snapshot);
         }
         Operation::Workers {
@@ -843,6 +879,23 @@ fn handle_inner(
             {
                 return Err("recovery-inspection-required".into());
             }
+            let source = state
+                .workers()
+                .get(&request.worker_id)
+                .ok_or("worker-not-found")?;
+            let binding = crate::review::source_binding(source)
+                .map_err(|_| "review-source-binding")?
+                .checkpoint();
+            crate::connections::guard_choice(
+                store,
+                binding["connectionId"]
+                    .as_str()
+                    .ok_or("review-source-binding")?,
+                binding["connectionRevision"]
+                    .as_u64()
+                    .ok_or("review-source-binding")?,
+                &runtime,
+            )?;
             drop(state);
             let launch = runtime.launch_in(database.parent().ok_or("database-parent")?)?;
             let receipt = store
@@ -900,6 +953,12 @@ fn handle_inner(
             {
                 return Err("review-recovery-inspection-required".into());
             }
+            crate::connections::guard_choice(
+                store,
+                &request.task.connection_id,
+                request.task.connection_revision,
+                &runtime,
+            )?;
             let launch = runtime.launch(&request.task)?;
             validate_database_separation(database, &request.task)?;
             let receipt = store
@@ -993,6 +1052,12 @@ fn handle_inner(
             }
             // Explicit synthetic fault seam only; Codex has no injected stall.
             let stall_after_runtime = matches!(&runtime,RuntimeChoice::Synthetic{scenario,..}if scenario=="shutdown-stall");
+            crate::connections::guard_choice(
+                store,
+                &task.connection_id,
+                task.connection_revision,
+                &runtime,
+            )?;
             let launch = runtime.launch(&task)?;
             let receipt = store
                 .daemon_begin(&command_id, &fingerprint, "submit", Some(&task.id), None)
@@ -1135,6 +1200,7 @@ fn handle_inner(
             receipt_json(r)
         }
         Operation::Shutdown { command_id } => {
+            connections.cancel_all();
             let bounded = Shutdown::new(command_id.clone());
             let r = store
                 .daemon_begin(&command_id, &fingerprint, "shutdown", None, Some(true))
@@ -1279,10 +1345,16 @@ fn worker_thread_result(
     }
 }
 impl RuntimeChoice {
+    pub(crate) fn metadata_launch_in(mut self, directory: &Path) -> Result<RuntimeLaunch, String> {
+        if let Self::Codex { allow_live, .. } = &mut self {
+            *allow_live = true;
+        }
+        self.launch_in(directory)
+    }
     fn launch(self, task: &ManualTaskRequest) -> Result<RuntimeLaunch, String> {
         self.launch_in(&task.repository_directory)
     }
-    fn launch_in(self, directory: &Path) -> Result<RuntimeLaunch, String> {
+    pub(crate) fn launch_in(self, directory: &Path) -> Result<RuntimeLaunch, String> {
         match self {
             Self::Codex {
                 executable,
@@ -1313,6 +1385,12 @@ impl RuntimeChoice {
                     "check-failed",
                     "quota-failure",
                     "rate-limit",
+                    "connection-metadata",
+                    "metadata-pause",
+                    "metadata-hang",
+                    "wrong-account",
+                    "auth-failure",
+                    "api",
                     "catalog-seven",
                     "shutdown-stall",
                     "review-implementation",

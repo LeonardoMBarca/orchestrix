@@ -1,6 +1,7 @@
 //! Synchronous SQLite boundary. The domain has no database or process types.
 //! Every mutation uses detached state and a single, bounded writer transaction.
 mod commands;
+mod connections;
 mod daemon;
 mod desktop;
 mod git;
@@ -174,6 +175,7 @@ impl Store {
         };
         observe(StoreOpenPhase::Restoration);
         store.load()?; // Reject incompatible contents without rewriting the database.
+        store.connection_validate_history()?;
         Ok(store)
     }
     /// One consistent SQLite read snapshot, never a resumed runtime.
