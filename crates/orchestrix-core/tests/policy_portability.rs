@@ -481,6 +481,237 @@ fn explicit_definition_remapping_is_required_for_nonbuiltin_references() {
 }
 
 #[test]
+fn managed_definition_portability_requires_exact_mapping_and_preserves_local_instructions() {
+    use orchestrix_core::configuration::{
+        self, ConfigurationRequest, DefinitionOrigin, DefinitionType,
+    };
+
+    fn definitions(
+        store: &mut Store,
+        prefix: &str,
+        instruction_marker: &str,
+    ) -> (DefinitionBinding, DefinitionBinding) {
+        let mut profile = configuration::native_profiles().remove(0);
+        let profile_base = profile.binding();
+        profile.id = format!("{prefix}-profile");
+        profile.version = 0;
+        profile.origin = DefinitionOrigin::Local;
+        profile.base = Some(profile_base);
+        profile.name = "Same executor name".into();
+        profile.instructions = format!("{instruction_marker} PROFILE INSTRUCTIONS");
+        let profile_binding = DefinitionBinding {
+            id: profile.id.clone(),
+            version: 1,
+        };
+        let revision = store.load().unwrap().revision();
+        configuration::handle(
+            store,
+            &ConfigurationRequest::SaveProfile {
+                command_id: format!("create-{prefix}-profile"),
+                expected_revision: revision,
+                definition: profile,
+            },
+        )
+        .unwrap();
+        let mut mode = configuration::native_modes().remove(0);
+        let mode_base = mode.binding();
+        mode.id = format!("{prefix}-mode");
+        mode.version = 0;
+        mode.origin = DefinitionOrigin::Local;
+        mode.base = Some(mode_base);
+        mode.name = "Same action mode name".into();
+        mode.instructions = format!("{instruction_marker} MODE INSTRUCTIONS");
+        mode.roles[0].profile = profile_binding.clone();
+        let mode_binding = DefinitionBinding {
+            id: mode.id.clone(),
+            version: 1,
+        };
+        let revision = store.load().unwrap().revision();
+        configuration::handle(
+            store,
+            &ConfigurationRequest::SaveMode {
+                command_id: format!("create-{prefix}-mode"),
+                expected_revision: revision,
+                definition: mode,
+            },
+        )
+        .unwrap();
+        (mode_binding, profile_binding)
+    }
+
+    let mut source = store();
+    let (source_mode, source_profile) =
+        definitions(&mut source, "source", "SOURCE PRIVATE CONTENT");
+    let mut source_settings = Settings {
+        system_instructions: "SOURCE PERSONAL INSTRUCTIONS".into(),
+        ..Default::default()
+    };
+    source_settings.policy.mode = source_mode.clone();
+    source_settings.policy.profile = source_profile.clone();
+    source_settings.policy.mode_defaults.strategy = Some(Strategy::Efficiency);
+    save(&mut source, source_settings, "source-selections");
+    let exported = source.portable_policy_export().unwrap();
+    let document = exported["document"].as_str().unwrap().to_owned();
+    assert!(!document.contains("SOURCE PRIVATE CONTENT"));
+    assert!(!document.contains("SOURCE PERSONAL INSTRUCTIONS"));
+    assert!(!document.contains("instructions"));
+    let bundle = parse(&document).unwrap();
+    assert_eq!(bundle.policy.mode, source_mode);
+    assert_eq!(bundle.policy.profile, source_profile);
+
+    let mut destination = store();
+    let (local_mode, local_profile) =
+        definitions(&mut destination, "destination", "DESTINATION CONTENT");
+    let mut destination_settings = Settings {
+        system_instructions: "DESTINATION PERSONAL INSTRUCTIONS".into(),
+        ..Default::default()
+    };
+    destination_settings.policy.mode = local_mode.clone();
+    destination_settings.policy.profile = local_profile.clone();
+    save(
+        &mut destination,
+        destination_settings,
+        "destination-selections",
+    );
+    let before = destination.load().unwrap();
+    let mode_before = configuration::mode_definition(&before, &local_mode).unwrap();
+    let profile_before = configuration::profile_definition(&before, &local_profile).unwrap();
+    assert_eq!(
+        mode_before.name,
+        configuration::mode_definition(&source.load().unwrap(), &source_mode)
+            .unwrap()
+            .name
+    );
+    assert_eq!(
+        profile_before.name,
+        configuration::profile_definition(&source.load().unwrap(), &source_profile)
+            .unwrap()
+            .name
+    );
+    assert_ne!(local_mode.id, source_mode.id);
+    assert_ne!(local_profile.id, source_profile.id);
+    let definitions_before = before.records().definitions().to_vec();
+    let revision_before = before.revision();
+    let unresolved = destination
+        .portable_policy_preview(&document, &ImportMappings::default())
+        .unwrap();
+    assert!(!unresolved.can_apply);
+    assert!(
+        unresolved
+            .issues
+            .iter()
+            .any(|issue| issue.code == "portable-definition-unavailable")
+    );
+    assert_eq!(destination.load().unwrap().revision(), revision_before);
+    assert_eq!(
+        destination.load().unwrap().records().definitions(),
+        definitions_before
+    );
+
+    let mapping = ImportMappings {
+        mode: Some(local_mode.clone()),
+        profile: Some(local_profile.clone()),
+        ..Default::default()
+    };
+    let request = import_request(
+        &destination,
+        document.clone(),
+        mapping.clone(),
+        "mapped-local-definitions",
+    );
+    destination.execute(&request).unwrap();
+    let imported = current(&destination);
+    assert_eq!(imported.policy.mode, local_mode);
+    assert_eq!(imported.policy.profile, local_profile);
+    assert_eq!(
+        imported.policy.mode_defaults.strategy,
+        Some(Strategy::Efficiency)
+    );
+    assert_eq!(
+        imported.system_instructions,
+        "DESTINATION PERSONAL INSTRUCTIONS"
+    );
+    let state = destination.load().unwrap();
+    assert_eq!(
+        configuration::mode_definition(&state, &local_mode).unwrap(),
+        mode_before
+    );
+    assert_eq!(
+        configuration::profile_definition(&state, &local_profile).unwrap(),
+        profile_before
+    );
+    assert!(configuration::mode_definition(&state, &source_mode).is_err());
+    assert!(configuration::profile_definition(&state, &source_profile).is_err());
+    assert!(state.workers().is_empty());
+
+    for (kind, id) in [
+        (DefinitionType::Mode, &local_mode.id),
+        (DefinitionType::Profile, &local_profile.id),
+    ] {
+        let revision = destination.load().unwrap().revision();
+        configuration::handle(
+            &mut destination,
+            &ConfigurationRequest::Archive {
+                command_id: format!("archive-{id}"),
+                expected_revision: revision,
+                kind,
+                id: id.clone(),
+            },
+        )
+        .unwrap();
+    }
+    // Exact historical versions are still inspectable, but cannot authorize a
+    // new import after their stable local identities have been archived.
+    let archived = destination.load().unwrap();
+    assert_eq!(
+        configuration::mode_definition(&archived, &local_mode).unwrap(),
+        mode_before
+    );
+    assert_eq!(
+        configuration::profile_definition(&archived, &local_profile).unwrap(),
+        profile_before
+    );
+    let blocked = destination
+        .portable_policy_preview(&document, &mapping)
+        .unwrap();
+    assert!(!blocked.can_apply);
+    assert!(
+        blocked
+            .issues
+            .iter()
+            .any(|issue| issue.code == "portable-definition-unavailable")
+    );
+    let refused = Request {
+        scope: LocalRef::new("portable").unwrap(),
+        key: LocalRef::new("import-archived-definitions").unwrap(),
+        expected_revision: archived.revision(),
+        command: Command::Desktop(DesktopCommand::ImportPolicy {
+            document: document.clone(),
+            mappings: mapping.clone(),
+            expected_preview_digest: blocked.preview_digest,
+        }),
+    };
+    assert!(matches!(
+        destination.execute(&refused),
+        Err(StoreError::Configuration)
+    ));
+    let profile_only_mapping = ImportMappings {
+        mode: Some(DefinitionBinding {
+            id: "development".into(),
+            version: 2,
+        }),
+        ..mapping
+    };
+    assert!(
+        !destination
+            .portable_policy_preview(&document, &profile_only_mapping)
+            .unwrap()
+            .can_apply
+    );
+    assert_eq!(destination.load().unwrap().revision(), archived.revision());
+}
+
+#[test]
 fn separate_account_model_ranks_keep_distinct_remapping_references() {
     let mut settings = Settings::default();
     settings.policy.mode_defaults.connection_id = Some("account-b".into());
