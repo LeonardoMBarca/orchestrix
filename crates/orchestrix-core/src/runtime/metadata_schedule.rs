@@ -66,6 +66,7 @@ struct Registration {
     last_start_ms: Option<u64>,
     trigger: MetadataRefreshTrigger,
     paused: bool,
+    failures: u32,
 }
 struct State {
     registrations: BTreeMap<String, Registration>,
@@ -114,6 +115,9 @@ impl MetadataRefreshCoordinator {
     /// No RPC/process is launched. A changed executable/auth-store/directory or
     /// runtime version requires a higher connection revision.
     pub fn register(&self, value: MetadataRegistration) -> RuntimeResult<()> {
+        self.register_inner(value, true)
+    }
+    fn register_inner(&self, value: MetadataRegistration, invalidate: bool) -> RuntimeResult<()> {
         if value.connection_id.is_empty()
             || value.connection_id.len() > 80
             || !value
@@ -122,7 +126,7 @@ impl MetadataRefreshCoordinator {
                 .all(|byte| byte.is_ascii_alphanumeric() || b"-_".contains(&byte))
             || value.revision == 0
             || value.interval_ms < self.bounds.minimum_interval_ms
-            || value.interval_ms > 900_000
+            || value.interval_ms > 86_400_000
         {
             return Err(RuntimeError::new("policy", "not-sent"));
         }
@@ -164,11 +168,12 @@ impl MetadataRefreshCoordinator {
                 last_start_ms: last_start,
                 trigger: MetadataRefreshTrigger::Reconnected,
                 paused: false,
+                failures: 0,
             },
         );
-        if revised {
+        if invalidate && revised {
             self.service.invalidate_connection(&connection, revision);
-        } else if revoked {
+        } else if invalidate && revoked {
             self.service.invalidate_observations(&connection, revision);
         }
         Ok(())
@@ -237,6 +242,143 @@ impl MetadataRefreshCoordinator {
         self.service
             .invalidate_observations(connection_id, revision);
         true
+    }
+    /// Production daemon registration: explicit recurring consent has already been
+    /// checked by the host. First use/restart/configuration change schedules one
+    /// future opportunity, never an immediate replay of missed intervals.
+    pub fn register_deferred(&self, value: MetadataRegistration) -> RuntimeResult<()> {
+        let id = value.connection_id.clone();
+        let interval = value.interval_ms;
+        self.register_inner(value, false)?;
+        let mut state = self
+            .state
+            .lock()
+            .map_err(|_| RuntimeError::new("transport-loss", "not-sent"))?;
+        if let Some(entry) = state.registrations.get_mut(&id) {
+            entry.due_ms = self.clock.now_ms().saturating_add(interval);
+        }
+        Ok(())
+    }
+    /// Nonblocking claim for the daemon's existing owned metadata flight. The
+    /// shared coordinator remains the timing/limit authority; the host persists
+    /// progress before executing the read on its bounded background thread.
+    pub fn claim_due(&self) -> RuntimeResult<Option<MetadataClaim>> {
+        let now = self.clock.now_ms();
+        let mut state = self
+            .state
+            .lock()
+            .map_err(|_| RuntimeError::new("transport-loss", "not-sent"))?;
+        let jumped = now < state.last_tick_ms
+            || (state.last_tick_ms != 0
+                && state
+                    .registrations
+                    .values()
+                    .any(|entry| now.saturating_sub(state.last_tick_ms) > entry.value.interval_ms));
+        if jumped {
+            for entry in state.registrations.values_mut() {
+                entry.due_ms = now.saturating_add(entry.value.interval_ms);
+            }
+        }
+        state.last_tick_ms = now;
+        if state.busy.len() >= self.bounds.max_in_flight {
+            return Ok(None);
+        }
+        let selected = state
+            .registrations
+            .iter()
+            .filter(|(id, entry)| {
+                !state.busy.contains(*id)
+                    && entry.value.authorized
+                    && entry.value.enabled
+                    && !entry.paused
+                    && now >= entry.due_ms
+            })
+            .min_by_key(|(id, entry)| (entry.due_ms, *id))
+            .map(|(id, entry)| MetadataClaim {
+                connection_id: id.clone(),
+                revision: entry.value.revision,
+                generation: entry.generation,
+                trigger: entry.trigger,
+            });
+        if let Some(claim) = &selected {
+            state.busy.insert(claim.connection_id.clone());
+            if let Some(entry) = state.registrations.get_mut(&claim.connection_id) {
+                entry.last_start_ms = Some(now);
+                entry.due_ms = now.saturating_add(entry.value.interval_ms);
+            }
+        }
+        Ok(selected)
+    }
+    pub fn complete_claim(
+        &self,
+        claim: &MetadataClaim,
+        succeeded: bool,
+        next_allowed: Option<u64>,
+        pause: bool,
+    ) {
+        let Ok(mut state) = self.state.lock() else {
+            return;
+        };
+        state.busy.remove(&claim.connection_id);
+        if let Some(entry) = state
+            .registrations
+            .get_mut(&claim.connection_id)
+            .filter(|entry| entry.generation == claim.generation)
+        {
+            entry.failures = if succeeded {
+                0
+            } else {
+                entry.failures.saturating_add(1)
+            };
+            let backoff = if succeeded {
+                0
+            } else {
+                1_000_u64
+                    .saturating_mul(1 << entry.failures.min(8))
+                    .min(300_000)
+            };
+            entry.due_ms = self
+                .clock
+                .now_ms()
+                .saturating_add(entry.value.interval_ms.max(backoff))
+                .max(next_allowed.unwrap_or(0));
+            entry.paused = pause;
+        }
+    }
+    /// None means no recurring permission/registration. A date is only the next
+    /// opportunity, not a promise of authentication or resource availability.
+    pub fn registration_status(&self, id: &str) -> Option<(u64, bool, bool, u32)> {
+        let state = self.state.lock().ok()?;
+        let entry = state.registrations.get(id)?;
+        Some((
+            entry.due_ms,
+            entry.paused,
+            state.busy.contains(id),
+            entry.failures,
+        ))
+    }
+    /// Host revocation detaches only recurring scheduling. The host cancels its
+    /// periodic flight; separately authorized foreground reads/cache are retained.
+    pub fn unregister(&self, id: &str) {
+        if let Ok(mut state) = self.state.lock() {
+            state.registrations.remove(id);
+        }
+    }
+    pub fn defer(&self, id: &str) {
+        if let Ok(mut state) = self.state.lock()
+            && let Some(entry) = state.registrations.get_mut(id)
+        {
+            entry.due_ms = self.clock.now_ms().saturating_add(entry.value.interval_ms);
+        }
+    }
+    pub fn revalidated(&self, id: &str) {
+        if let Ok(mut state) = self.state.lock()
+            && let Some(entry) = state.registrations.get_mut(id)
+        {
+            entry.paused = false;
+            entry.failures = 0;
+            entry.due_ms = self.clock.now_ms().saturating_add(entry.value.interval_ms);
+        }
     }
     /// The host explicitly invokes this bounded tick. No lock/database lease
     /// spans a read, and concurrent cloned ticks cannot duplicate one connection.
@@ -338,4 +480,12 @@ impl MetadataRefreshCoordinator {
         }
         Ok(updates)
     }
+}
+
+#[derive(Clone, Debug)]
+pub struct MetadataClaim {
+    pub connection_id: String,
+    pub revision: u64,
+    generation: u64,
+    pub trigger: MetadataRefreshTrigger,
 }

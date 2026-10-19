@@ -7,6 +7,7 @@ mod desktop;
 mod git;
 mod integration;
 mod integration_projection;
+mod policy_portability;
 mod review;
 mod schema;
 mod state;
@@ -256,6 +257,7 @@ impl Store {
             return Err(StoreError::StaleRevision);
         }
         let before = staged.checkpoint();
+        policy_portability::validate_import_command(&transaction, &staged, &request.command)?;
         let operation = request.command.apply(&mut staged);
         let changed = staged.checkpoint() != before;
         let (disposition, error_code, output) = match operation {

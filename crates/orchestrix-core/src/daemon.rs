@@ -77,6 +77,10 @@ pub enum Operation {
         command_id: String,
         authorization_ref: String,
         conversation_id: String,
+        // Legacy receipt bytes retain their fingerprint. Missing evidence cannot
+        // authorize a previously unadmitted Desktop preparation.
+        #[serde(default, skip_serializing_if = "String::is_empty")]
+        settings_fingerprint: String,
         task: Box<ManualTaskRequest>,
         runtime: RuntimeChoice,
     },
@@ -429,6 +433,9 @@ pub fn serve_with_startup_observer(
     };
     loop {
         connections.drain(&mut store)?;
+        if shutdown.is_none() {
+            connections.tick(&mut store)?;
+        }
         if active.as_ref().is_some_and(|a| a.thread.is_finished()) {
             let completed = active.take().expect("checked active");
             let outcome = completed
@@ -599,7 +606,8 @@ fn handle_inner(
                 "desktop-v1",
                 "review-v1",
                 "integration-v1",
-                "connections-v1"
+                "connections-v1",
+                "control-settings-v1"
             ]);
             return Ok(snapshot);
         }
@@ -739,9 +747,14 @@ fn handle_inner(
             command_id,
             authorization_ref,
             conversation_id,
+            settings_fingerprint,
             task,
             runtime,
         } => {
+            // The single daemon control owner checks this after known receipts
+            // and before admission/journaling. No Settings command can interleave
+            // between this fence and this command's first admission.
+            guard_preparation_settings(store, &settings_fingerprint)?;
             let state = store.load().map_err(|_| "database")?;
             let conversation = state
                 .conversations()
@@ -1330,6 +1343,19 @@ fn link_correction_conversations(
     }
     Ok(())
 }
+fn guard_preparation_settings(store: &Store, expected: &str) -> Result<(), String> {
+    if expected.is_empty() {
+        return Err("prepared-policy-evidence-required".into());
+    }
+    let snapshot = store.desktop_snapshot().map_err(|_| "database")?;
+    let current: crate::desktop::Settings =
+        serde_json::from_value(snapshot["settings"].clone()).map_err(|_| "settings-schema")?;
+    if current.execution_fingerprint()? != expected {
+        return Err("prepared-policy-changed-prepare-again".into());
+    }
+    Ok(())
+}
+
 fn worker_thread_result(
     store: &mut Store,
     command_id: &str,
@@ -1454,6 +1480,138 @@ fn validate_database_separation(database: &Path, task: &ManualTaskRequest) -> Re
 #[cfg(all(test, windows))]
 mod tests {
     use super::*;
+    #[test]
+    fn desktop_preparation_policy_fence_rejects_unadmitted_replay_but_keeps_known_receipt() {
+        let root = std::env::temp_dir().join(format!(
+            "orchestrix-policy-fence-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir(&root).unwrap();
+        let database = root.join("state.sqlite");
+        let mut store = Store::open(&database).unwrap();
+        let initial = crate::desktop::Settings::default();
+        let evidence = initial.execution_fingerprint().unwrap();
+        guard_preparation_settings(&store, &evidence).unwrap();
+        let task: ManualTaskRequest = serde_json::from_str(include_str!(
+            "../../../docs/examples/manual-task.example.json"
+        ))
+        .unwrap();
+        let operation = Operation::SubmitConversation {
+            command_id: "policy-fence-submit".into(),
+            authorization_ref: "explicit-test-consent".into(),
+            conversation_id: "absent-conversation".into(),
+            settings_fingerprint: evidence.clone(),
+            task: Box::new(task),
+            runtime: RuntimeChoice::Synthetic {
+                executable: root.join("never-launched.exe"),
+                home: root.clone(),
+                scenario: "never-launched".into(),
+            },
+        };
+        let mut active = None;
+        let mut shutdown = None;
+        let mut connections = crate::connections::ConnectionService::new();
+        assert_eq!(
+            handle_inner(
+                &mut store,
+                &database,
+                operation.clone(),
+                &mut active,
+                &mut shutdown,
+                &mut connections
+            )
+            .unwrap_err(),
+            "conversation-not-found"
+        );
+        let mut changed = initial;
+        changed.policy.mode_defaults.strategy = Some(crate::policy::Strategy::Performance);
+        let revision = store.load().unwrap().revision();
+        crate::desktop::handle(
+            &mut store,
+            &crate::desktop::DesktopRequest::SaveSettings {
+                command_id: "other-window-policy-edit".into(),
+                expected_revision: revision,
+                settings: Box::new(changed),
+            },
+        )
+        .unwrap();
+        assert_eq!(
+            handle_inner(
+                &mut store,
+                &database,
+                operation.clone(),
+                &mut active,
+                &mut shutdown,
+                &mut connections
+            )
+            .unwrap_err(),
+            "prepared-policy-changed-prepare-again"
+        );
+        assert!(active.is_none());
+        assert!(store.load().unwrap().workers().is_empty());
+        let fingerprint = content_hash(&serde_json::to_vec(&operation).unwrap());
+        assert!(
+            store
+                .daemon_receipt("policy-fence-submit", &fingerprint)
+                .unwrap()
+                .is_none()
+        );
+        // Simulate an already admitted durable intent: historical replay is not
+        // a new admission and must not be replaced with another command.
+        store
+            .daemon_begin(
+                "policy-fence-submit",
+                &fingerprint,
+                "submit-conversation",
+                None,
+                None,
+            )
+            .unwrap();
+        let receipt = handle_inner(
+            &mut store,
+            &database,
+            operation.clone(),
+            &mut active,
+            &mut shutdown,
+            &mut connections,
+        )
+        .unwrap();
+        assert_eq!(receipt["replayed"], true);
+        assert!(active.is_none());
+        let mut legacy = operation;
+        if let Operation::SubmitConversation {
+            settings_fingerprint,
+            command_id,
+            ..
+        } = &mut legacy
+        {
+            settings_fingerprint.clear();
+            *command_id = "legacy-unadmitted".into();
+        }
+        assert!(
+            serde_json::to_value(&legacy)
+                .unwrap()
+                .get("settings_fingerprint")
+                .is_none()
+        );
+        assert_eq!(
+            handle_inner(
+                &mut store,
+                &database,
+                legacy,
+                &mut active,
+                &mut shutdown,
+                &mut connections
+            )
+            .unwrap_err(),
+            "prepared-policy-evidence-required"
+        );
+    }
+
     #[test]
     fn private_control_diagnostics_are_memory_only_by_default_and_bounded() {
         let mut diagnostics = ControlDiagnostics::default();

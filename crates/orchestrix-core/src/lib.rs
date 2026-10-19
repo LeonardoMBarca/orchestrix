@@ -2,6 +2,7 @@
 #![forbid(unsafe_code)]
 
 pub mod connections;
+pub mod connection_refresh;
 pub mod daemon;
 pub mod daemon_startup;
 pub mod desktop;
@@ -16,6 +17,7 @@ pub mod persistence;
 pub mod persistence_privacy;
 pub mod persistence_records;
 pub mod policy;
+pub mod policy_portability;
 pub mod recovery;
 pub mod recovery_guardian;
 pub mod review;

@@ -412,7 +412,7 @@ fn integration_migration_preserves_v6_rows_and_rolls_back_collisions() {
             .unwrap();
         // Migrations 1..6 are unchanged. Remove the empty later extensions
         // in this private fixture to exercise both migration outcomes.
-        store.connection.execute_batch("DROP TABLE connection_diagnostic_runs;DROP TABLE connection_links;DROP TABLE connection_selection;DROP TABLE connection_commands;DROP TABLE integration_observations;DROP TABLE serial_integrations;PRAGMA user_version=6;").unwrap();
+        store.connection.execute_batch("DROP TABLE connection_diagnostic_validity;DROP TABLE connection_refresh_configurations;DROP TABLE connection_diagnostic_runs;DROP TABLE connection_links;DROP TABLE connection_selection;DROP TABLE connection_commands;DROP TABLE integration_observations;DROP TABLE serial_integrations;PRAGMA user_version=6;").unwrap();
         if collision {
             store.connection.execute_batch("CREATE TABLE serial_integrations(sentinel TEXT);INSERT INTO serial_integrations VALUES('preserve');").unwrap();
         }
@@ -482,7 +482,7 @@ fn connection_migration_preserves_v7_rows_and_rolls_back_collisions() {
             .connection
             .query_row("SELECT checkpoint FROM projects", [], |r| r.get(0))
             .unwrap();
-        store.connection.execute_batch("DROP TABLE connection_diagnostic_runs;DROP TABLE connection_links;DROP TABLE connection_selection;DROP TABLE connection_commands;PRAGMA user_version=7;").unwrap();
+        store.connection.execute_batch("DROP TABLE connection_diagnostic_validity;DROP TABLE connection_refresh_configurations;DROP TABLE connection_diagnostic_runs;DROP TABLE connection_links;DROP TABLE connection_selection;DROP TABLE connection_commands;PRAGMA user_version=7;").unwrap();
         if collision {
             store.connection.execute_batch("CREATE TABLE connection_links(sentinel TEXT);INSERT INTO connection_links VALUES('preserve');").unwrap();
         }

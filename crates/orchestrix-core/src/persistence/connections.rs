@@ -1,4 +1,7 @@
 use super::{Store, StoreError, StoreResult};
+use crate::connection_refresh::{
+    ObservationValidity, RefreshConfiguration, RefreshSettings, binding_scope,
+};
 use crate::connections::{ConnectionChange, ConnectionDiagnostic, ConnectionLink, now_ms};
 use rusqlite::{Connection, OptionalExtension, TransactionBehavior, params};
 use serde_json::{Value, json};
@@ -17,6 +20,136 @@ CREATE TRIGGER connection_diagnostic_no_delete BEFORE DELETE ON connection_diagn
 CREATE TRIGGER connection_commands_no_update BEFORE UPDATE ON connection_commands BEGIN SELECT RAISE(ABORT,'immutable connection command'); END;
 CREATE TRIGGER connection_commands_no_delete BEFORE DELETE ON connection_commands BEGIN SELECT RAISE(ABORT,'retained connection command'); END;
 "#;
+pub(super) const MIGRATION_V9: &str = r#"
+CREATE TABLE connection_refresh_configurations(connection_id TEXT NOT NULL,revision INTEGER NOT NULL CHECK(revision>0),body TEXT NOT NULL,digest TEXT NOT NULL,PRIMARY KEY(connection_id,revision));
+CREATE TRIGGER connection_refresh_no_update BEFORE UPDATE ON connection_refresh_configurations BEGIN SELECT RAISE(ABORT,'immutable refresh configuration'); END;
+CREATE TRIGGER connection_refresh_no_delete BEFORE DELETE ON connection_refresh_configurations BEGIN SELECT RAISE(ABORT,'retained refresh configuration'); END;
+CREATE TABLE connection_diagnostic_validity(id TEXT PRIMARY KEY,refresh_revision INTEGER NOT NULL,policy_version INTEGER NOT NULL,body TEXT NOT NULL,digest TEXT NOT NULL);
+CREATE TRIGGER connection_validity_no_update BEFORE UPDATE ON connection_diagnostic_validity BEGIN SELECT RAISE(ABORT,'immutable diagnostic validity'); END;
+CREATE TRIGGER connection_validity_no_delete BEFORE DELETE ON connection_diagnostic_validity BEGIN SELECT RAISE(ABORT,'retained diagnostic validity'); END;
+"#;
+fn refresh_configuration(c: &Connection, id: &str) -> StoreResult<Option<RefreshConfiguration>> {
+    crate::domain::ConnectionId::new(id)?;
+    let row: Option<(i64,String,String)> = c.query_row(
+        "SELECT revision,body,digest FROM connection_refresh_configurations WHERE connection_id=?1 ORDER BY revision DESC LIMIT 1",
+        [id], |r| Ok((r.get(0)?,r.get(1)?,r.get(2)?))).optional()?;
+    row.map(|(revision, body, hash)| {
+        if body.len() > 8192 || digest(&body) != hash {
+            return Err(StoreError::InvalidState);
+        }
+        let config: RefreshConfiguration =
+            serde_json::from_str(&body).map_err(|_| StoreError::InvalidState)?;
+        config.validate().map_err(|_| StoreError::InvalidState)?;
+        if config.connection_id != id || config.revision != revision as u64 {
+            return Err(StoreError::InvalidState);
+        }
+        Ok(config)
+    })
+    .transpose()
+}
+fn policy_validity(c: &Connection) -> StoreResult<ObservationValidity> {
+    // Compact authoritative configuration projection, not full worker/records restoration.
+    let body:Option<String>=c.query_row("SELECT body FROM definitions WHERE kind='\"configuration\"' AND id='desktop-settings' ORDER BY version DESC LIMIT 1",[],|r|r.get(0)).optional()?;
+    let settings: crate::desktop::Settings = body
+        .map(|s| serde_json::from_str(&s))
+        .transpose()
+        .map_err(|_| StoreError::InvalidState)?
+        .unwrap_or_default();
+    if !settings.validate() {
+        return Err(StoreError::InvalidState);
+    }
+    let ttl = settings.policy.observation_ttls;
+    Ok(ObservationValidity {
+        identity: ttl.identity_billing_ms,
+        availability: ttl.availability_ms,
+        configuration: ttl.capability_configuration_ms,
+        models: ttl.capability_configuration_ms,
+    })
+}
+pub(super) fn effective_validity(c: &Connection, id: &str) -> StoreResult<ObservationValidity> {
+    let requested =
+        refresh_configuration(c, id)?.map_or_else(RefreshSettings::default, |v| v.settings);
+    Ok(requested.validity_ms.effective(&policy_validity(c)?))
+}
+fn minimum_validity(a: ObservationValidity, b: &ObservationValidity) -> ObservationValidity {
+    ObservationValidity {
+        identity: a.identity.min(b.identity),
+        configuration: a.configuration.min(b.configuration),
+        availability: a.availability.min(b.availability),
+        models: a.models.min(b.models),
+    }
+}
+/// Lease restrictions at capture and all later configuration revisions only
+/// tighten that observation. Increasing a preference applies to a fresh read.
+fn diagnostic_validity_cap(
+    c: &Connection,
+    d: &ConnectionDiagnostic,
+) -> StoreResult<ObservationValidity> {
+    let mut result = effective_validity(c, &d.connection_id)?;
+    let cap:Option<(i64,i64,String,String)>=c.query_row("SELECT refresh_revision,policy_version,body,digest FROM connection_diagnostic_validity WHERE id=?1",[&d.id],|r|Ok((r.get(0)?,r.get(1)?,r.get(2)?,r.get(3)?))).optional()?;
+    let (refresh_revision, policy_version) = if let Some((refresh, policy, body, hash)) = cap {
+        if digest(&body) != hash {
+            return Err(StoreError::InvalidState);
+        }
+        let captured: ObservationValidity =
+            serde_json::from_str(&body).map_err(|_| StoreError::InvalidState)?;
+        captured.validate().map_err(|_| StoreError::InvalidState)?;
+        result = minimum_validity(result, &captured);
+        (refresh, policy)
+    } else {
+        (0, 0)
+    };
+    let mut refreshes=c.prepare("SELECT body,digest FROM connection_refresh_configurations WHERE connection_id=?1 AND revision>=?2 ORDER BY revision")?;
+    for row in refreshes.query_map(params![d.connection_id, refresh_revision], |r| {
+        Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?))
+    })? {
+        let (body, hash) = row?;
+        if digest(&body) != hash {
+            return Err(StoreError::InvalidState);
+        }
+        let config: RefreshConfiguration =
+            serde_json::from_str(&body).map_err(|_| StoreError::InvalidState)?;
+        config.validate().map_err(|_| StoreError::InvalidState)?;
+        result = minimum_validity(result, &config.settings.validity_ms);
+    }
+    let mut policies=c.prepare("SELECT body FROM definitions WHERE kind='\"configuration\"' AND id='desktop-settings' AND version>=?1 ORDER BY version")?;
+    for row in policies.query_map([policy_version], |r| r.get::<_, String>(0))? {
+        let settings: crate::desktop::Settings =
+            serde_json::from_str(&row?).map_err(|_| StoreError::InvalidState)?;
+        if !settings.validate() {
+            return Err(StoreError::InvalidState);
+        }
+        let p = settings.policy.observation_ttls;
+        result = minimum_validity(
+            result,
+            &ObservationValidity {
+                identity: p.identity_billing_ms,
+                availability: p.availability_ms,
+                configuration: p.capability_configuration_ms,
+                models: p.capability_configuration_ms,
+            },
+        );
+    }
+    Ok(result)
+}
+pub(super) fn diagnostic_effective_validity(
+    c: &Connection,
+    d: &ConnectionDiagnostic,
+) -> StoreResult<ObservationValidity> {
+    let mut result = diagnostic_validity_cap(c, d)?;
+    if d.cached && d.observed_at_ms.is_some() {
+        for prior in diagnostics(c, &d.connection_id)?.iter().filter(|prior| {
+            prior.id != d.id
+                && prior.observed_at_ms == d.observed_at_ms
+                && prior.scope_key == d.scope_key
+                && prior.connection_revision == d.connection_revision
+                && matches!(prior.state.as_str(), "complete" | "partial")
+        }) {
+            result = minimum_validity(result, &diagnostic_validity_cap(c, prior)?);
+        }
+    }
+    Ok(result)
+}
 fn encode<T: serde::Serialize>(v: &T) -> StoreResult<String> {
     serde_json::to_string(v).map_err(|_| StoreError::InvalidState)
 }
@@ -39,7 +172,7 @@ fn decode_link(
     }
     Ok(v)
 }
-fn current(c: &Connection, id: &str) -> StoreResult<Option<ConnectionLink>> {
+pub(super) fn current(c: &Connection, id: &str) -> StoreResult<Option<ConnectionLink>> {
     crate::domain::ConnectionId::new(id)?;
     let row:Option<(i64,String,String)>=c.query_row("SELECT revision,body,digest FROM connection_links WHERE id=? ORDER BY revision DESC LIMIT 1",[id],|r|Ok((r.get(0)?,r.get(1)?,r.get(2)?))).optional()?;
     let mut link = row.map(|(r, b, h)| decode_link(b, h, id, r)).transpose()?;
@@ -135,7 +268,7 @@ fn save_command(c: &Connection, id: &str, fingerprint: &str, result: &Value) -> 
     )?;
     Ok(())
 }
-fn diagnostics(c: &Connection, id: &str) -> StoreResult<Vec<ConnectionDiagnostic>> {
+pub(super) fn diagnostics(c: &Connection, id: &str) -> StoreResult<Vec<ConnectionDiagnostic>> {
     crate::domain::ConnectionId::new(id)?;
     let mut q=c.prepare("SELECT id,ordinal,connection_revision,registration_revision,body,digest FROM connection_diagnostic_runs WHERE connection_id=?1 ORDER BY id,ordinal")?;
     let mut rows: Vec<ConnectionDiagnostic> = Vec::new();
@@ -201,8 +334,20 @@ fn summary(
     now: u64,
     current_revision: Option<u64>,
     current_generation: u64,
+    validity: &ObservationValidity,
 ) -> Value {
     let mut v = d.view(now, current_generation);
+    let effective_until = d
+        .observed_at_ms
+        .map(|at| at.saturating_add(validity.minimum()))
+        .zip(d.valid_until_ms)
+        .map(|(configured, source)| configured.min(source));
+    v["effectiveValidUntilMs"] = json!(effective_until);
+    v["effectiveValidityMs"] = json!(validity);
+    v["sourceValidityAuthority"] = json!("metadata-source-upper-bound");
+    if effective_until.is_none_or(|until| now >= until) {
+        v["current"] = json!(false);
+    }
     if current_revision != Some(d.connection_revision) {
         v["current"] = json!(false);
         v["historicalRevision"] = json!(true);
@@ -237,9 +382,39 @@ fn report(c: &Connection, id: &str, detailed: bool, now: u64) -> StoreResult<Val
         .filter(|d| d.finished_at_ms.is_some())
         .rev()
         .take(if detailed { 16 } else { 0 })
-        .map(|d| summary(d, now, current_revision, current_generation))
-        .collect::<Vec<_>>();
-    let mut value = json!({"latest":latest.map(|d|summary(d,now,current_revision,current_generation)),"lastSuccessful":successful.map(|d|summary(d,now,current_revision,current_generation)),"lastSuccessfulAtMs":successful.and_then(|d|d.observed_at_ms),"identityChanged":rows.iter().any(|d|d.identity_changed&&current_revision==Some(d.connection_revision)),"history":history,"historyLimit":if detailed{16}else{0},"historyHasMore":rows.iter().filter(|d|d.finished_at_ms.is_some()).count()>if detailed{16}else{0},"observationRenewedOnRead":false});
+        .map(|d| {
+            Ok(summary(
+                d,
+                now,
+                current_revision,
+                current_generation,
+                &diagnostic_effective_validity(c, d)?,
+            ))
+        })
+        .collect::<StoreResult<Vec<_>>>()?;
+    let latest_summary = latest
+        .map(|d| -> StoreResult<Value> {
+            Ok(summary(
+                d,
+                now,
+                current_revision,
+                current_generation,
+                &diagnostic_effective_validity(c, d)?,
+            ))
+        })
+        .transpose()?;
+    let successful_summary = successful
+        .map(|d| -> StoreResult<Value> {
+            Ok(summary(
+                d,
+                now,
+                current_revision,
+                current_generation,
+                &diagnostic_effective_validity(c, d)?,
+            ))
+        })
+        .transpose()?;
+    let mut value = json!({"latest":latest_summary,"lastSuccessful":successful_summary,"lastSuccessfulAtMs":successful.and_then(|d|d.observed_at_ms),"identityChanged":rows.iter().any(|d|d.identity_changed&&current_revision==Some(d.connection_revision)),"history":history,"historyLimit":if detailed{16}else{0},"historyHasMore":rows.iter().filter(|d|d.finished_at_ms.is_some()).count()>if detailed{16}else{0},"observationRenewedOnRead":false});
     if detailed {
         value["catalog"] = successful
             .and_then(|d| d.descriptor.clone())
@@ -255,6 +430,119 @@ fn report(c: &Connection, id: &str, detailed: bool, now: u64) -> StoreResult<Val
     Ok(value)
 }
 impl Store {
+    pub fn connection_refresh_configuration(
+        &self,
+        id: &str,
+    ) -> StoreResult<Option<RefreshConfiguration>> {
+        refresh_configuration(&self.connection, id)
+    }
+    pub(crate) fn connection_effective_validity(
+        &self,
+        id: &str,
+    ) -> StoreResult<ObservationValidity> {
+        effective_validity(&self.connection, id)
+    }
+    pub(crate) fn connection_read_maximum_age(&self, id: &str) -> StoreResult<u64> {
+        let current = effective_validity(&self.connection, id)?.minimum();
+        let previous = diagnostics(&self.connection, id)?
+            .into_iter()
+            .filter(|d| matches!(d.state.as_str(), "complete" | "partial"))
+            .max_by_key(|d| d.observed_at_ms);
+        Ok(if let Some(previous) = previous {
+            current.min(diagnostic_effective_validity(&self.connection, &previous)?.minimum())
+        } else {
+            current
+        })
+    }
+    pub(crate) fn connection_policy_validity(&self) -> StoreResult<ObservationValidity> {
+        policy_validity(&self.connection)
+    }
+    pub(crate) fn connection_diagnostic_remaining(&self, id: &str) -> StoreResult<u64> {
+        let used: i64 = self.connection.query_row(
+            "SELECT count(*) FROM connection_diagnostic_runs WHERE connection_id=?1",
+            [id],
+            |r| r.get(0),
+        )?;
+        Ok(512_u64.saturating_sub(used as u64))
+    }
+    pub(crate) fn connection_links_current(&self) -> StoreResult<Vec<ConnectionLink>> {
+        let mut q = self
+            .connection
+            .prepare("SELECT id FROM connection_links GROUP BY id ORDER BY id LIMIT 65")?;
+        let ids = q
+            .query_map([], |r| r.get::<_, String>(0))?
+            .collect::<Result<Vec<_>, _>>()?;
+        if ids.len() > 64 {
+            return Err(StoreError::Configuration);
+        }
+        ids.iter()
+            .map(|id| current(&self.connection, id)?.ok_or(StoreError::InvalidState))
+            .collect()
+    }
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn connection_configure_refresh(
+        &mut self,
+        key: &str,
+        fingerprint: &str,
+        id: &str,
+        expected_connection: u64,
+        expected_refresh: u64,
+        settings: &RefreshSettings,
+        now: u64,
+    ) -> StoreResult<Value> {
+        settings.validate().map_err(|_| StoreError::InvalidState)?;
+        let tx = self
+            .connection
+            .transaction_with_behavior(TransactionBehavior::Immediate)?;
+        if let Some(result) = command(&tx, key, fingerprint)? {
+            return Ok(result);
+        }
+        let link = current(&tx, id)?.ok_or(StoreError::InvalidState)?;
+        if link.revision != expected_connection
+            || refresh_configuration(&tx, id)?.map_or(0, |v| v.revision) != expected_refresh
+        {
+            return Err(StoreError::StaleRevision);
+        }
+        if matches!(
+            settings.mode,
+            crate::connection_refresh::RefreshMode::Automatic
+        ) {
+            link.guard(expected_connection)
+                .map_err(|_| StoreError::InvalidState)?;
+            if link.baseline_observation.is_none()
+                || diagnostics(&tx, id)?
+                    .iter()
+                    .any(|d| d.connection_revision == link.binding_revision && d.identity_changed)
+            {
+                return Err(StoreError::InvalidState);
+            }
+        }
+        let config = RefreshConfiguration {
+            schema_version: 1,
+            connection_id: id.into(),
+            revision: expected_refresh
+                .checked_add(1)
+                .ok_or(StoreError::InvalidState)?,
+            binding_revision: link.binding_revision,
+            scope_key: binding_scope(&link),
+            settings: settings.clone(),
+            configured_at_ms: now,
+        };
+        config.validate().map_err(|_| StoreError::InvalidState)?;
+        let body = encode(&config)?;
+        tx.execute(
+            "INSERT INTO connection_refresh_configurations VALUES(?1,?2,?3,?4)",
+            params![id, config.revision as i64, body, digest(&body)],
+        )?;
+        let result = json!({"connectionId":id,"connectionRevision":link.revision,"bindingRevision":link.binding_revision,"refreshRevision":config.revision,"settings":settings,"automaticReadStarted":false});
+        tx.execute(
+            "INSERT INTO daemon_events(kind,body) VALUES('connection-refresh-configured',?1)",
+            [json!({"connectionId":id,"refreshRevision":config.revision}).to_string()],
+        )?;
+        save_command(&tx, key, fingerprint, &result)?;
+        tx.commit()?;
+        Ok(result)
+    }
     pub(crate) fn connection_duplicate_auth_store(
         &self,
         v: &ConnectionLink,
@@ -340,7 +628,13 @@ impl Store {
                 .ok_or(StoreError::InvalidState)?;
             let current_revision = current(&self.connection, id)?.map(|l| l.binding_revision);
             let mut v = report(&self.connection, id, false, now)?;
-            v["latest"] = summary(d, now, current_revision, self.daemon_state()?.generation);
+            v["latest"] = summary(
+                d,
+                now,
+                current_revision,
+                self.daemon_state()?.generation,
+                &diagnostic_effective_validity(&self.connection, d)?,
+            );
             v["catalog"] = d.descriptor.clone().unwrap_or(Value::Null);
             v["catalogLabels"] = json!(d.catalog_labels);
             v["controlObservations"] = json!(d.control_observations);
@@ -464,9 +758,15 @@ impl Store {
                         [],
                         |r| r.get::<_, i64>(0),
                     )? as u64;
+                    let maximum_age = diagnostic_effective_validity(&tx, d)?.minimum();
+                    let effective_until = d
+                        .observed_at_ms
+                        .map(|observed| observed.saturating_add(maximum_age))
+                        .zip(d.valid_until_ms)
+                        .map(|(configured, source)| configured.min(source));
                     if d.daemon_generation != generation
                         || d.observed_at_ms.is_none_or(|t| now < t)
-                        || d.valid_until_ms.is_none_or(|t| now >= t)
+                        || effective_until.is_none_or(|t| now >= t)
                     {
                         return Err(StoreError::InvalidState);
                     }
@@ -511,6 +811,14 @@ impl Store {
             save_command(&tx, id, fingerprint, v)?;
         }
         append_diagnostic(&tx, d, true)?;
+        let validity = effective_validity(&tx, &d.connection_id)?;
+        let refresh = refresh_configuration(&tx, &d.connection_id)?.map_or(0, |c| c.revision);
+        let policy:i64=tx.query_row("SELECT coalesce(max(version),0) FROM definitions WHERE kind='\"configuration\"' AND id='desktop-settings'",[],|r|r.get(0))?;
+        let body = encode(&validity)?;
+        tx.execute(
+            "INSERT INTO connection_diagnostic_validity VALUES(?1,?2,?3,?4,?5)",
+            params![d.id, refresh as i64, policy, body, digest(&body)],
+        )?;
         tx.commit()?;
         Ok(())
     }
@@ -561,6 +869,62 @@ impl Store {
                 diagnostics(&self.connection, &id)?;
             }
             previous = Some((id, rev));
+        }
+        let mut refreshes=self.connection.prepare("SELECT connection_id,revision,body,digest FROM connection_refresh_configurations ORDER BY connection_id,revision")?;
+        let mut previous: Option<(String, i64)> = None;
+        for row in refreshes.query_map([], |r| {
+            Ok((
+                r.get::<_, String>(0)?,
+                r.get::<_, i64>(1)?,
+                r.get::<_, String>(2)?,
+                r.get::<_, String>(3)?,
+            ))
+        })? {
+            let (id, revision, body, hash) = row?;
+            if body.len() > 8192 || digest(&body) != hash {
+                return Err(StoreError::InvalidState);
+            }
+            let config: RefreshConfiguration =
+                serde_json::from_str(&body).map_err(|_| StoreError::InvalidState)?;
+            config.validate().map_err(|_| StoreError::InvalidState)?;
+            if config.connection_id != id
+                || config.revision != revision as u64
+                || current(&self.connection, &id)?.is_none()
+                || revision
+                    != previous
+                        .as_ref()
+                        .filter(|(p, _)| p == &id)
+                        .map_or(1, |(_, r)| r + 1)
+            {
+                return Err(StoreError::InvalidState);
+            }
+            previous = Some((id, revision));
+        }
+        let mut captures=self.connection.prepare("SELECT v.id,v.refresh_revision,v.policy_version,v.body,v.digest FROM connection_diagnostic_validity v")?;
+        for row in captures.query_map([], |r| {
+            Ok((
+                r.get::<_, String>(0)?,
+                r.get::<_, i64>(1)?,
+                r.get::<_, i64>(2)?,
+                r.get::<_, String>(3)?,
+                r.get::<_, String>(4)?,
+            ))
+        })? {
+            let (id, refresh, policy, body, hash) = row?;
+            if refresh < 0 || policy < 0 || body.len() > 2048 || digest(&body) != hash {
+                return Err(StoreError::InvalidState);
+            }
+            let cap: ObservationValidity =
+                serde_json::from_str(&body).map_err(|_| StoreError::InvalidState)?;
+            cap.validate().map_err(|_| StoreError::InvalidState)?;
+            let exists: bool = self.connection.query_row(
+                "SELECT EXISTS(SELECT 1 FROM connection_diagnostic_runs WHERE id=?1)",
+                [id],
+                |r| r.get(0),
+            )?;
+            if !exists {
+                return Err(StoreError::InvalidState);
+            }
         }
         Ok(())
     }
@@ -1028,5 +1392,455 @@ mod tests {
             s.connection_link("registered").unwrap().unwrap().revision,
             1
         );
+    }
+    #[test]
+    fn recurring_configuration_has_own_cas_revocable_scope_and_safe_old_defaults() {
+        let mut s = store();
+        let link = link(&s);
+        s.connection_register("link", &"1".repeat(64), &link, None, None)
+            .unwrap();
+        assert!(
+            s.connection_refresh_configuration("registered")
+                .unwrap()
+                .is_none()
+        );
+        let mut settings = RefreshSettings {
+            mode: crate::connection_refresh::RefreshMode::Automatic,
+            ..RefreshSettings::default()
+        };
+        assert!(
+            s.connection_configure_refresh(
+                "unconsented",
+                &"2".repeat(64),
+                "registered",
+                1,
+                0,
+                &settings,
+                100
+            )
+            .is_err()
+        );
+        settings.recurring_consent = true;
+        assert!(
+            s.connection_configure_refresh(
+                "unobserved",
+                &"3".repeat(64),
+                "registered",
+                1,
+                0,
+                &settings,
+                100
+            )
+            .is_err()
+        );
+        let mut d = diagnostic("observed");
+        s.connection_record_diagnostic(&d).unwrap();
+        succeed(&mut d, false);
+        s.connection_record_diagnostic(&d).unwrap();
+        s.connection_configure_refresh(
+            "consented",
+            &"4".repeat(64),
+            "registered",
+            1,
+            0,
+            &settings,
+            100,
+        )
+        .unwrap();
+        let config = s
+            .connection_refresh_configuration("registered")
+            .unwrap()
+            .unwrap();
+        assert!(config.authorized_for(&s.connection_link("registered").unwrap().unwrap()));
+        assert_eq!(config.settings.effective_interval_ms(), 300_000);
+        assert_eq!(
+            s.connection_configure_refresh(
+                "conflict",
+                &"5".repeat(64),
+                "registered",
+                1,
+                0,
+                &settings,
+                110
+            )
+            .unwrap_err(),
+            StoreError::StaleRevision
+        );
+        s.connection_update(
+            "rename",
+            &"6".repeat(64),
+            "registered",
+            1,
+            &ConnectionChange::Rename {
+                name: "renamed".into(),
+            },
+        )
+        .unwrap();
+        assert!(config.authorized_for(&s.connection_link("registered").unwrap().unwrap()));
+        s.connection_update(
+            "disable",
+            &"7".repeat(64),
+            "registered",
+            2,
+            &ConnectionChange::Disable,
+        )
+        .unwrap();
+        assert!(!config.authorized_for(&s.connection_link("registered").unwrap().unwrap()));
+        let before = s.connection_diagnostics("registered").unwrap()["lastSuccessfulAtMs"].clone();
+        settings = RefreshSettings::default();
+        s.connection_configure_refresh(
+            "revoke",
+            &"8".repeat(64),
+            "registered",
+            3,
+            1,
+            &settings,
+            120,
+        )
+        .unwrap();
+        assert_eq!(
+            s.connection_refresh_configuration("registered")
+                .unwrap()
+                .unwrap()
+                .revision,
+            2
+        );
+        assert_eq!(
+            s.connection_diagnostics("registered").unwrap()["lastSuccessfulAtMs"],
+            before
+        );
+        let path = s.path().to_owned();
+        drop(s);
+        let reopened = Store::open(path).unwrap();
+        assert_eq!(
+            reopened
+                .connection_refresh_configuration("registered")
+                .unwrap()
+                .unwrap()
+                .settings
+                .mode,
+            crate::connection_refresh::RefreshMode::Manual
+        );
+    }
+    #[test]
+    fn configured_shorter_validity_never_rewrites_source_dates_or_bypasses_policy() {
+        let mut s = store();
+        let link = link(&s);
+        s.connection_register("link", &"1".repeat(64), &link, None, None)
+            .unwrap();
+        let mut d = diagnostic("source");
+        s.connection_record_diagnostic(&d).unwrap();
+        succeed(&mut d, false);
+        s.connection_record_diagnostic(&d).unwrap();
+        let mut settings = RefreshSettings::default();
+        settings.validity_ms.models = 1_000;
+        s.connection_configure_refresh(
+            "shorter",
+            &"2".repeat(64),
+            "registered",
+            1,
+            0,
+            &settings,
+            200,
+        )
+        .unwrap();
+        let fresh = s
+            .connection_diagnostics_run_at("registered", Some("source"), 1_099)
+            .unwrap();
+        let expired = s
+            .connection_diagnostics_run_at("registered", Some("source"), 1_100)
+            .unwrap();
+        assert_eq!(fresh["latest"]["current"], true);
+        assert_eq!(expired["latest"]["current"], false);
+        assert_eq!(expired["latest"]["validUntilMs"], 60_100);
+        assert_eq!(expired["latest"]["effectiveValidUntilMs"], 1_100);
+        assert_eq!(expired["latest"]["observedAtMs"], 100);
+        settings.validity_ms.models = 900_000;
+        s.connection_configure_refresh(
+            "longer",
+            &"3".repeat(64),
+            "registered",
+            1,
+            1,
+            &settings,
+            2_000,
+        )
+        .unwrap();
+        let later = s
+            .connection_diagnostics_run_at("registered", Some("source"), 60_100)
+            .unwrap();
+        assert_eq!(later["latest"]["effectiveValidUntilMs"], 1_100);
+        assert_eq!(later["latest"]["current"], false);
+        assert_eq!(later["latest"]["observedAtMs"], 100);
+        let mut newer = diagnostic("fresh-source");
+        newer.started_at_ms = 60_200;
+        s.connection_begin_diagnostic(&newer, None).unwrap();
+        succeed(&mut newer, false);
+        newer.observed_at_ms = Some(60_200);
+        newer.finished_at_ms = Some(60_220);
+        newer.valid_until_ms = Some(120_200);
+        s.connection_record_diagnostic(&newer).unwrap();
+        let fresh = s
+            .connection_diagnostics_run_at("registered", Some("fresh-source"), 60_220)
+            .unwrap();
+        assert_eq!(fresh["latest"]["effectiveValidUntilMs"], 120_200);
+        assert_eq!(fresh["latest"]["current"], true);
+    }
+    #[test]
+    fn daemon_refresh_configuration_polls_do_not_read_or_create_work_and_reopen_defers() {
+        use crate::connections::{ConnectionRequest, ConnectionService};
+        use crate::runtime::ManualRefreshClock;
+        use std::sync::Arc;
+        let mut s = store();
+        let link = link(&s);
+        s.connection_register("link", &"1".repeat(64), &link, None, None)
+            .unwrap();
+        let mut d = diagnostic("observed");
+        s.connection_record_diagnostic(&d).unwrap();
+        succeed(&mut d, false);
+        s.connection_record_diagnostic(&d).unwrap();
+        let clock = Arc::new(ManualRefreshClock::new(100));
+        let mut service = ConnectionService::with_clock(clock.clone());
+        let settings = RefreshSettings {
+            interval_ms: 1_000,
+            mode: crate::connection_refresh::RefreshMode::Automatic,
+            recurring_consent: true,
+            ..RefreshSettings::default()
+        };
+        service
+            .handle(
+                &mut s,
+                &ConnectionRequest::ConfigureRefresh {
+                    command_id: "enable-refresh".into(),
+                    id: "registered".into(),
+                    expected_revision: 1,
+                    expected_refresh_revision: 0,
+                    settings,
+                },
+                false,
+            )
+            .unwrap();
+        for _ in 0..4 {
+            let status = service
+                .handle(
+                    &mut s,
+                    &ConnectionRequest::RefreshStatus {
+                        id: Some("registered".into()),
+                    },
+                    false,
+                )
+                .unwrap();
+            assert_eq!(status["refresh"][0]["nextOpportunityAtMs"], 60_100);
+            assert_eq!(status["refresh"][0]["effective"]["intervalMs"], 60_000);
+            assert_eq!(status["refresh"][0]["recurringAuthorized"], true);
+            service.tick(&mut s).unwrap();
+            assert!(service.is_idle());
+        }
+        clock.set(60_099);
+        service.tick(&mut s).unwrap();
+        assert!(service.is_idle());
+        assert_eq!(
+            s.connection_diagnostics("registered").unwrap()["latest"]["id"],
+            "observed"
+        );
+        assert_eq!(
+            s.connection
+                .query_row("SELECT count(*) FROM manual_workers", [], |r| r
+                    .get::<_, i64>(0))
+                .unwrap(),
+            0
+        );
+        drop(service);
+        clock.set(8_000_000);
+        let mut reopened = ConnectionService::with_clock(clock.clone());
+        let status = reopened
+            .handle(
+                &mut s,
+                &ConnectionRequest::RefreshStatus {
+                    id: Some("registered".into()),
+                },
+                false,
+            )
+            .unwrap();
+        assert_eq!(status["refresh"][0]["nextOpportunityAtMs"], 8_060_000);
+        reopened.tick(&mut s).unwrap();
+        assert!(reopened.is_idle());
+        let mut settings = RefreshSettings::default();
+        settings.validity_ms.models = 5_000;
+        reopened
+            .handle(
+                &mut s,
+                &ConnectionRequest::ConfigureRefresh {
+                    command_id: "revoke-refresh".into(),
+                    id: "registered".into(),
+                    expected_revision: 1,
+                    expected_refresh_revision: 1,
+                    settings,
+                },
+                false,
+            )
+            .unwrap();
+        clock.set(9_000_000);
+        reopened.tick(&mut s).unwrap();
+        assert!(reopened.is_idle());
+        let status = reopened
+            .handle(
+                &mut s,
+                &ConnectionRequest::RefreshStatus {
+                    id: Some("registered".into()),
+                },
+                false,
+            )
+            .unwrap();
+        assert_eq!(status["refresh"][0]["reason"], "manual");
+        assert_eq!(status["refresh"][0]["nextOpportunityAtMs"], Value::Null);
+        assert_eq!(
+            s.connection_diagnostics("registered").unwrap()["lastSuccessfulAtMs"],
+            100
+        );
+    }
+    #[test]
+    fn intervening_policy_ttl_cannot_be_removed_from_existing_observation() {
+        let mut s = store();
+        let link = link(&s);
+        s.connection_register("link", &"1".repeat(64), &link, None, None)
+            .unwrap();
+        let mut d = diagnostic("policy-source");
+        s.connection_begin_diagnostic(&d, None).unwrap();
+        succeed(&mut d, false);
+        s.connection_record_diagnostic(&d).unwrap();
+        let save = |store: &mut Store, command: &str, ttl: u64| {
+            let revision = store.desktop_snapshot().unwrap()["revision"]
+                .as_u64()
+                .unwrap();
+            let mut settings = crate::desktop::Settings::default();
+            settings.policy.observation_ttls.identity_billing_ms = ttl;
+            crate::desktop::handle(
+                store,
+                &crate::desktop::DesktopRequest::SaveSettings {
+                    command_id: command.into(),
+                    expected_revision: revision,
+                    settings: Box::new(settings),
+                },
+            )
+            .unwrap();
+        };
+        save(&mut s, "short-policy", 1_000);
+        save(&mut s, "long-policy", 300_000);
+        let report = s
+            .connection_diagnostics_run_at("registered", Some("policy-source"), 1_100)
+            .unwrap();
+        assert_eq!(report["latest"]["effectiveValidUntilMs"], 1_100);
+        assert_eq!(report["latest"]["current"], false);
+        assert_eq!(report["latest"]["observedAtMs"], 100);
+        let mut fresh = diagnostic("policy-fresh");
+        fresh.started_at_ms = 2_000;
+        s.connection_begin_diagnostic(&fresh, None).unwrap();
+        succeed(&mut fresh, false);
+        fresh.observed_at_ms = Some(2_000);
+        fresh.finished_at_ms = Some(2_020);
+        fresh.valid_until_ms = Some(62_000);
+        s.connection_record_diagnostic(&fresh).unwrap();
+        let report = s
+            .connection_diagnostics_run_at("registered", Some("policy-fresh"), 2_020)
+            .unwrap();
+        assert_eq!(report["latest"]["effectiveValidUntilMs"], 62_000);
+        assert_eq!(report["latest"]["current"], true);
+    }
+    #[test]
+    fn reconfirm_requires_effective_identity_lease_without_altering_source_dates() {
+        let mut s = store();
+        let link = link(&s);
+        s.connection_register("link", &"1".repeat(64), &link, None, None)
+            .unwrap();
+        let mut baseline = diagnostic("initial-identity");
+        s.connection_begin_diagnostic(&baseline, None).unwrap();
+        succeed(&mut baseline, false);
+        s.connection_record_diagnostic(&baseline).unwrap();
+        let mut changed = diagnostic("changed-identity");
+        changed.started_at_ms = 200;
+        s.connection_begin_diagnostic(&changed, None).unwrap();
+        succeed(&mut changed, false);
+        changed.observed_at_ms = Some(200);
+        changed.finished_at_ms = Some(220);
+        changed.valid_until_ms = Some(60_200);
+        changed.identity_changed = true;
+        changed.observation_fingerprint = Some("d".repeat(64));
+        s.connection_record_diagnostic(&changed).unwrap();
+        let mut settings = RefreshSettings::default();
+        settings.validity_ms.identity = 1_000;
+        s.connection_configure_refresh(
+            "short-identity",
+            &"2".repeat(64),
+            "registered",
+            1,
+            0,
+            &settings,
+            230,
+        )
+        .unwrap();
+        let expired = s
+            .connection_diagnostics_run_at("registered", Some("changed-identity"), 1_200)
+            .unwrap();
+        assert_eq!(expired["latest"]["current"], false);
+        assert_eq!(expired["latest"]["validUntilMs"], 60_200);
+        assert_eq!(expired["latest"]["effectiveValidUntilMs"], 1_200);
+        assert!(
+            s.connection_update_at(
+                "expired-reconfirm",
+                &"3".repeat(64),
+                "registered",
+                1,
+                &ConnectionChange::Reconfirm {
+                    diagnostic_id: "changed-identity".into()
+                },
+                1_200
+            )
+            .is_err()
+        );
+        let before = s.connection_link("registered").unwrap().unwrap();
+        assert_eq!((before.revision, before.binding_revision), (1, 1));
+        assert_eq!(before.baseline_observation, Some("b".repeat(64)));
+        let exact = s
+            .connection_diagnostics_run_at("registered", Some("changed-identity"), 1_200)
+            .unwrap();
+        assert_eq!(exact["latest"]["observedAtMs"], 200);
+        assert_eq!(exact["latest"]["validUntilMs"], 60_200);
+        // A genuine new read restores eligibility. Confirmation retains both
+        // that new source lease and the expired observation's original dates.
+        let mut fresh = diagnostic("fresh-changed-identity");
+        fresh.started_at_ms = 1_300;
+        s.connection_begin_diagnostic(&fresh, None).unwrap();
+        succeed(&mut fresh, false);
+        fresh.observed_at_ms = Some(1_300);
+        fresh.finished_at_ms = Some(1_320);
+        fresh.valid_until_ms = Some(61_300);
+        fresh.identity_changed = true;
+        fresh.observation_fingerprint = Some("d".repeat(64));
+        s.connection_record_diagnostic(&fresh).unwrap();
+        s.connection_update_at(
+            "current-reconfirm",
+            &"4".repeat(64),
+            "registered",
+            1,
+            &ConnectionChange::Reconfirm {
+                diagnostic_id: "fresh-changed-identity".into(),
+            },
+            1_400,
+        )
+        .unwrap();
+        let after = s.connection_link("registered").unwrap().unwrap();
+        assert_eq!((after.revision, after.binding_revision), (2, 2));
+        assert_eq!(after.baseline_observation, Some("d".repeat(64)));
+        let exact = s
+            .connection_diagnostics_run_at("registered", Some("changed-identity"), 1_400)
+            .unwrap();
+        assert_eq!(exact["latest"]["observedAtMs"], 200);
+        assert_eq!(exact["latest"]["validUntilMs"], 60_200);
+        let exact = s
+            .connection_diagnostics_run_at("registered", Some("fresh-changed-identity"), 1_400)
+            .unwrap();
+        assert_eq!(exact["latest"]["observedAtMs"], 1_300);
+        assert_eq!(exact["latest"]["validUntilMs"], 61_300);
     }
 }

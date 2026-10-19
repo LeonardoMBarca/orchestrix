@@ -16,6 +16,8 @@ The consumer preserves requested/effective settings, model-specific levels/unkno
 
 The application-layer [`connections`](src/connections.rs) service adds daemon-owned runtime-managed linking, lifecycle revisions, metadata diagnostics and future-admission guards. It reuses the existing runtime metadata service and Core store (migration 8), preserving local edit versus binding revisions, exact command receipts and historical observations. The [daemon connection extension](../../docs/contracts/local-daemon.md#runtime-managed-connections-extension) defines its host-only/private boundary; it does not implement an OAuth engine, credential vault or independent quota.
 
+OX-016 extends that same service with [`connection_refresh`](src/connection_refresh.rs), migration 9, revocable same-scope recurring consent and effective per-class validity bounded by source/policy. [`policy_portability`](src/policy_portability.rs) exports an allowlist and imports only after explicit local remapping, exact preview and atomic Store CAS. The daemon's `control-settings-v1` extension checks prepared policy/instructions before first conversation-task admission, including original-command replay. [Format and authority](../../docs/design/policy-portability.md) distinguish preferences from credentials and execution consent.
+
 ## Run
 
 Requires Rust/Cargo and the platform's linker/toolchain. The development Windows environment uses Rust **1.99.0**, x64/MSVC; no MSRV or macOS/Linux execution is certified by that result. Cargo.lock fixes dependency versions; it does not install providers or run inference.

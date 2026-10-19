@@ -1,5 +1,6 @@
 //! Runtime-managed connection lifecycle. A link is not a login or an independent quota.
 use crate::{
+    connection_refresh::{RefreshMode, RefreshSettings},
     daemon::RuntimeChoice,
     persistence::Store,
     runtime::{CancellationToken, CodexMetadataService, MetadataRead, RuntimeMetadata},
@@ -22,6 +23,17 @@ use std::{
 )]
 pub enum ConnectionRequest {
     List,
+    RefreshStatus {
+        #[serde(default)]
+        id: Option<String>,
+    },
+    ConfigureRefresh {
+        command_id: String,
+        id: String,
+        expected_revision: u64,
+        expected_refresh_revision: u64,
+        settings: RefreshSettings,
+    },
     Link {
         command_id: String,
         id: String,
@@ -366,27 +378,234 @@ struct Flight {
     thread: std::thread::JoinHandle<()>,
     result: mpsc::Receiver<Result<(MetadataRead, String), String>>,
     diagnostic: ConnectionDiagnostic,
+    periodic: Option<crate::runtime::MetadataClaim>,
+    refresh_revision: Option<u64>,
 }
 /// One daemon owns this instance; every Desktop window observes the same flight/cache.
 pub(crate) struct ConnectionService {
     metadata: CodexMetadataService,
     clock: Arc<dyn crate::runtime::RefreshClock>,
     flights: BTreeMap<String, Flight>,
+    coordinator: crate::runtime::MetadataRefreshCoordinator,
+    refresh_revisions: BTreeMap<String, u64>,
+    periodic_ordinal: u64,
+    next_reconcile_at_ms: u64,
+    refresh_blocks: BTreeMap<String, String>,
+    #[cfg(test)]
+    fail_next_metadata_spawn: bool,
 }
 impl ConnectionService {
     pub(crate) fn new() -> Self {
         Self::with_clock(Arc::new(crate::runtime::SystemRefreshClock))
     }
     pub(crate) fn with_clock(clock: Arc<dyn crate::runtime::RefreshClock>) -> Self {
+        let metadata = CodexMetadataService::new(
+            Arc::clone(&clock),
+            crate::runtime::refresh::RefreshBounds::default(),
+        )
+        .expect("bounds");
+        let coordinator = crate::runtime::MetadataRefreshCoordinator::new(
+            metadata.clone(),
+            Arc::clone(&clock),
+            crate::runtime::MetadataScheduleBounds {
+                max_connections: 64,
+                max_reads_per_tick: 1,
+                max_in_flight: 1,
+                minimum_interval_ms: 60_000,
+            },
+        )
+        .expect("bounds");
         Self {
-            metadata: CodexMetadataService::new(
-                Arc::clone(&clock),
-                crate::runtime::refresh::RefreshBounds::default(),
-            )
-            .expect("bounds"),
+            metadata,
             clock,
             flights: BTreeMap::new(),
+            coordinator,
+            refresh_revisions: BTreeMap::new(),
+            periodic_ordinal: 0,
+            next_reconcile_at_ms: 0,
+            refresh_blocks: BTreeMap::new(),
+            #[cfg(test)]
+            fail_next_metadata_spawn: false,
         }
+    }
+    fn sync_refresh(&mut self, store: &Store) -> Result<(), String> {
+        for link in store
+            .connection_links_current()
+            .map_err(|_| "connection-store")?
+        {
+            let config = store
+                .connection_refresh_configuration(&link.id)
+                .map_err(|_| "connection-store")?;
+            let authorized = config.as_ref().is_some_and(|c| c.authorized_for(&link))
+                && link.baseline_observation.is_some()
+                && (store
+                    .connection_diagnostic_remaining(&link.id)
+                    .map_err(|_| "connection-store")?
+                    >= 2
+                    || self.flights.contains_key(&link.id))
+                && !store
+                    .connection_identity_changed(&link.id, link.binding_revision)
+                    .map_err(|_| "connection-store")?;
+            if !authorized {
+                self.refresh_blocks.remove(&link.id);
+                self.coordinator.unregister(&link.id);
+                self.refresh_revisions.remove(&link.id);
+                if let Some(f) = self.flights.get(&link.id).filter(|f| f.periodic.is_some()) {
+                    f.cancel.cancel();
+                }
+                continue;
+            }
+            let config = config.expect("authorized configuration");
+            if self.refresh_revisions.get(&link.id) != Some(&config.revision) {
+                if let Some(f) = self.flights.get(&link.id).filter(|f| f.periodic.is_some()) {
+                    f.cancel.cancel();
+                }
+                let registered =
+                    self.coordinator
+                        .register_deferred(crate::runtime::MetadataRegistration {
+                            connection_id: link.id.clone(),
+                            revision: link.binding_revision,
+                            launch: link.launch()?,
+                            authorized: true,
+                            enabled: true,
+                            interval_ms: config.settings.effective_interval_ms(),
+                        });
+                if let Err(error) = registered {
+                    self.refresh_blocks
+                        .insert(link.id.clone(), error.code().into());
+                    self.coordinator.unregister(&link.id);
+                    continue;
+                }
+                self.refresh_blocks.remove(&link.id);
+                self.coordinator.defer(&link.id);
+                self.refresh_revisions.insert(link.id, config.revision);
+            }
+        }
+        Ok(())
+    }
+    /// Called only by the daemon main loop, outside SQLite transactions. At most
+    /// one metadata flight is started; worker concurrency/admissions are unchanged.
+    pub(crate) fn tick(&mut self, store: &mut Store) -> Result<(), String> {
+        self.drain(store)?;
+        let now = self.clock.now_ms();
+        if now >= self.next_reconcile_at_ms || self.next_reconcile_at_ms.saturating_sub(now) > 1_000
+        {
+            self.sync_refresh(store)?;
+            self.next_reconcile_at_ms = now.saturating_add(1_000);
+        }
+        if !self.flights.is_empty() {
+            return Ok(());
+        }
+        let Some(claim) = self
+            .coordinator
+            .claim_due()
+            .map_err(|e| e.code().to_string())?
+        else {
+            return Ok(());
+        };
+        let Some(link) = store
+            .connection_link(&claim.connection_id)
+            .map_err(|_| "connection-store")?
+        else {
+            self.coordinator.complete_claim(&claim, false, None, true);
+            return Ok(());
+        };
+        self.periodic_ordinal = self.periodic_ordinal.saturating_add(1);
+        let generation = store
+            .daemon_state()
+            .map_err(|_| "connection-store")?
+            .generation;
+        let id = format!(
+            "periodic-{generation}-{}-{}",
+            self.clock.now_ms(),
+            self.periodic_ordinal
+        );
+        if let Err(error) = self.start(store, &link, &id, None, None) {
+            self.coordinator.complete_claim(&claim, false, None, false);
+            // A thread allocation failure is confirmed before any provider
+            // process exists and its failed diagnostic is already durable.
+            // Keep controls/other work alive; the coordinator's bounded retry
+            // opportunity applies. Storage/integrity errors remain fatal.
+            if error == "metadata-thread-spawn" {
+                return Ok(());
+            }
+            return Err(error);
+        }
+        if let Some(f) = self.flights.get_mut(&link.id) {
+            f.periodic = Some(claim);
+            f.refresh_revision = self.refresh_revisions.get(&link.id).copied();
+        }
+        Ok(())
+    }
+    fn refresh_status(&mut self, store: &Store, id: Option<&str>) -> Result<Value, String> {
+        self.sync_refresh(store)?;
+        let now = self.clock.now_ms();
+        let policy = store
+            .connection_policy_validity()
+            .map_err(|_| "connection-store")?;
+        let mut values = Vec::new();
+        for link in store
+            .connection_links_current()
+            .map_err(|_| "connection-store")?
+            .into_iter()
+            .filter(|l| id.is_none_or(|id| id == l.id))
+        {
+            let config = store
+                .connection_refresh_configuration(&link.id)
+                .map_err(|_| "connection-store")?;
+            let requested = config
+                .as_ref()
+                .map_or_else(RefreshSettings::default, |c| c.settings.clone());
+            let remaining = store
+                .connection_diagnostic_remaining(&link.id)
+                .map_err(|_| "connection-store")?;
+            let eligible = config.as_ref().is_some_and(|c| c.authorized_for(&link))
+                && self.refresh_revisions.contains_key(&link.id);
+            let schedule = self.coordinator.registration_status(&link.id);
+            let active = self.flights.get(&link.id);
+            let reason = if requested.mode == RefreshMode::Manual {
+                "manual"
+            } else if let Some(block) = self.refresh_blocks.get(&link.id) {
+                block.as_str()
+            } else if !link.enabled || !link.linked {
+                "connection-disabled"
+            } else if remaining < 2 {
+                "history-capacity-exhausted"
+            } else if !eligible {
+                "reconfirmation-required"
+            } else if schedule.is_some_and(|s| s.1) {
+                "authorization-required"
+            } else if active.is_some_and(|f| f.periodic.is_some()) {
+                "running"
+            } else if active.is_some() {
+                "foreground-read"
+            } else if schedule.is_some_and(|s| s.3 > 0) {
+                "backoff"
+            } else {
+                "interval"
+            };
+            let mut effective_settings = requested.clone();
+            effective_settings.interval_ms = requested.effective_interval_ms();
+            effective_settings.validity_ms = requested.validity_ms.effective(&policy);
+            if !eligible {
+                effective_settings.mode = RefreshMode::Manual;
+                effective_settings.recurring_consent = false;
+            }
+            values.push(json!({"connectionId":link.id,"connectionRevision":link.revision,"bindingRevision":link.binding_revision,
+                "refreshRevision":config.as_ref().map_or(0,|c|c.revision),"schemaVersion":1,
+                "requested":requested,"effective":effective_settings,"recurringAuthorized":eligible,
+                "reason":reason,"nextOpportunityAtMs":schedule.map(|s|s.0),"observedAtMs":now,
+                "sourceTtlMs":self.metadata.source_ttl_ms(),"policyValidityMs":policy,
+                "activeDiagnosticId":active.map(|f|&f.diagnostic.id),"activeSource":active.map(|f|if f.periodic.is_some(){"periodic"}else{"foreground"}),
+                "limits":{"globalConcurrentReads":1,"perConnectionConcurrentReads":1,"minimumIntervalMs":60_000,"maximumIntervalMs":86_400_000,"metadataDeadlineMs":15_000,"maximumBackoffMs":300_000,"retainedDiagnosticRows":512,"remainingDiagnosticRows":remaining},
+                "workerAdmissionsSuspendedByRefresh":false,"quotaPredictionAvailable":false,"consentScope":"registration-directory-binding-runtime","consentPortable":false}));
+        }
+        if id.is_some() && values.is_empty() {
+            return Err("connection-not-found".into());
+        }
+        Ok(
+            json!({"refresh":values,"daemonGeneration":store.daemon_state().map_err(|_|"connection-store")?.generation}),
+        )
     }
     pub(crate) fn cancel_all(&self) {
         for f in self.flights.values() {
@@ -411,10 +630,32 @@ impl ConnectionService {
                 .unwrap_or_else(|_| Err("metadata-thread-lost".into()));
             let _ = f.thread.join();
             let Some(link) = store.connection_link(&id).map_err(|_| "connection-store")? else {
+                if let Some(claim) = &f.periodic {
+                    self.coordinator.complete_claim(claim, false, None, true);
+                }
                 continue;
             };
             if link.revision != f.revision || !link.enabled || !link.linked {
+                if let Some(claim) = &f.periodic {
+                    self.coordinator.complete_claim(
+                        claim,
+                        false,
+                        None,
+                        link.binding_revision != f.diagnostic.connection_revision
+                            || !link.enabled
+                            || !link.linked,
+                    );
+                }
                 continue;
+            }
+            if f.refresh_revision.is_some_and(|r| {
+                store
+                    .connection_refresh_configuration(&id)
+                    .ok()
+                    .flatten()
+                    .is_none_or(|c| c.revision != r || !c.authorized_for(&link))
+            }) {
+                f.cancel.cancel();
             }
             let mut d = f.diagnostic;
             d.finished_at_ms = Some(self.clock.now_ms());
@@ -436,7 +677,11 @@ impl ConnectionService {
                         d.complete = complete;
                         d.cached = cached;
                         d.observed_at_ms = Some(metadata.observed_at_ms);
-                        d.valid_until_ms = Some(metadata.observed_at_ms.saturating_add(60_000));
+                        d.valid_until_ms = Some(
+                            metadata
+                                .observed_at_ms
+                                .saturating_add(self.metadata.source_ttl_ms()),
+                        );
                         d.identity_assurance = metadata.identity_assurance().into();
                         d.observation_fingerprint = Some(metadata.observation_fingerprint().into());
                         d.identity_changed = link
@@ -469,6 +714,31 @@ impl ConnectionService {
             store
                 .connection_record_diagnostic(&d)
                 .map_err(|_| "connection-diagnostic-store")?;
+            if let Some(claim) = &f.periodic {
+                let pause = d.identity_changed
+                    || matches!(
+                        d.error_code.as_deref(),
+                        Some(
+                            "authentication"
+                                | "policy"
+                                | "version"
+                                | "unsupported"
+                                | "ownership"
+                                | "runtime-executable-changed"
+                        )
+                    );
+                self.coordinator.complete_claim(
+                    claim,
+                    matches!(d.state.as_str(), "complete" | "partial"),
+                    d.next_allowed_at_ms,
+                    pause,
+                );
+            } else if d.purpose == "registration"
+                && matches!(d.state.as_str(), "complete" | "partial")
+                && !d.identity_changed
+            {
+                self.coordinator.revalidated(&id);
+            }
         }
         Ok(())
     }
@@ -484,6 +754,9 @@ impl ConnectionService {
                 return store
                     .connection_list_at(self.clock.now_ms())
                     .map_err(|_| "connection-store".into());
+            }
+            ConnectionRequest::RefreshStatus { id } => {
+                return self.refresh_status(store, id.as_deref());
             }
             ConnectionRequest::Diagnostics { id, diagnostic_id } => {
                 return store
@@ -525,6 +798,7 @@ impl ConnectionService {
             | ConnectionRequest::Diagnose { command_id, .. }
             | ConnectionRequest::DiagnoseScope { command_id, .. }
             | ConnectionRequest::CancelDiagnostic { command_id, .. } => command_id,
+            ConnectionRequest::ConfigureRefresh { command_id, .. } => command_id,
             _ => unreachable!(),
         };
         if let Some(value) = store
@@ -534,6 +808,34 @@ impl ConnectionService {
             return Ok(value);
         }
         match request {
+            ConnectionRequest::ConfigureRefresh {
+                command_id,
+                id,
+                expected_revision,
+                expected_refresh_revision,
+                settings,
+            } => {
+                settings.validate()?;
+                let value = store
+                    .connection_configure_refresh(
+                        command_id,
+                        &fingerprint,
+                        id,
+                        *expected_revision,
+                        *expected_refresh_revision,
+                        settings,
+                        self.clock.now_ms(),
+                    )
+                    .map_err(|e| {
+                        if e == crate::persistence::StoreError::StaleRevision {
+                            "refresh-revision-changed"
+                        } else {
+                            "refresh-configuration"
+                        }
+                    })?;
+                self.sync_refresh(store)?;
+                Ok(value)
+            }
             ConnectionRequest::Link {
                 command_id,
                 id,
@@ -631,6 +933,7 @@ impl ConnectionService {
                     self.metadata
                         .invalidate_observations(id, updated.binding_revision);
                 }
+                self.sync_refresh(store)?;
                 Ok(result)
             }
             ConnectionRequest::Diagnose {
@@ -648,6 +951,20 @@ impl ConnectionService {
             } => {
                 if !allow_metadata_read {
                     return Err("metadata-read-not-authorized".into());
+                }
+                if matches!(request, ConnectionRequest::DiagnoseScope { .. }) {
+                    // A required foreground scope gets priority without racing
+                    // a still-closing owned periodic process. Original command
+                    // remains unrecorded and may be retried with its same ID.
+                    for (connection, f) in &self.flights {
+                        if f.periodic.is_some() {
+                            f.cancel.cancel();
+                            self.coordinator.defer(connection);
+                        }
+                    }
+                    if self.flights.values().any(|f| f.periodic.is_some()) {
+                        return Err("metadata-foreground-wait".into());
+                    }
                 }
                 let l = store
                     .connection_link(id)
@@ -793,31 +1110,53 @@ impl ConnectionService {
             .map_err(|_| "connection-diagnostic-store")?;
         let target_directory = directory.as_ref().unwrap_or(&l.metadata_directory).clone();
         let service = self.metadata.clone();
+        let maximum_age = store
+            .connection_read_maximum_age(&l.id)
+            .map_err(|_| "connection-store")?;
         let link = l.clone();
         let cancel = CancellationToken::new();
         let owned = cancel.clone();
         let (tx, rx) = mpsc::channel();
-        let thread = std::thread::Builder::new()
-            .name("connection-metadata".into())
-            .spawn(move || {
-                let result = (|| {
-                    let executable = match &link.runtime {
-                        RuntimeChoice::Codex { executable, .. }
-                        | RuntimeChoice::Synthetic { executable, .. } => executable,
-                    };
-                    if runtime_executable_sha256(executable)? != link.executable_sha256 {
-                        return Err("runtime-executable-changed".into());
-                    }
-                    let launch = link.launch()?;
-                    let launch = directory.map_or(launch.clone(), |p| launch.with_cwd(p));
-                    let scope = launch.metadata_scope().map_err(|e| e.code().to_string())?;
-                    service
-                        .read(launch, &link.id, link.binding_revision, true, &owned)
-                        .map(|r| (r, scope))
-                        .map_err(|e| e.code().to_string())
-                })();
-                let _ = tx.send(result);
-            });
+        let spawn = move || {
+            std::thread::Builder::new()
+                .name("connection-metadata".into())
+                .spawn(move || {
+                    let result = (|| {
+                        let executable = match &link.runtime {
+                            RuntimeChoice::Codex { executable, .. }
+                            | RuntimeChoice::Synthetic { executable, .. } => executable,
+                        };
+                        if runtime_executable_sha256(executable)? != link.executable_sha256 {
+                            return Err("runtime-executable-changed".into());
+                        }
+                        let launch = link.launch()?;
+                        let launch = directory.map_or(launch.clone(), |p| launch.with_cwd(p));
+                        let scope = launch.metadata_scope().map_err(|e| e.code().to_string())?;
+                        service
+                            .read_with_maximum_age(
+                                launch,
+                                &link.id,
+                                link.binding_revision,
+                                true,
+                                &owned,
+                                maximum_age,
+                            )
+                            .map(|r| (r, scope))
+                            .map_err(|e| e.code().to_string())
+                    })();
+                    let _ = tx.send(result);
+                })
+        };
+        #[cfg(test)]
+        let thread = if std::mem::take(&mut self.fail_next_metadata_spawn) {
+            Err(std::io::Error::other(
+                "owned synthetic metadata spawn failure",
+            ))
+        } else {
+            spawn()
+        };
+        #[cfg(not(test))]
+        let thread = spawn();
         let thread = match thread {
             Ok(t) => t,
             Err(_) => {
@@ -840,6 +1179,8 @@ impl ConnectionService {
                 thread,
                 result: rx,
                 diagnostic: d,
+                periodic: None,
+                refresh_revision: None,
             },
         );
         Ok(())
@@ -862,6 +1203,16 @@ pub(crate) fn guard_metadata(
 ) -> Result<(), String> {
     if let Some(l) = store.connection_link(id).map_err(|_| "connection-store")? {
         l.guard_binding(revision)?;
+        let now = now_ms();
+        let maximum_age = store
+            .connection_effective_validity(id)
+            .map_err(|_| "connection-store")?
+            .minimum();
+        if now < metadata.observed_at_ms
+            || now >= metadata.observed_at_ms.saturating_add(maximum_age)
+        {
+            return Err("connection-observation-expired".into());
+        }
         if store
             .connection_identity_changed(id, revision)
             .map_err(|_| "connection-store")?
@@ -1054,5 +1405,280 @@ mod tests {
             "runtime-executable-budget"
         );
         std::fs::remove_file(p).unwrap();
+    }
+    #[cfg(windows)]
+    #[test]
+    fn periodic_thread_spawn_failure_is_durable_bounded_and_keeps_controls_available() {
+        use crate::runtime::ManualRefreshClock;
+        let database = path("periodic-spawn.sqlite");
+        let directory = database.parent().unwrap().canonicalize().unwrap();
+        let mut store = Store::open(database).unwrap();
+        // Declared synthetic unit setup, not an authentication or provider proof.
+        let link = ConnectionLink {
+            schema_version: 1,
+            id: "spawn-fixture".into(),
+            revision: 1,
+            binding_revision: 1,
+            name: "Synthetic spawn fixture".into(),
+            enabled: true,
+            linked: true,
+            runtime: RuntimeChoice::Synthetic {
+                executable: std::env::current_exe().unwrap(),
+                home: directory.clone(),
+                scenario: "connection-metadata".into(),
+            },
+            metadata_directory: directory,
+            executable_sha256: "a".repeat(64),
+            baseline_observation: Some("b".repeat(64)),
+            identity_assurance: "synthetic".into(),
+        };
+        store
+            .connection_register("spawn-link", &"1".repeat(64), &link, None, None)
+            .unwrap();
+        let clock = Arc::new(ManualRefreshClock::new(100));
+        let mut service = ConnectionService::with_clock(clock.clone());
+        service
+            .handle(
+                &mut store,
+                &ConnectionRequest::ConfigureRefresh {
+                    command_id: "spawn-consent".into(),
+                    id: link.id.clone(),
+                    expected_revision: 1,
+                    expected_refresh_revision: 0,
+                    settings: RefreshSettings {
+                        mode: RefreshMode::Automatic,
+                        recurring_consent: true,
+                        interval_ms: 60_000,
+                        ..RefreshSettings::default()
+                    },
+                },
+                false,
+            )
+            .unwrap();
+        service.tick(&mut store).unwrap();
+        assert!(service.is_idle());
+        service.fail_next_metadata_spawn = true;
+        clock.set(60_100);
+        service.tick(&mut store).unwrap();
+        assert!(service.is_idle());
+        let report = store
+            .connection_diagnostics_run_at(&link.id, None, 60_100)
+            .unwrap();
+        assert_eq!(report["latest"]["state"], "failed");
+        assert_eq!(report["latest"]["errorCode"], "metadata-thread-spawn");
+        assert_eq!(report["latest"]["finishedAtMs"], 60_100);
+        let diagnostic_id = report["latest"]["id"].as_str().unwrap().to_owned();
+        let status = service
+            .handle(
+                &mut store,
+                &ConnectionRequest::RefreshStatus {
+                    id: Some(link.id.clone()),
+                },
+                false,
+            )
+            .unwrap();
+        assert_eq!(status["refresh"][0]["reason"], "backoff");
+        assert_eq!(status["refresh"][0]["nextOpportunityAtMs"], 120_100);
+        assert_eq!(status["refresh"][0]["activeDiagnosticId"], Value::Null);
+        let cancelled = service
+            .handle(
+                &mut store,
+                &ConnectionRequest::CancelDiagnostic {
+                    command_id: "spawn-cancel".into(),
+                    id: link.id.clone(),
+                    expected_revision: 1,
+                    diagnostic_id: diagnostic_id.clone(),
+                },
+                false,
+            )
+            .unwrap();
+        assert_eq!(cancelled["state"], "not-running");
+        clock.set(60_101);
+        service.tick(&mut store).unwrap();
+        assert_eq!(
+            store
+                .connection_diagnostics_run_at(&link.id, None, 60_101)
+                .unwrap()["latest"]["id"],
+            diagnostic_id
+        );
+        assert!(store.load().unwrap().workers().is_empty());
+    }
+    #[cfg(windows)]
+    #[test]
+    #[ignore = "requires the owned orchestrix-runtime-fixture binary built by integration tests; metadata only"]
+    fn periodic_service_uses_real_fixture_process_cache_cancel_and_revocation() {
+        use crate::runtime::ManualRefreshClock;
+        use std::time::{Duration, Instant};
+        let binary = std::env::current_exe()
+            .unwrap()
+            .parent()
+            .unwrap()
+            .parent()
+            .unwrap()
+            .join("orchestrix-runtime-fixture.exe");
+        assert!(binary.is_file(), "build the existing fixture binary first");
+        let root = path("service.sqlite").parent().unwrap().to_owned();
+        let home = root.join("managed-fixture-home");
+        let directory = root.join("metadata");
+        std::fs::create_dir_all(&home).unwrap();
+        std::fs::create_dir_all(&directory).unwrap();
+        let home = std::fs::canonicalize(home).unwrap();
+        let directory = std::fs::canonicalize(directory).unwrap();
+        let mut store = Store::open(root.join("service.sqlite")).unwrap();
+        let clock = Arc::new(ManualRefreshClock::new(100));
+        let mut service = ConnectionService::with_clock(clock.clone());
+        let reads = || {
+            std::fs::read_to_string(home.join("metadata-reads"))
+                .ok()
+                .and_then(|s| s.parse::<u64>().ok())
+                .unwrap_or(0)
+        };
+        let settle = |service: &mut ConnectionService, store: &mut Store| {
+            let until = Instant::now() + Duration::from_secs(20);
+            while !service.is_idle() {
+                service.drain(store).unwrap();
+                assert!(Instant::now() < until, "owned metadata completion");
+                std::thread::sleep(Duration::from_millis(5));
+            }
+        };
+        service
+            .handle(
+                &mut store,
+                &ConnectionRequest::Link {
+                    command_id: "fixture-link".into(),
+                    id: "fixture-cadence".into(),
+                    expected_revision: None,
+                    name: "Synthetic cadence".into(),
+                    runtime: RuntimeChoice::Synthetic {
+                        executable: binary.clone(),
+                        home: home.clone(),
+                        scenario: "connection-metadata".into(),
+                    },
+                    metadata_directory: directory,
+                    executable_sha256: runtime_executable_sha256(&binary).unwrap(),
+                    allow_metadata_read: true,
+                },
+                false,
+            )
+            .unwrap();
+        settle(&mut service, &mut store);
+        assert_eq!(reads(), 1);
+        let settings = RefreshSettings {
+            mode: RefreshMode::Automatic,
+            recurring_consent: true,
+            interval_ms: 60_000,
+            ..RefreshSettings::default()
+        };
+        service
+            .handle(
+                &mut store,
+                &ConnectionRequest::ConfigureRefresh {
+                    command_id: "fixture-recurring".into(),
+                    id: "fixture-cadence".into(),
+                    expected_revision: 1,
+                    expected_refresh_revision: 0,
+                    settings,
+                },
+                false,
+            )
+            .unwrap();
+        assert_eq!(reads(), 1);
+        clock.set(200);
+        service
+            .handle(
+                &mut store,
+                &ConnectionRequest::Diagnose {
+                    command_id: "fixture-manual-cache".into(),
+                    id: "fixture-cadence".into(),
+                    expected_revision: 1,
+                    allow_metadata_read: true,
+                },
+                false,
+            )
+            .unwrap();
+        settle(&mut service, &mut store);
+        assert_eq!(reads(), 1);
+        let cached = store
+            .connection_diagnostics_run_at("fixture-cadence", None, 200)
+            .unwrap();
+        assert_eq!(cached["latest"]["cached"], true);
+        assert_eq!(cached["latest"]["observedAtMs"], 100);
+        service.tick(&mut store).unwrap();
+        clock.set(60_200);
+        service.tick(&mut store).unwrap();
+        settle(&mut service, &mut store);
+        assert_eq!(reads(), 2);
+        let fresh = store
+            .connection_diagnostics_run_at("fixture-cadence", None, 60_200)
+            .unwrap();
+        assert_eq!(fresh["latest"]["observedAtMs"], 60_200);
+        assert_eq!(fresh["latest"]["cached"], false);
+        assert!(
+            fresh["latest"]["id"]
+                .as_str()
+                .unwrap()
+                .starts_with("periodic-")
+        );
+        clock.set(9_000_000);
+        service.tick(&mut store).unwrap();
+        assert!(service.is_idle());
+        assert_eq!(reads(), 2);
+        std::fs::write(home.join("connection-metadata-hang"), b"owned test barrier").unwrap();
+        clock.set(9_060_000);
+        service.tick(&mut store).unwrap();
+        let until = Instant::now() + Duration::from_secs(5);
+        while reads() != 3 {
+            assert!(Instant::now() < until, "owned fixture start");
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        let status = service
+            .refresh_status(&store, Some("fixture-cadence"))
+            .unwrap();
+        let diagnostic_id = status["refresh"][0]["activeDiagnosticId"]
+            .as_str()
+            .unwrap()
+            .to_owned();
+        service
+            .handle(
+                &mut store,
+                &ConnectionRequest::CancelDiagnostic {
+                    command_id: "fixture-cancel".into(),
+                    id: "fixture-cadence".into(),
+                    expected_revision: 1,
+                    diagnostic_id,
+                },
+                false,
+            )
+            .unwrap();
+        settle(&mut service, &mut store);
+        let cancelled = store
+            .connection_diagnostics_run_at("fixture-cadence", None, 9_060_000)
+            .unwrap();
+        assert_eq!(cancelled["latest"]["state"], "cancelled");
+        assert_eq!(cancelled["lastSuccessfulAtMs"], 60_200);
+        service
+            .handle(
+                &mut store,
+                &ConnectionRequest::ConfigureRefresh {
+                    command_id: "fixture-revoke".into(),
+                    id: "fixture-cadence".into(),
+                    expected_revision: 1,
+                    expected_refresh_revision: 1,
+                    settings: RefreshSettings::default(),
+                },
+                false,
+            )
+            .unwrap();
+        clock.set(18_000_000);
+        service.tick(&mut store).unwrap();
+        assert!(service.is_idle());
+        assert_eq!(reads(), 3);
+        assert!(!home.join("dispatch-count").exists());
+        assert!(!std::fs::read_dir(home).unwrap().any(|r| {
+            r.unwrap()
+                .file_name()
+                .to_string_lossy()
+                .starts_with("fixture-thread-")
+        }));
     }
 }

@@ -35,6 +35,15 @@ impl Default for Settings {
     }
 }
 impl Settings {
+    /// Execution preferences only. Appearance changes do not withdraw preparations.
+    pub fn execution_fingerprint(&self) -> Result<String, String> {
+        let bytes = serde_json::to_vec(
+            &json!({"policy":self.policy,"instructions":self.system_instructions}),
+        )
+        .map_err(|_| "policy-schema")?;
+        Ok(crate::git_records::content_hash(&bytes))
+    }
+
     pub fn validate(&self) -> bool {
         ["en", "pt-BR", "es"].contains(&self.language.as_str())
             && [
@@ -108,6 +117,18 @@ pub enum DesktopRequest {
         expected_revision: u64,
         settings: Box<Settings>,
     },
+    ExportPolicy,
+    PreviewPolicyImport {
+        document: String,
+        mappings: crate::policy_portability::ImportMappings,
+    },
+    ApplyPolicyImport {
+        command_id: String,
+        expected_revision: u64,
+        document: String,
+        mappings: crate::policy_portability::ImportMappings,
+        expected_preview_digest: String,
+    },
     LinkWork {
         command_id: String,
         expected_revision: u64,
@@ -158,6 +179,11 @@ pub enum DesktopCommand {
     SaveSettings {
         settings: Box<Settings>,
     },
+    ImportPolicy {
+        document: String,
+        mappings: crate::policy_portability::ImportMappings,
+        expected_preview_digest: String,
+    },
 }
 impl DesktopCommand {
     pub(crate) fn apply(
@@ -196,6 +222,18 @@ impl DesktopCommand {
                 }
                 ("desktop-settings".into(), json!(settings))
             }
+            Self::ImportPolicy {
+                document, mappings, ..
+            } => {
+                let bundle = crate::policy_portability::parse(document)
+                    .map_err(|_| StoreError::Configuration)?;
+                let current = crate::policy_portability::settings_from_state(state)
+                    .map_err(|_| StoreError::InvalidState)?;
+                let settings = bundle
+                    .resolve(&current, mappings)
+                    .map_err(|_| StoreError::Configuration)?;
+                ("desktop-settings".into(), json!(settings))
+            }
         };
         Command::Records(RecordsCommand::AddDefinition(DefinitionInput {
             kind: DefinitionKind::Configuration,
@@ -212,6 +250,21 @@ impl DesktopCommand {
 /// use bounded historical projections. Mutations and admission retain full validation.
 pub(crate) fn handle(store: &mut Store, request: &DesktopRequest) -> Result<Value, String> {
     let (id, revision, command) = match request {
+        DesktopRequest::ExportPolicy => {
+            return store
+                .portable_policy_export()
+                .map_err(|_| "portable-export".into());
+        }
+        DesktopRequest::PreviewPolicyImport { document, mappings } => {
+            // Parse separately so incompatible version/size/fields stay explicit.
+            crate::policy_portability::parse(document)?;
+            return serde_json::to_value(
+                store
+                    .portable_policy_preview(document, mappings)
+                    .map_err(|_| "portable-preview")?,
+            )
+            .map_err(|_| "portable-preview".into());
+        }
         DesktopRequest::AffectedWorkers { canonical_path } => {
             return store
                 .desktop_affected_workers(canonical_path)
@@ -371,6 +424,24 @@ pub(crate) fn handle(store: &mut Store, request: &DesktopRequest) -> Result<Valu
                 settings: settings.clone(),
             }),
         ),
+        DesktopRequest::ApplyPolicyImport {
+            command_id,
+            expected_revision,
+            document,
+            mappings,
+            expected_preview_digest,
+        } => {
+            crate::policy_portability::parse(document)?;
+            (
+                command_id,
+                *expected_revision,
+                Command::Desktop(DesktopCommand::ImportPolicy {
+                    document: document.clone(),
+                    mappings: mappings.clone(),
+                    expected_preview_digest: expected_preview_digest.clone(),
+                }),
+            )
+        }
         DesktopRequest::LinkWork {
             command_id,
             expected_revision,

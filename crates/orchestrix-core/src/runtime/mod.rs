@@ -12,7 +12,7 @@ pub use metadata::{
     CodexMetadataService, ManualRefreshClock, MetadataRead, RefreshClock, SystemRefreshClock,
 };
 pub use metadata_schedule::{
-    MetadataRefreshCoordinator, MetadataRefreshTrigger, MetadataRegistration,
+    MetadataClaim, MetadataRefreshCoordinator, MetadataRefreshTrigger, MetadataRegistration,
     MetadataScheduleBounds, ScheduledMetadataOutcome, ScheduledMetadataUpdate,
 };
 

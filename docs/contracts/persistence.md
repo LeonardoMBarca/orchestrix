@@ -111,3 +111,9 @@ Use isolated temporary database files and fake inputs. Required acceptance cover
 Run Rust workspace check/test/example build, formatting and Clippy for affected files, plus the existing conformance check without regenerating expectations. If the shared runtime boundary changes, run its relevant JS regressions. Exact commands, totals and limitations belong to the increment evidence/current status after execution.
 
 These tests establish behavior under their controlled file/transaction/process conditions. They do not certify recovery after power loss, network filesystems, hostile modification, production process supervision, provider capabilities, external exactly-once execution or simultaneous support for all operating systems. OX-006 adds real local Git effects outside database transactions; production supervisor/adapter, routing, daemon, Desktop and refresh retain their own tickets.
+
+## Diagnostic cadence / policy transport — schema 9
+
+Migration 9 preserves migration-8 connection and diagnostic bytes. It adds append-only connection_refresh_configurations (hashed body, independent revision) and connection_diagnostic_validity (immutable source cohort, refresh/policy revisions and effective class leases). Absent configuration means manual/no recurring consent. Configuration writes are CAS and do not rewrite observations or attempts. Observation restriction history prevents a later longer preference from rejuvenating old evidence.
+
+Policy import uses the existing Settings mutation and command receipt transaction. Strict document/mapping validation is repeated against the expected revision and current local connection/observation state in that transaction. A changed binding, expired observation, stale preview or incompatible schema leaves Settings unchanged. Portability never serializes the database or imports runtime authority; see [portable policy format](../design/policy-portability.md).

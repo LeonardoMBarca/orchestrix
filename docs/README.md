@@ -47,7 +47,8 @@ Current status takes precedence over older reports' “next” or “pending” 
 | [Manual Worker, Policy and Runtime](./contracts/manual-worker.md) | OX-007/008/009 interfaces, deterministic policy/context, authorized metadata refresh, Windows supervision, serial durable worker, evaluators and CLI. Current status distinguishes synthetic evidence from live provider acceptance. |
 | [Local Daemon and Recovery](./contracts/local-daemon.md) | OX-010/011 versioned API, user-restricted transport, command/event recovery, deterministic controls, scoped closure evidence, intervention and basic Context Pack. |
 | [API Connection Contract](./design/api-connection-contract.md) | Two-stage subscription/API connection flow, provider-specific credentials and host boundary. |
-| [Connection Diagnostics](./design/connection-diagnostics.md) | Available/unavailable/unknown evidence, scoped registration/preparation reads and recheck. Runtime-managed Codex linking uses the daemon connection extension; broader periodic controls, owned OAuth and active probes retain their gates. |
+| [Connection Diagnostics](./design/connection-diagnostics.md) | Available/unavailable/unknown evidence, scoped reads, daemon-owned cadence and effective validity. Owned OAuth and active probes retain their gates. |
+| [Portable Policies](./design/policy-portability.md) | Versioned allowlist, native file preview, explicit connection/model remapping and atomic import without credentials or execution authority. |
 
 ### Desktop study and visual standards
 

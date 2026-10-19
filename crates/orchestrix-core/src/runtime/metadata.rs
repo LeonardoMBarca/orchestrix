@@ -64,6 +64,7 @@ pub struct CodexMetadataService {
     clock: Arc<dyn RefreshClock>,
     active: Arc<Mutex<BTreeMap<u64, Active>>>,
     deadline: Duration,
+    source_ttl_ms: u64,
 }
 impl CodexMetadataService {
     pub fn new(clock: Arc<dyn RefreshClock>, bounds: RefreshBounds) -> Option<Self> {
@@ -72,18 +73,46 @@ impl CodexMetadataService {
             clock,
             active: Arc::new(Mutex::new(BTreeMap::new())),
             deadline: Duration::from_millis(bounds.deadline_ms),
+            source_ttl_ms: bounds.ttl_ms,
         })
+    }
+    /// Upper bound granted by this metadata source, independent of UI cadence.
+    pub fn source_ttl_ms(&self) -> u64 {
+        self.source_ttl_ms
     }
     /// Cached answers retain their original observed time. Partial/failed reads do not renew a lease.
     /// Coalesced consumers receive the existing flight's status and may read the cache after it settles.
     pub fn read(
+        &self,
+        launch: RuntimeLaunch,
+        connection_id: &str,
+        revision: u64,
+        authorized: bool,
+        cancel: &CancellationToken,
+    ) -> RuntimeResult<MetadataRead> {
+        self.read_with_maximum_age(
+            launch,
+            connection_id,
+            revision,
+            authorized,
+            cancel,
+            self.source_ttl_ms,
+        )
+    }
+    /// A stricter host requirement may shorten cache reuse, never extend its
+    /// source lease or change the stored observation's original time.
+    pub fn read_with_maximum_age(
         &self,
         mut launch: RuntimeLaunch,
         connection_id: &str,
         revision: u64,
         authorized: bool,
         cancel: &CancellationToken,
+        maximum_age_ms: u64,
     ) -> RuntimeResult<MetadataRead> {
+        if maximum_age_ms == 0 || maximum_age_ms > self.source_ttl_ms {
+            return Err(RuntimeError::new("policy", "not-sent"));
+        }
         if !authorized {
             return Err(RuntimeError::new("policy", "not-sent"));
         }
@@ -97,7 +126,17 @@ impl CodexMetadataService {
             context_key: launch.metadata_scope()?,
             resource: MetadataResource::Configuration,
         };
-        let ticket = match self.cache.begin(scope, self.clock.now_ms(), true) {
+        let mut action = self.cache.begin(scope.clone(), self.clock.now_ms(), true);
+        if let RefreshAction::Cached(metadata) = &action {
+            let now = self.clock.now_ms();
+            if now < metadata.observed_at_ms
+                || now >= metadata.observed_at_ms.saturating_add(maximum_age_ms)
+            {
+                self.cache.invalidate_observations(connection_id, revision);
+                action = self.cache.begin(scope, self.clock.now_ms(), true);
+            }
+        }
+        let ticket = match action {
             RefreshAction::Cached(metadata) => {
                 return Ok(MetadataRead::Ready {
                     metadata,
