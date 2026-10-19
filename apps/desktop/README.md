@@ -77,6 +77,8 @@ The diagnostic separates read state, date/validity, completeness, source, config
 
 Task preparation pins the Connection binding revision seen in the form and requires its own authorized project-directory metadata scope. A changed, disabled or unlinked binding is refused before dispatch; existing attempts retain their original identity/snapshots. API modalities and Orchestrix-owned Sign in with ChatGPT remain separate, unimplemented paths. Subscription Only never falls back to paid APIs.
 
+A saved model preference remains visible when this window has not loaded that connection's catalog. Settings, the composer and preparation label the retained choice explicitly; the placeholder is neither an observed model nor permission to run. Loading a model with the same name from another connection does not resolve that reference.
+
 For focused offline coverage, run `node tests/connections.browser.mjs` (its own Vite server and mocked bridge). For native onboarding QA, generate `node scripts/native-fixture.mjs --connections --release` after a QA build and pass the emitted configuration through `ORCHESTRIX_DESKTOP_FIXTURE_CONFIG`. This mode starts with no registered connection and uses only the explicitly labelled synthetic runtime. It does not read a real account or certify provider behavior.
 
 ## Explicit synthetic native QA
