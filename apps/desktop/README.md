@@ -18,6 +18,9 @@ node tests/task-form.browser.mjs
 node tests/integration-flow.browser.mjs
 node tests/integration-invalidation.browser.mjs
 node tests/settings-nav.browser.mjs
+$env:ORCHESTRIX_RENDERER_URL = 'http://127.0.0.1:1420'
+node tests/configuration-editor.browser.mjs
+node tests/configuration-integration.browser.mjs
 npm.cmd run native:dev
 ```
 
