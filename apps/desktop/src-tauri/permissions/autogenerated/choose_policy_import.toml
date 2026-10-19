@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-choose-policy-import"
+description = "Enables the choose_policy_import command without any pre-configured scope."
+commands.allow = ["choose_policy_import"]
+
+[[permission]]
+identifier = "deny-choose-policy-import"
+description = "Denies the choose_policy_import command without any pre-configured scope."
+commands.deny = ["choose_policy_import"]

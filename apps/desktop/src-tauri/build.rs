@@ -7,6 +7,8 @@ fn main() {
             "desktop_request",
             "desktop_poll",
             "choose_document",
+            "choose_policy_import",
+            "save_policy_export",
             "editor_request",
             "close_desktop",
             "close_desktop_without_suspend",

@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-save-policy-export"
+description = "Enables the save_policy_export command without any pre-configured scope."
+commands.allow = ["save_policy_export"]
+
+[[permission]]
+identifier = "deny-save-policy-export"
+description = "Denies the save_policy_export command without any pre-configured scope."
+commands.deny = ["save_policy_export"]

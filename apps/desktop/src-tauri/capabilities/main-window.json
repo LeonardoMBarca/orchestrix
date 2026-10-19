@@ -3,5 +3,5 @@
   "identifier":"main-window",
   "description":"Local Orchestrix window: typed daemon client, native picker grants and supporting editor. No generic filesystem, process, SQL or shell permissions.",
   "windows":["main"],
-  "permissions":["core:event:allow-listen","core:event:allow-unlisten","allow-connect-daemon","allow-observe-daemon-startup","allow-native-qa-window-metrics","allow-desktop-request","allow-desktop-poll","allow-choose-document","allow-editor-request","allow-close-desktop","allow-close-desktop-without-suspend","allow-open-help"]
+  "permissions":["core:event:allow-listen","core:event:allow-unlisten","allow-connect-daemon","allow-observe-daemon-startup","allow-native-qa-window-metrics","allow-desktop-request","allow-desktop-poll","allow-choose-document","allow-choose-policy-import","allow-save-policy-export","allow-editor-request","allow-close-desktop","allow-close-desktop-without-suspend","allow-open-help"]
 }
