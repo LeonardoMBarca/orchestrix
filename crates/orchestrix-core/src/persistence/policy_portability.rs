@@ -4,17 +4,57 @@ use crate::{desktop::DesktopCommand, policy_portability::*};
 use rusqlite::Connection;
 use serde_json::{Value, json};
 
+/// Inspect the existing pure resolver's precedence, never grant execution or
+/// rewrite a provider observation. Default/overridden Block remains blocking.
+fn compatible_soft_preferences(
+    bundle: &PortableBundle,
+    current: &crate::desktop::Settings,
+    mappings: &ImportMappings,
+) -> bool {
+    let Ok(candidate) = bundle.resolve(current, mappings) else {
+        return false;
+    };
+    let classification = crate::policy::TaskClassification::routine(
+        crate::policy::TaskKind::Implementation,
+        "portable-preference-inspection",
+    );
+    let Ok(decision) = crate::policy::resolve(&candidate.policy, &classification, &[], 0) else {
+        return false;
+    };
+    let snapshot = decision.snapshot().as_json();
+    snapshot["preferences"]["fallback"] == "compatible"
+        && snapshot["requirements"]["forced_model"].is_null()
+}
+fn soft_model_reference(bundle: &PortableBundle, alias: &str) -> bool {
+    [
+        &bundle.policy.mode_defaults,
+        &bundle.policy.profile_defaults,
+    ]
+    .into_iter()
+    .chain(bundle.policy.layers.iter().map(|l| &l.preferences))
+    .any(|p| {
+        p.model.as_deref() == Some(alias)
+            || p.preferred_models
+                .as_ref()
+                .is_some_and(|models| models.iter().any(|m| m == alias))
+    }) || bundle.policy.model_ranks.iter().any(|r| r.model == alias)
+}
+
 fn mapping_issues(
     c: &Connection,
     bundle: &PortableBundle,
     mappings: &ImportMappings,
     now: u64,
-) -> StoreResult<Vec<ImportIssue>> {
+    allow_soft_unknown: bool,
+) -> StoreResult<(Vec<ImportIssue>, bool)> {
     if let Err(code) = validate_mappings(bundle, mappings) {
-        return Ok(vec![ImportIssue {
-            code,
-            reference: None,
-        }]);
+        return Ok((
+            vec![ImportIssue {
+                code,
+                reference: None,
+            }],
+            false,
+        ));
     }
     let generation = c.query_row(
         "SELECT generation FROM daemon_meta WHERE singleton=1",
@@ -22,6 +62,7 @@ fn mapping_issues(
         |r| r.get::<_, i64>(0),
     )? as u64;
     let mut issues = Vec::new();
+    let mut declared_unknown = false;
     for mapping in &mappings.connections {
         let link = super::connections::current(c, &mapping.connection_id)?;
         let Some(link) = link else {
@@ -112,11 +153,19 @@ fn mapping_issues(
                     code: "portable-model-not-observed".into(),
                     reference: Some(model.alias.clone()),
                 }),
-                Some(m) if m["availability"] != "available" => issues.push(ImportIssue {
-                    code: "portable-model-availability-unconfirmed".into(),
-                    reference: Some(model.alias.clone()),
-                }),
+                Some(m)
+                    if m["availability"] != "available"
+                        && !(m["availability"] == "unknown"
+                            && allow_soft_unknown
+                            && soft_model_reference(bundle, &model.alias)) =>
+                {
+                    issues.push(ImportIssue {
+                        code: "portable-model-availability-unconfirmed".into(),
+                        reference: Some(model.alias.clone()),
+                    })
+                }
                 Some(observed) => {
+                    declared_unknown |= observed["availability"] == "unknown";
                     for preference in [
                         &bundle.policy.mode_defaults,
                         &bundle.policy.profile_defaults,
@@ -141,7 +190,7 @@ fn mapping_issues(
             }
         }
     }
-    Ok(issues)
+    Ok((issues, declared_unknown))
 }
 fn make_preview(
     c: &Connection,
@@ -152,14 +201,20 @@ fn make_preview(
 ) -> StoreResult<ImportPreview> {
     let bundle = parse(document).map_err(|_| StoreError::Configuration)?;
     let current = settings_from_state(state).map_err(|_| StoreError::InvalidState)?;
-    let issues = mapping_issues(c, &bundle, mappings, now)?;
-    Ok(crate::policy_portability::preview(
-        &bundle,
-        &current,
-        mappings,
-        state.revision(),
-        issues,
-    ))
+    let allow_soft_unknown = compatible_soft_preferences(&bundle, &current, mappings);
+    let (issues, declared_unknown) = mapping_issues(c, &bundle, mappings, now, allow_soft_unknown)?;
+    let mut preview =
+        crate::policy_portability::preview(&bundle, &current, mappings, state.revision(), issues);
+    if declared_unknown {
+        let warning = "model-preferences-retain-unknown-availability";
+        preview.changes.push(warning.into());
+        // A new unknown-availability warning requires its own exact confirmation.
+        preview.preview_digest = crate::git_records::content_hash(
+            &serde_json::to_vec(&json!({"resolution":preview.preview_digest,"warnings":[warning]}))
+                .map_err(|_| StoreError::InvalidState)?,
+        );
+    }
+    Ok(preview)
 }
 /// Called from Store::execute while its single short writer transaction is held.
 /// Revalidates time-sensitive identity/model evidence and exact preview before mutation.
@@ -239,6 +294,13 @@ mod tests {
         Store::open(parent.join("state.sqlite")).unwrap()
     }
     fn registration(store: &mut Store, now: u64) -> ConnectionDiagnostic {
+        registration_with_availability(store, now, "available")
+    }
+    fn registration_with_availability(
+        store: &mut Store,
+        now: u64,
+        availability: &str,
+    ) -> ConnectionDiagnostic {
         let parent = store.path().parent().unwrap().to_path_buf();
         let link = ConnectionLink {
             schema_version: 1,
@@ -298,7 +360,7 @@ mod tests {
         d.identity_assurance = "synthetic".into();
         d.complete = true;
         d.descriptor = Some(
-            json!({"version":{"major":1,"minor":1},"adapterId":"fixture","runtimeVersion":"synthetic-rust-1","connection":{"id":"destination-account","revision":1,"authentication":"authenticated","billing":"subscription","availability":"available"},"catalog":{"completeness":"complete"},"models":[{"id":"destination-model","availability":"available","reasoningLevels":["low","high"]}]}),
+            json!({"version":{"major":1,"minor":1},"adapterId":"fixture","runtimeVersion":"synthetic-rust-1","connection":{"id":"destination-account","revision":1,"authentication":"authenticated","billing":"subscription","availability":"available"},"catalog":{"completeness":"complete"},"models":[{"id":"destination-model","availability":availability,"reasoningLevels":["low","high"]}]}),
         );
         store.connection_record_diagnostic(&d).unwrap();
         d
@@ -508,6 +570,162 @@ mod tests {
                     Some("destination-model")
                 );
             }
+        }
+    }
+
+    #[test]
+    fn unknown_model_configuration_requires_explicit_soft_compatible_fallback() {
+        use crate::policy::Fallback;
+        for fallback in [None, Some(Fallback::Block), Some(Fallback::Compatible)] {
+            let mut store = store();
+            let now = crate::connections::now_ms();
+            registration_with_availability(&mut store, now, "unknown");
+            let before = serde_json::to_value(
+                super::super::connections::diagnostics(&store.connection, "destination-account")
+                    .unwrap(),
+            )
+            .unwrap();
+            let mut source = Settings::default();
+            source.policy.mode_defaults.connection_id = Some("source-account".into());
+            source.policy.mode_defaults.model_id = Some("source-model".into());
+            source.policy.mode_defaults.fallback = fallback;
+            let document = serde_json::to_string(&export(&source).unwrap()).unwrap();
+            let mappings = mappings();
+            let p = store
+                .portable_policy_preview_at(&document, &mappings, now)
+                .unwrap();
+            assert_eq!(
+                p.can_apply,
+                fallback == Some(Fallback::Compatible),
+                "{:?}",
+                p.issues
+            );
+            if p.can_apply {
+                assert!(
+                    p.changes
+                        .iter()
+                        .any(|c| c == "model-preferences-retain-unknown-availability")
+                );
+                store
+                    .execute(&Request {
+                        scope: LocalRef::new("desktop").unwrap(),
+                        key: LocalRef::new("unknown-soft-import").unwrap(),
+                        expected_revision: p.expected_revision,
+                        command: Command::Desktop(DesktopCommand::ImportPolicy {
+                            document,
+                            mappings,
+                            expected_preview_digest: p.preview_digest,
+                        }),
+                    })
+                    .unwrap();
+                let local = settings_from_state(&store.load().unwrap()).unwrap();
+                assert_eq!(
+                    local.policy.mode_defaults.model_id.as_deref(),
+                    Some("destination-model")
+                );
+                assert_eq!(
+                    local.policy.mode_defaults.fallback,
+                    Some(Fallback::Compatible)
+                );
+                assert!(store.load().unwrap().workers().is_empty());
+            } else {
+                assert!(
+                    p.issues
+                        .iter()
+                        .any(|i| i.code == "portable-model-availability-unconfirmed")
+                );
+            }
+            assert_eq!(
+                serde_json::to_value(
+                    super::super::connections::diagnostics(
+                        &store.connection,
+                        "destination-account"
+                    )
+                    .unwrap()
+                )
+                .unwrap(),
+                before
+            );
+            assert_eq!(
+                before[1]["descriptor"]["models"][0]["availability"],
+                "unknown"
+            );
+        }
+    }
+
+    #[test]
+    fn compatible_cannot_override_hard_model_requirements_block_layers_or_reasoning() {
+        use crate::policy::{Fallback, PolicyLayer, Preferences, Reasoning, Requirements, Scope};
+        for condition in [
+            "source-hard",
+            "local-hard",
+            "higher-block",
+            "unsupported-reasoning",
+            "unavailable",
+        ] {
+            let mut store = store();
+            let now = crate::connections::now_ms();
+            registration_with_availability(
+                &mut store,
+                now,
+                if condition == "unavailable" {
+                    "unavailable"
+                } else {
+                    "unknown"
+                },
+            );
+            let mut source = Settings::default();
+            source.policy.mode_defaults.connection_id = Some("source-account".into());
+            source.policy.mode_defaults.model_id = Some("source-model".into());
+            source.policy.mode_defaults.fallback = Some(Fallback::Compatible);
+            match condition {
+                "source-hard" => {
+                    source.policy.mode_requirements.forced_model = Some("source-model".into())
+                }
+                "local-hard" => {
+                    let mut local = Settings::default();
+                    local.policy.mode_requirements.forced_model = Some("destination-model".into());
+                    store
+                        .execute(&Request {
+                            scope: LocalRef::new("desktop").unwrap(),
+                            key: LocalRef::new("local-hard-model").unwrap(),
+                            expected_revision: 0,
+                            command: Command::Desktop(DesktopCommand::SaveSettings {
+                                settings: Box::new(local),
+                            }),
+                        })
+                        .unwrap();
+                }
+                "higher-block" => source.policy.layers.push(PolicyLayer {
+                    scope: Scope::Task,
+                    reference: "explicit-block".into(),
+                    revision: 1,
+                    preferences: Preferences {
+                        fallback: Some(Fallback::Block),
+                        ..Default::default()
+                    },
+                    requirements: Requirements::default(),
+                }),
+                "unsupported-reasoning" => {
+                    source.policy.mode_defaults.reasoning = Some(Reasoning::Maximum)
+                }
+                _ => {}
+            }
+            let document = serde_json::to_string(&export(&source).unwrap()).unwrap();
+            let p = store
+                .portable_policy_preview_at(&document, &mappings(), now)
+                .unwrap();
+            assert!(!p.can_apply, "{condition}");
+            assert!(
+                p.issues.iter().any(|i| i.code
+                    == if condition == "unsupported-reasoning" {
+                        "portable-reasoning-not-observed"
+                    } else {
+                        "portable-model-availability-unconfirmed"
+                    }),
+                "{condition}: {:?}",
+                p.issues
+            );
         }
     }
 }
