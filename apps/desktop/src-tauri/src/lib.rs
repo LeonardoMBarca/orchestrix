@@ -165,6 +165,50 @@ async fn close_desktop(
     window.destroy().map_err(|_| "window-close".into())
 }
 #[tauri::command]
+async fn choose_policy_import(
+    app: tauri::AppHandle,
+    state: tauri::State<'_, Arc<Host>>,
+) -> Result<Option<Value>, String> {
+    let host = state.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let Some(file) = app
+            .dialog()
+            .file()
+            .add_filter("Orchestrix policy", &["json"])
+            .blocking_pick_file()
+        else {
+            return Ok(None);
+        };
+        let path = file.into_path().map_err(|_| "native-dialog-path")?;
+        host.select_policy_import(&path).map(Some)
+    })
+    .await
+    .map_err(|_| "native-task-failed")?
+}
+#[tauri::command]
+async fn save_policy_export(
+    app: tauri::AppHandle,
+    state: tauri::State<'_, Arc<Host>>,
+    export_ref: String,
+) -> Result<Option<Value>, String> {
+    let host = state.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let Some(file) = app
+            .dialog()
+            .file()
+            .set_file_name("orchestrix-policy.json")
+            .add_filter("Orchestrix policy", &["json"])
+            .blocking_save_file()
+        else {
+            return Ok(None);
+        };
+        let path = file.into_path().map_err(|_| "native-dialog-path")?;
+        host.write_policy_export(&export_ref, &path).map(Some)
+    })
+    .await
+    .map_err(|_| "native-task-failed")?
+}
+#[tauri::command]
 fn close_desktop_without_suspend(window: tauri::WebviewWindow) -> Result<(), String> {
     window.destroy().map_err(|_| "window-close".into())
 }
@@ -229,6 +273,8 @@ pub fn run() {
             desktop_request,
             desktop_poll,
             choose_document,
+            choose_policy_import,
+            save_policy_export,
             editor_request,
             close_desktop,
             close_desktop_without_suspend,

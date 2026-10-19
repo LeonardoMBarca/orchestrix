@@ -110,3 +110,13 @@ npm.cmd run tauri -- icon ../../prototypes/desktop/assets/brand/transparent/symb
 Only the two referenced Windows/native formats are retained. Source identity and provenance are in the [visual asset catalog](../../docs/design/visual-asset-catalog.md); this conversion does not redesign the mark or validate other platforms.
 
 The source icon SHA-256 is `84b66bf03100f1afcf8ae0578fb2b14d42227754f0af262f37463b8b62443679`.
+
+## Diagnostic refresh and policy portability
+
+In Connections (or Settings → Accounts), select a linked connection and open Diagnostic refresh. Manual is the default. Automatic metadata requires explicit consent for this binding and registration directory; Save shows requested/effective interval, class validity, source ceiling, next opportunity and wait/block reason. Recheck, Cancel diagnostic and Disable recurring reads are different operations. Task admission suspension does not revoke metadata consent. No window timer performs provider queries.
+
+Settings → Orchestration → Policy portability exports supported policy/appearance only. Prepare export shows the summary and optional JSON; Save uses a native destination dialog and never overwrites an existing file. Import starts with a native file chooser, strict preview, explicit local connection/model (and custom definition) mappings, then exact-preview confirmation. Cancel/invalid/stale imports preserve Settings. Local restrictions and Subscription Only prevail; recurring consent, credentials, personal instructions and historical work do not travel. A prepared task must be prepared again after a policy change, including one from another window.
+
+A catalog model with unknown access stays unknown. Importing it as a soft preference requires explicit Compatible fallback and the preview warning; a mandatory model or Block remains blocked. Importing preferences does not authorize execution or certify entitlement.
+
+HOME reflows cards into fewer columns when both docks and enlarged text leave limited central width. Content stays scrollable; this temporary adaptation does not change persisted dock widths, collapse preferences, text scale or conversation draft.

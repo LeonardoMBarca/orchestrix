@@ -58,3 +58,20 @@ html,body,#root{height:100%;overflow:hidden}body{font:1rem/1.45 var(--body)}butt
 .o-settings-nav{width:min-content;min-width:180px;max-width:45%;overflow:auto}.o-settings-nav button{overflow-wrap:normal;word-break:normal;flex-shrink:0}
 /* Checkbox controls keep their intrinsic width beside wrapping consent text. */
 .o-checkbox input[type=checkbox]{width:auto;flex:0 0 auto}
+
+/* Reflow follows the available work area, including two expanded docks and
+   enlarged text. Intrinsic content height wins over filling the first screen;
+   CSS adaptation never writes a different saved docking preference. */
+.o-home{flex:1 0 auto;min-height:min-content}
+.o-home>*{flex-shrink:0}
+.o-home-heading{flex:1 0 auto;min-height:10rem}
+.o-home-heading h1{max-width:100%;overflow-wrap:normal;word-break:normal}
+.o-start-cards{grid-template-columns:repeat(auto-fit,minmax(min(100%,13rem),1fr))}
+.o-start-card strong,.o-start-card span{max-width:100%;overflow-wrap:normal;word-break:normal}
+.o-composer-footer{flex-wrap:wrap;overflow-wrap:anywhere}
+.o-diagnostic-refresh,.o-policy-transfer{border-top:1px solid var(--line);padding-top:18px;margin-top:20px;min-width:0}
+.o-refresh-validity{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,13rem),1fr));gap:0 14px}
+.o-transfer-preview{border:1px solid var(--line);border-radius:10px;padding:14px;margin:15px 0;min-width:0;overflow-wrap:anywhere}
+.o-transfer-preview ul{padding-left:1.3rem}.o-transfer-preview h4{margin:0 0 12px}
+.o-portable-model{margin:14px 0}.o-portable-model small{display:block;color:var(--muted);overflow-wrap:anywhere}
+.o-transfer-issues{color:var(--warn);font-size:.85rem}

@@ -12,7 +12,7 @@ export type ConversationWork={runId:string,taskId?:string,attemptId?:string,work
 export type ConversationDetail={id:string,projectId?:string|null,messages:Message[],draft?:string|null,nextOrdinal:number,more:boolean,work:ConversationWork[]};
 export type Project={id:string,name:string,directory?:string};
 export type DiagnosticStage={stage:string,state:string,source?:string,reason?:string,observedAtMs?:number};
-export type DiagnosticRun={id:string,state:string,connectionRevision:number,startedAtMs?:number,finishedAtMs?:number,observedAtMs?:number,validUntilMs?:number,nextAllowedAtMs?:number,complete?:boolean,cached?:boolean,current?:boolean,errorCode?:string,identityChanged?:boolean,provenance?:string,stages?:DiagnosticStage[],descriptor?:Record<string,unknown>,[key:string]:unknown};
+export type DiagnosticRun={id:string,state:string,connectionRevision:number,startedAtMs?:number,finishedAtMs?:number,observedAtMs?:number,validUntilMs?:number,effectiveValidUntilMs?:number,nextAllowedAtMs?:number,complete?:boolean,cached?:boolean,current?:boolean,errorCode?:string,identityChanged?:boolean,provenance?:string,stages?:DiagnosticStage[],descriptor?:Record<string,unknown>,[key:string]:unknown};
 export type ConnectionDiagnostic={latest?:DiagnosticRun|null,lastSuccessful?:DiagnosticRun|null,lastSuccessfulAtMs?:number,identityChanged?:boolean,history?:DiagnosticRun[],observationRenewedOnRead?:false,catalog?:Record<string,any>|null,catalogDiagnosticId?:string|null,catalogObservedAtMs?:number|null,catalogLabels?:{id:string,label:string,nativeEfforts:string[]}[]|null,controlObservations?:string[]|null,structuredResultSupport?:boolean|null};
 export type Connection={id:string,label:string,name?:string,revision?:number,bindingRevision?:number,provider:string,mode:string,status:string,enabled?:boolean,linked?:boolean,selected?:boolean,adapterId?:string,runtimeVersion?:string,identityAssurance?:string,identityStatus?:string,diagnostics?:ConnectionDiagnostic,models?:{id:string,name:string,efforts?:string[],nativeEfforts?:string[]}[]};
 export type NativeCandidate={id:string,kind:'executable'|'home',location:string,source:string};
@@ -23,6 +23,12 @@ export type DaemonSnapshot={state:{suspended:boolean,generation:number,cursor:Cu
 export type Workspace={revision:number,projects:Project[],conversations:Conversation[],settings:Settings,connections:Connection[],eventCursor:Cursor,admissionsSuspended:boolean};
 export type Bootstrap=Workspace&{nativeTestMode?:boolean,daemon?:DaemonSnapshot,runtime?:{available:boolean,version?:string,reason?:string}};
 export type DesktopRequest=
+ |{type:'prepare-policy-export'}
+ |{type:'preview-policy-import',importRef:string,mappings:ImportMappings}
+ |{type:'apply-policy-import',commandId:string,expectedRevision:number,importRef:string,mappings:ImportMappings,expectedPreviewDigest:string,confirm:boolean}
+ |{type:'release-policy-import',importRef:string}
+ |{type:'configure-connection-refresh',commandId:string,id:string,expectedRevision:number,expectedRefreshRevision:number,settings:RefreshSettings}
+ |{type:'connection-refresh-status',id?:string|null}
  |{type:'bootstrap'}
  |{type:'test-fixture'}
  |{type:'conversation',conversationId:string,afterOrdinal?:number,limit?:number}
@@ -57,6 +63,10 @@ export type DesktopRequest=
 export type CheckDraft={id:string,executable:string,args:string[],timeoutSeconds:number};
 export type TaskDraft={conversationId:string,projectId?:string|null,repositoryGrant:string,worktreeGrant:string,connectionId:string,connectionRevision?:number,objective:string,acceptanceCriteria:string[],contextFiles:{grant:string,relative:string}[],checks:CheckDraft[],strategy:string,preset:string,model:string,effort:string,correctionBudget:number,fallback:string,allowMetadataRead?:boolean};
 export type PreparedTask={id:string,task:unknown,decision?:unknown,context?:unknown,warning?:string};
+export type RefreshSettings={schemaVersion:1,mode:'manual'|'automatic',intervalMs:number,validityMs:{identity:number,configuration:number,availability:number,models:number},recurringConsent:boolean};
+export type RefreshStatus={connectionId:string,refreshRevision:number,requested:RefreshSettings,effective?:Record<string,any>,reason:string,nextOpportunityAtMs?:number|null,activeDiagnosticId?:string|null,activeSource?:string|null,recurringAuthorized:boolean,sourceTtlMs?:number,policyValidityMs?:Record<string,number>,[key:string]:any};
+export type ImportMappings={connections:{alias:string,connectionId:string,bindingRevision:number}[],models:{alias:string,connectionAlias:string,modelId:string}[],mode?:{id:string,version:number}|null,profile?:{id:string,version:number}|null};
+export type ImportPreview={schemaVersion:number,expectedRevision:number,documentDigest:string,previewDigest:string,canApply:boolean,issues:{code:string,reference?:string|null}[],changes:string[],connectionReferences:{alias:string}[],modelReferences:{alias:string,sourceModelId:string,connectionAlias?:string|null}[],definitionReferences:Record<string,unknown>,mappings:ImportMappings};
 export async function request<T>(request:DesktopRequest):Promise<T>{return invoke<T>('desktop_request',{request});}
 export async function poll(cursor:Cursor):Promise<{daemon:DaemonSnapshot,cursor:Cursor,events:{sequence:number,kind:string,body:unknown}[],resyncRequired:boolean}>{return invoke('desktop_poll',{cursor});}
 export const commandId=()=>`desktop-${crypto.randomUUID()}`;

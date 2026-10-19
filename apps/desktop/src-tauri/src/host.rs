@@ -1,6 +1,8 @@
 //! Native API client and filesystem authority. No SQLite or second worker engine.
 #[path = "connection_discovery.rs"]
 mod connection_discovery;
+#[path = "policy_transfer.rs"]
+mod policy_transfer;
 use crate::daemon_startup::{StartupController, StartupLimits};
 use crate::editor::{Editor, EditorRequest};
 use orchestrix_core::{
@@ -43,6 +45,7 @@ struct Prepared {
     connection_id: String,
     conversation_id: String,
     corrections: u32,
+    settings_fingerprint: String,
 }
 #[cfg(test)]
 type TestTransport = Arc<dyn Fn(Operation) -> Result<Value, String> + Send + Sync>;
@@ -54,6 +57,7 @@ pub struct Host {
     prepared: Mutex<HashMap<String, Prepared>>,
     startup: Mutex<StartupController>,
     discovery: Mutex<connection_discovery::Discovery>,
+    policy_files: Mutex<policy_transfer::PolicyFiles>,
     close_behavior: Mutex<String>,
     #[cfg(test)]
     test_transport: Option<TestTransport>,
@@ -186,6 +190,32 @@ pub struct CheckDraft {
     deny_unknown_fields
 )]
 pub enum HostRequest {
+    PreparePolicyExport,
+    PreviewPolicyImport {
+        import_ref: String,
+        mappings: orchestrix_core::policy_portability::ImportMappings,
+    },
+    ApplyPolicyImport {
+        command_id: String,
+        expected_revision: u64,
+        import_ref: String,
+        mappings: orchestrix_core::policy_portability::ImportMappings,
+        expected_preview_digest: String,
+        confirm: bool,
+    },
+    ReleasePolicyImport {
+        import_ref: String,
+    },
+    ConfigureConnectionRefresh {
+        command_id: String,
+        id: String,
+        expected_revision: u64,
+        expected_refresh_revision: u64,
+        settings: orchestrix_core::connection_refresh::RefreshSettings,
+    },
+    ConnectionRefreshStatus {
+        id: Option<String>,
+    },
     #[cfg(feature = "test-fixtures")]
     TestFixture,
     Bootstrap,
@@ -402,6 +432,7 @@ impl Host {
                 Duration::from_secs(15),
             )?)),
             discovery: Mutex::new(connection_discovery::Discovery::default()),
+            policy_files: Mutex::new(policy_transfer::PolicyFiles::default()),
             close_behavior: Mutex::new(
                 fs::read_to_string(directory.join("window-preferences.json"))
                     .ok()
@@ -893,6 +924,57 @@ impl Host {
         match request {
             #[cfg(feature = "test-fixtures")]
             HostRequest::TestFixture => self.test_fixture(),
+            HostRequest::PreparePolicyExport => self.prepare_policy_export(),
+            HostRequest::PreviewPolicyImport {
+                import_ref,
+                mappings,
+            } => self.preview_policy_file(&import_ref, mappings),
+            HostRequest::ApplyPolicyImport {
+                command_id,
+                expected_revision,
+                import_ref,
+                mappings,
+                expected_preview_digest,
+                confirm,
+            } => self.apply_policy_file(
+                command_id,
+                policy_transfer::ImportExpectation {
+                    revision: expected_revision,
+                    digest: expected_preview_digest,
+                },
+                &import_ref,
+                mappings,
+                confirm,
+                fingerprint,
+            ),
+            HostRequest::ReleasePolicyImport { import_ref } => {
+                self.release_policy_file(&import_ref)
+            }
+            HostRequest::ConfigureConnectionRefresh {
+                command_id,
+                id,
+                expected_revision,
+                expected_refresh_revision,
+                settings,
+            } => self.effect(
+                &command_id,
+                fingerprint,
+                Operation::Connections {
+                    request: Box::new(ConnectionRequest::ConfigureRefresh {
+                        command_id: command_id.clone(),
+                        id,
+                        expected_revision,
+                        expected_refresh_revision,
+                        settings,
+                    }),
+                },
+                None,
+                None,
+                None,
+            ),
+            HostRequest::ConnectionRefreshStatus { id } => {
+                self.connections(ConnectionRequest::RefreshStatus { id })
+            }
             HostRequest::Bootstrap => {
                 let mut snapshot = self.desktop(DesktopRequest::Bootstrap)?;
                 self.cache_close_preference(&snapshot)?;
@@ -1292,6 +1374,7 @@ impl Host {
                     .get(&preparation_id)
                     .cloned()
                     .ok_or("preparation-required")?;
+                self.guard_prepared_settings(&prepared.settings_fingerprint)?;
                 if !prepared.task.checks.is_empty() && !authorize_checks {
                     return Err(err("explicit-check-authorization-required"));
                 }
@@ -1306,6 +1389,7 @@ impl Host {
                     Operation::SubmitConversation {
                         authorization_ref: stable("desktop-consent", &command_id),
                         conversation_id: prepared.conversation_id.clone(),
+                        settings_fingerprint: prepared.settings_fingerprint.clone(),
                         command_id: command_id.clone(),
                         task: Box::new(prepared.task.clone()),
                         runtime,
@@ -1652,7 +1736,8 @@ impl Host {
         if row["bindingRevision"].as_u64() != Some(binding_revision) {
             return Err("connection-binding-revision-changed".into());
         }
-        let started = self.connections(ConnectionRequest::DiagnoseScope {
+        let began = std::time::Instant::now();
+        let scope_request = ConnectionRequest::DiagnoseScope {
             command_id: stable(
                 "prepare-metadata",
                 &format!(
@@ -1668,11 +1753,22 @@ impl Host {
             expected_revision: registration,
             metadata_directory: directory,
             allow_metadata_read: true,
-        })?;
+        };
+        let started = loop {
+            match self.connections(scope_request.clone()) {
+                Ok(value) => break value,
+                Err(code)
+                    if code == "metadata-foreground-wait"
+                        && began.elapsed() < Duration::from_secs(20) =>
+                {
+                    std::thread::sleep(Duration::from_millis(25))
+                }
+                Err(code) => return Err(code),
+            }
+        };
         let diagnostic = started["diagnosticId"]
             .as_str()
             .ok_or("preparation-diagnostic-required")?;
-        let began = std::time::Instant::now();
         loop {
             let report = self.connections(ConnectionRequest::Diagnostics {
                 id: id.into(),
@@ -1691,7 +1787,7 @@ impl Host {
                     if current["current"] == true && current["identityChanged"] == false =>
                 {
                     return Ok(
-                        json!({"diagnosticId":diagnostic,"registrationRevision":registration,"connectionRevision":binding_revision,"scopeKey":current["scopeKey"],"observedAtMs":current["observedAtMs"],"validUntilMs":current["validUntilMs"],"effectiveRuntimeConfirmed":false}),
+                        json!({"diagnosticId":diagnostic,"registrationRevision":registration,"connectionRevision":binding_revision,"scopeKey":current["scopeKey"],"observedAtMs":current["observedAtMs"],"validUntilMs":current["validUntilMs"],"effectiveValidUntilMs":current["effectiveValidUntilMs"],"effectiveRuntimeConfirmed":false}),
                     );
                 }
                 Some("running") => {}
@@ -1777,6 +1873,7 @@ impl Host {
             repository.clone(),
             draft.allow_metadata_read,
         )?;
+        let settings_fingerprint = Self::settings_fingerprint(&settings)?;
         let mut policy = settings.policy;
         policy.revision = policy
             .revision
@@ -1862,6 +1959,7 @@ impl Host {
                 connection_id: draft.connection_id,
                 conversation_id: draft.conversation_id,
                 corrections: draft.correction_budget,
+                settings_fingerprint,
             },
         );
         Ok(public)
@@ -2096,6 +2194,7 @@ fn compatible(snapshot: Value) -> Result<Value, String> {
     if !features.iter().any(|f| f == "desktop-v1")
         || !features.iter().any(|f| f == "review-v1")
         || !features.iter().any(|f| f == "connections-v1")
+        || !features.iter().any(|f| f == "control-settings-v1")
     {
         return Err(err("daemon-version-incompatible"));
     }
@@ -2785,3 +2884,7 @@ mod tests {
         fs::remove_dir_all(root).unwrap();
     }
 }
+
+#[cfg(test)]
+#[path = "policy_transfer_tests.rs"]
+mod policy_transfer_tests;

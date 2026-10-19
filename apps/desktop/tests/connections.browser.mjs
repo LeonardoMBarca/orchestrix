@@ -44,6 +44,9 @@ try{
     if(r.type==='inspect-runtime-version')return {version:'0.162.0-alpha.17.2',supported:true,executableSha256:'a'.repeat(64),inferenceUsed:false,authenticationRead:false};
     if(r.type==='link-connection'){connection.diagnostics=report;state.connections=[connection];return {id:connection.id,revision:1,bindingRevision:1,linked:true,diagnosticId:report.latest.id,metadataRequested:true};}
     if(r.type==='connection-diagnostics')return structuredClone(report);
+    // Persisted status projection only: opening the controls must not start a
+    // provider read or implicitly authorize recurring metadata.
+    if(r.type==='connection-refresh-status')return {refresh:[{connectionId:connection.id,refreshRevision:0,requested:{schemaVersion:1,mode:'manual',intervalMs:300000,validityMs:{identity:300000,configuration:900000,availability:60000,models:900000},recurringConsent:false},effective:{intervalMs:300000,validityMs:{identity:60000,configuration:60000,availability:60000,models:60000}},reason:'manual-refresh-only',nextOpportunityAtMs:null,recurringAuthorized:false,sourceTtlMs:60000,policyValidityMs:{identity:300000,configuration:900000,availability:60000,models:900000}}]};
     if(r.type==='diagnose-connection'){report.latest={...report.latest,id:'diagnostic-two',state:'running'};connection.diagnostics=report;return {diagnosticId:'diagnostic-two'};}
     if(r.type==='cancel-connection-diagnostic'){report.latest={...report.latest,state:'cancelled'};connection.diagnostics=report;return {cancelled:true};}
     if(r.type==='conversation')return {id:'conversation-one',projectId:'project-one',messages:[{id:'message-one',ordinal:1,role:'user',text:'Fix arithmetic'}],draft:'',work:[],more:false,nextOrdinal:1};

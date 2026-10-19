@@ -32,12 +32,12 @@ export function connectionResourceFacts(report:ConnectionDiagnostic):ResourceFac
  ];
 }
 export function diagnosticNextAction(report:ConnectionDiagnostic,now=Date.now()){
- const run=report.latest;if(!run)return 'Link a runtime and authorize metadata to begin a diagnostic.';
+ const run=report.latest;const deadline=run?.effectiveValidUntilMs??run?.validUntilMs;if(!run)return 'Link a runtime and authorize metadata to begin a diagnostic.';
  if(report.identityChanged||run.identityChanged)return 'Review changed observed account details and explicitly confirm the link before new work.';
  if(run.state==='backoff')return 'Wait until the next permitted refresh; retry does not bypass limits.';
  if(run.state==='cancelled')return 'The read was cancelled. No capability was marked unsupported.';
  if(run.state==='coalesced')return 'A matching metadata read is already being observed; wait or recheck when permitted.';
- if(['complete','partial'].includes(run.state)&&(run.current===false||typeof run.validUntilMs==='number'&&now>=run.validUntilMs))return 'The observation is stale. Recheck before preparing new work.';
+ if(['complete','partial'].includes(run.state)&&(run.current===false||typeof deadline==='number'&&now>=deadline))return 'The observation is stale. Recheck before preparing new work.';
  if(run.state==='partial')return 'Some catalog data was not returned. Available observations remain valid; missing resources remain unknown.';
  const code=run.errorCode??'';
  if(/authentication|login/.test(code))return 'Sign in through the official Codex flow, then recheck this link.';
