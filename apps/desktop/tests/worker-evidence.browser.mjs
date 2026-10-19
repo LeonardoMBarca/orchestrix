@@ -2,19 +2,23 @@
 // This does not establish Tauri, provider or execution acceptance.
 import assert from 'node:assert/strict';
 import {createRequire} from 'node:module';
+import {mkdir,writeFile} from 'node:fs/promises';
+import {fileURLToPath} from 'node:url';
 import {defaultSettings} from '../src/protocol.ts';
 const require=createRequire(new URL('../../../prototypes/desktop/package.json',import.meta.url));
 const {chromium}=require('playwright');
 const browser=await chromium.launch({channel:'chrome',headless:true});
 const page=await browser.newPage({viewport:{width:1440,height:900}});
 const errors=[];page.on('pageerror',error=>errors.push(error.message));
+const output=fileURLToPath(new URL(`../../../artifacts/worker-evidence-renderer/${Date.now()}/`,import.meta.url));
+await mkdir(output,{recursive:true});
 try {
  await page.addInitScript(settings=>{
   const workerId='worker-real-shape',revision='exact-artifact-hash';let sequence=0;const events=[];
   const detail={worker:{intent:{id:workerId,policy:{}},status:'verified'},summary:{workerId,status:'verified',details:{artifactRevision:revision,checks:[{id:'fixture-check',result:'passed',exit_code:0}]}},artifact:{id:'artifact-id',revision,immutable:true,files:[{path:'fixture.txt'}]},reviews:[],historical:true};
   const correctionId='correction-exact-worker',linkedWork=[{runId:'shared-run',taskId:'shared-task',attemptId:'implementation-attempt',workerId,revision:'first-recorded-revision'},{runId:'shared-run',taskId:'shared-task',attemptId:'correction-attempt',workerId:correctionId,revision:'corrected-recorded-revision'}];
   const calls=[];let active=null,suspended=false,visibleWorkers=true;const daemon=()=>({state:{suspended,generation:1,cursor:{database:'worker-shape',sequence}},workers:visibleWorkers?[{workerId,status:'verified'},{workerId:correctionId,status:'needs-work'}]:[],workerCount:visibleWorkers?2:0,workerFactsHistorical:true,activeWorkerId:active,features:['desktop-v1','review-v1']});
-  window.__qa={calls,setActivity(id,paused,showWorkers=true){active=id;suspended=paused;visibleWorkers=showWorkers;},finishReview(summary='Rejected exact artifact',emit=true){detail.reviews=[{id:'review-distinct-identity',worker_id:workerId,artifact_revision:revision,status:'rejected',result:{summary,findings:[{id:'finding-one',path:'fixture.txt',line_start:1,line_end:1,severity:'warning',explanation:'finding-one requires correction',evidence:'exact artifact evidence'}]}}];if(emit){sequence++;events.push({sequence,kind:'command-finished',body:{commandId:'review-command',workerId:'review-distinct-identity',state:'finished'}});}}};
+  window.__qa={calls,setPresentation(language,scale){settings.language=language;settings.textScale=scale;sequence++;events.push({sequence,kind:'settings-changed',body:{}});},setActivity(id,paused,showWorkers=true){active=id;suspended=paused;visibleWorkers=showWorkers;},finishReview(summary='Rejected exact artifact',emit=true){detail.reviews=[{id:'review-distinct-identity',worker_id:workerId,artifact_revision:revision,status:'rejected',result:{summary,findings:[{id:'finding-one',path:'fixture.txt',line_start:1,line_end:1,severity:'warning',explanation:'finding-one requires correction',evidence:'exact artifact evidence'}]}}];if(emit){sequence++;events.push({sequence,kind:'command-finished',body:{commandId:'review-command',workerId:'review-distinct-identity',state:'finished'}});}}};
   window.__TAURI_EVENT_PLUGIN_INTERNALS__={unregisterListener(){}};
   window.__TAURI_INTERNALS__={transformCallback(){return 1;},unregisterCallback(){},async invoke(command,args={}){
    if(command==='connect_daemon')return daemon();
@@ -22,7 +26,7 @@ try {
    if(command.startsWith('plugin:event|'))return 1;
    if(command==='desktop_request'){
     const r=args.request;calls.push(structuredClone(r));
-    if(r.type==='bootstrap')return {revision:0,projects:[],conversations:[{id:'linked-conversation',title:'Correct the calculation',messageCount:1}],settings,connections:[],eventCursor:{database:'worker-shape',sequence},admissionsSuspended:false,daemon:daemon()};
+    if(r.type==='bootstrap')return {revision:0,projects:[],conversations:[{id:'linked-conversation',title:'Correct the calculation',messageCount:1}],settings:structuredClone(settings),connections:[],eventCursor:{database:'worker-shape',sequence},admissionsSuspended:false,daemon:daemon()};
     if(r.type==='conversation')return {id:'linked-conversation',messages:[{id:'first-message',ordinal:1,role:'user',text:'Correct the calculation'}],more:false,nextOrdinal:1,work:linkedWork};
     if(r.type==='inspect-worker')return r.workerId===correctionId?{...structuredClone(detail),worker:{intent:{id:correctionId,policy:{}},status:'needs-work'},summary:{workerId:correctionId,status:'needs-work',details:{artifactRevision:'corrected-recorded-revision',checks:[{id:'fixture-check',result:'failed',exit_code:1}]}},reviews:[]}:structuredClone(detail);
     if(r.type==='recovery')return {has_blocking_cases:true,ready_for_admission:false,cases:[{worker_id:'uncertain-work',status:'uncertain',remote_outcome:'completed',local_tree_stopped:true,streams_closed:true,inspection_required:true,set_aside_eligible:true},{worker_id:'unknown-work',status:'uncertain',set_aside_eligible:false}],reviews:[],integrations:[{id:'integration-uncertain',worker_id:'worker-real-shape',run_id:'run-one',task_id:'task-one',source_artifact_revision:revision,status:'uncertain',input_base:'base-commit',result_revision:null,candidate_revision:null,checks:null,reason:'git-inspection-required',delivered:false,profile:'single-code-task-clean-target-v1',target:{directory:'C:/fixture/target',head:'base-commit'},guardian:{authority:'never-render-ownership-authority'}}]};
@@ -100,6 +104,27 @@ try {
  const evidence=attempts.nth(1).getByRole('button',{name:'Show evidence · Attempt 2',exact:true});
  const evidenceBox=await evidence.boundingBox(),cardBox=await attempts.nth(1).boundingBox();assert(evidenceBox.width<cardBox.width*.7,'conversation evidence action stays naturally sized');
  await evidence.click();assert.equal(await page.evaluate(()=>window.__qa.calls.filter(r=>r.type==='inspect-worker').at(-1).workerId),'correction-exact-worker');
+ const savedLayout=await page.evaluate(()=>localStorage.getItem('orchestrix-desktop-layout'));
+ await page.setViewportSize({width:900,height:900});
+ await page.evaluate(()=>window.__qa.setPresentation('en',200));
+ await page.waitForFunction(()=>document.documentElement.style.fontSize==='28px');
+ const checksRegion=page.getByRole('region',{name:'Checks',exact:true});
+ await checksRegion.waitFor();
+ const compact=await page.evaluate(()=>{
+  const content=document.querySelector('.o-content'),heading=document.querySelector('.o-worker-heading'),title=heading.querySelector('h1'),status=heading.querySelector(':scope>.o-status'),checks=document.querySelector('.o-worker-checks'),text=title.firstChild;
+  let offset=0;const words=title.textContent.split(/(\s+)/).filter(word=>{const start=offset;offset+=word.length;if(!word.trim())return false;const range=document.createRange();range.setStart(text,start);range.setEnd(text,offset);return range.getClientRects().length>1;});
+  return {contentWidth:content.clientWidth,contentScroll:content.scrollWidth,titleBottom:title.getBoundingClientRect().bottom,statusTop:status.getBoundingClientRect().top,fragmentedWords:words,tableWidth:checks.clientWidth,tableScroll:checks.scrollWidth,docks:[...document.querySelectorAll('.o-dock')].filter(node=>node.getClientRects().length).map(node=>node.getBoundingClientRect().width)};
+ });
+ assert.equal(compact.docks.length,2);assert.ok(compact.docks.every(width=>width>0));
+ assert.deepEqual(compact.fragmentedWords,[],'work title must wrap between words rather than into a few letters');
+ assert.ok(compact.statusTop>=compact.titleBottom,'the narrow work header places the badge after the title');
+ assert.ok(compact.contentScroll<=compact.contentWidth+1,'Checks overflow must not widen the central work surface');
+ assert.ok(compact.tableScroll>compact.tableWidth,'full check columns remain reachable in their own scroller');
+ await checksRegion.focus();await page.keyboard.press('ArrowRight');await page.waitForTimeout(100);
+ assert.ok(await checksRegion.evaluate(node=>node.scrollLeft)>0,'Checks region supports keyboard scrolling');
+ assert.equal(await page.evaluate(()=>localStorage.getItem('orchestrix-desktop-layout')),savedLayout,'responsive Work does not change saved docks');
+ await page.locator('.o-content').evaluate(node=>node.scrollTop=0);await page.screenshot({path:output+'work-900-200.png'});
+ await writeFile(output+'result.json',JSON.stringify({passed:true,kind:'renderer-native-boundary-mock',compact,errors},null,2));
  assert.deepEqual(errors,[]);
- process.stdout.write('Worker evidence renderer regression passed: compact preservation, distinct review identity, bounded refresh, Files return, blocking integration recovery.\n');
+ process.stdout.write(`Worker evidence renderer regression passed: compact preservation, distinct review identity, bounded refresh, Files return, blocking integration recovery, Work 900px/200% with two docks. Evidence: ${output}\n`);
 } finally {await browser.close();}

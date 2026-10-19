@@ -43,6 +43,12 @@ html,body,#root{height:100%;overflow:hidden}body{font:1rem/1.45 var(--body)}butt
 .o-session-row>.o-status{max-width:48%;font-size:.67rem;padding:2px 5px}
 .o-worker-list-label{display:flex;flex:1;min-width:0;flex-direction:column;gap:3px}.o-worker-list-label small{overflow:hidden;text-overflow:ellipsis;font-size:.7rem}
 .o-worker-heading{display:flex;gap:15px;justify-content:space-between;align-items:flex-start}.o-worker-heading h1{margin-bottom:5px}.o-worker-heading p{font-size:.88rem;margin:0 0 12px}
+/* Work reflows within the actual space between docks, without changing them. */
+.o-worker-page{container:worker / inline-size;min-width:0}
+.o-worker-heading>div{min-width:0;max-width:100%;flex:1}
+.o-worker-heading h1{overflow-wrap:normal;word-break:normal;hyphens:auto}
+.o-worker-checks{max-width:100%;min-width:0;overflow:auto;overscroll-behavior-inline:contain}
+@container worker (max-width:30rem){.o-worker-heading{flex-direction:column;gap:7px}}
 .o-worker-identity{font-size:.78rem;color:var(--muted);max-width:100%;overflow-wrap:anywhere}.o-worker-identity summary{cursor:pointer;padding:3px 0}.o-worker-identity code{display:block;padding:5px 0}
 .o-work-card>header .o-status{margin-left:auto}.o-history{margin-top:18px;font-size:.8rem;overflow-wrap:anywhere}.o-history>summary{color:var(--muted);cursor:pointer;padding:5px 0}
 .o-integration{margin:24px 0;padding-top:4px;border-top:1px solid var(--line)}.o-integration summary{cursor:pointer;font-size:.85rem;color:var(--muted);padding:4px 0}
