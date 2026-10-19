@@ -73,6 +73,13 @@ impl Settings {
     deny_unknown_fields
 )]
 pub enum DesktopRequest {
+    Configurations {
+        request: Box<crate::configuration::ConfigurationRequest>,
+    },
+    ResolveConfiguration {
+        policy: Box<PolicyDocument>,
+        project_id: Option<String>,
+    },
     Bootstrap,
     Conversation {
         conversation_id: String,
@@ -227,11 +234,12 @@ impl DesktopCommand {
             } => {
                 let bundle = crate::policy_portability::parse(document)
                     .map_err(|_| StoreError::Configuration)?;
-                let current = crate::policy_portability::settings_from_state(state)
+                let current = crate::configuration::export_settings(state)
                     .map_err(|_| StoreError::InvalidState)?;
-                let settings = bundle
+                let mut settings = bundle
                     .resolve(&current, mappings)
                     .map_err(|_| StoreError::Configuration)?;
+                crate::configuration::apply_imported_user_scope(state, &mut settings)?;
                 ("desktop-settings".into(), json!(settings))
             }
         };
@@ -250,6 +258,12 @@ impl DesktopCommand {
 /// use bounded historical projections. Mutations and admission retain full validation.
 pub(crate) fn handle(store: &mut Store, request: &DesktopRequest) -> Result<Value, String> {
     let (id, revision, command) = match request {
+        DesktopRequest::Configurations { request } => {
+            return crate::configuration::handle(store, request);
+        }
+        DesktopRequest::ResolveConfiguration { policy, project_id } => {
+            return crate::configuration::preview_task(store, policy, project_id.as_deref());
+        }
         DesktopRequest::ExportPolicy => {
             return store
                 .portable_policy_export()

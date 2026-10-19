@@ -1,0 +1,146 @@
+// Component/renderer proof with an explicit synthetic API; not native or Core QA.
+import assert from 'node:assert/strict';
+import {createRequire} from 'node:module';
+import {mkdir,writeFile} from 'node:fs/promises';
+import {fileURLToPath} from 'node:url';
+const require=createRequire(new URL('../../../prototypes/desktop/package.json',import.meta.url));
+const {chromium}=require('playwright');
+const output=fileURLToPath(new URL(`../../../artifacts/configuration-editor-renderer/${Date.now()}/`,import.meta.url));
+await mkdir(output,{recursive:true});
+const browser=await chromium.launch({channel:'chrome',headless:true}),page=await browser.newPage({viewport:{width:1440,height:1000}}),errors=[],checks=[];
+page.on('pageerror',reason=>errors.push(reason.message));
+const editor=()=>page.getByRole('region',{name:'Modes & executor profiles',exact:true});
+const tabs=()=>editor().getByRole('tablist');
+const definition=()=>editor().getByRole('combobox',{name:'Definition',exact:true});
+const instructions=()=>editor().getByRole('textbox',{name:'Additional instructions',exact:true});
+async function save(){await editor().getByRole('button',{name:'Save new version',exact:true}).click();await editor().getByRole('button',{name:'Confirm save',exact:true}).click();}
+try{
+ await page.goto(`${process.env.ORCHESTRIX_RENDERER_URL??'http://127.0.0.1:1421'}/tests/configuration-editor.fixture.html`);
+ await instructions().waitFor();
+ assert.equal(await editor().getByRole('textbox',{name:'Purpose',exact:true}).getAttribute('readonly'),'');
+ assert.equal(await editor().getByRole('textbox',{name:'Name',exact:true}).getAttribute('readonly'),'');
+ assert.equal(await definition().locator('option').count(),6);
+ await instructions().fill('Native customization draft');
+ await tabs().getByRole('tab',{name:'Executor profiles',exact:true}).click();
+ await tabs().getByRole('tab',{name:'Action modes',exact:true}).click();
+ assert.equal(await instructions().inputValue(),'Native customization draft');
+ await page.evaluate(()=>window.__configurationQa.setActive(false));
+ await page.evaluate(()=>window.__configurationQa.setActive(true));
+ assert.equal(await instructions().inputValue(),'Native customization draft');
+ checks.push('native-contract-and-draft-preservation');
+ await editor().getByRole('button',{name:'Cancel changes',exact:true}).click();
+ assert.equal(await instructions().inputValue(),'Native instructions');
+ assert.equal(await editor().getByRole('button',{name:'Save new version',exact:true}).isDisabled(),true);
+ checks.push('cancel-restores-saved-buffer-without-hiding-editor');
+
+ await editor().getByRole('button',{name:'Create local mode',exact:true}).click();
+ await editor().getByRole('textbox',{name:'Name',exact:true}).fill('Focused local development');
+ await editor().getByRole('textbox',{name:'Acceptance criteria, one per line',exact:true}).fill('First criterion\nSecond criterion');
+ assert.equal(await editor().getByRole('textbox',{name:'Acceptance criteria, one per line',exact:true}).inputValue(),'First criterion\nSecond criterion');
+ await instructions().fill('Marker local mode');
+ await save();await editor().getByRole('status').filter({hasText:'Version saved'}).waitFor();
+ const localId=await definition().inputValue();
+ const stored=await page.evaluate(id=>window.__configurationQa.catalog.modes.find(row=>row.id===id),localId);
+ assert.equal(stored.base.id,'development');assert.equal(stored.base.version,2);assert.equal(stored.version,1);
+ assert.equal(stored.instructions,'Marker local mode');assert.equal(await definition().locator('option').count(),7);
+ checks.push('local-mode-pinned-base-and-save-confirmation');
+
+ await tabs().getByRole('tab',{name:'Executor profiles',exact:true}).click();
+ await definition().selectOption('independent-reviewer');
+ await editor().getByRole('button',{name:'Create executor profile',exact:true}).click();
+ await editor().getByRole('textbox',{name:'Name',exact:true}).fill('Careful independent reviewer');
+ assert.equal(await editor().getByRole('checkbox',{name:'Require read-only',exact:true}).isDisabled(),true);
+ assert.equal(await editor().getByRole('checkbox',{name:'Require read-only',exact:true}).isChecked(),true);
+ await editor().getByRole('combobox',{name:'Result language',exact:true}).selectOption('pt-BR');
+ await instructions().fill('Review exact artifact evidence');await save();
+ await editor().getByRole('status').filter({hasText:'Version saved'}).waitFor();
+ assert.equal(await editor().getByRole('combobox',{name:'Result language',exact:true}).inputValue(),'pt-BR');
+ checks.push('local-review-profile-read-only-and-output-language');
+
+ await tabs().getByRole('tab',{name:'Scoped preferences',exact:true}).click();
+ await editor().getByRole('combobox',{name:'Scope',exact:true}).selectOption('project');
+ await editor().getByRole('combobox',{name:'Resource strategy',exact:true}).selectOption('efficiency');
+ await editor().getByRole('combobox',{name:'Project',exact:true}).selectOption('project-b');
+ assert.equal(await editor().getByRole('combobox',{name:'Resource strategy',exact:true}).inputValue(),'');
+ await editor().getByRole('combobox',{name:'Project',exact:true}).selectOption('project-a');
+ assert.equal(await editor().getByRole('combobox',{name:'Resource strategy',exact:true}).inputValue(),'efficiency');
+ await editor().getByRole('checkbox',{name:'Require independent review',exact:true}).check();
+ await save();await editor().getByRole('status').filter({hasText:'Version saved'}).waitFor();
+ assert.equal((await page.evaluate(()=>window.__configurationQa.catalog.scopes)).length,1);
+ checks.push('project-overrides-and-draft-isolation');
+ await editor().getByRole('button',{name:'Restore inheritance',exact:true}).click();
+ await editor().getByRole('button',{name:'Confirm restore',exact:true}).click();
+ await editor().getByRole('status').filter({hasText:'Inheritance restored'}).waitFor();
+ assert.equal(await page.evaluate(()=>window.__configurationQa.catalog.scopes[0].removed),true);
+ assert.equal(await page.evaluate(()=>window.__configurationQa.catalog.scopes[0].version),2);
+ assert.equal(await editor().getByRole('combobox',{name:'Resource strategy',exact:true}).inputValue(),'');
+ assert.equal(await editor().getByRole('checkbox',{name:'Require independent review',exact:true}).isChecked(),true);
+ assert.equal(await editor().getByRole('checkbox',{name:'Require independent review',exact:true}).isDisabled(),true);
+ checks.push('restore-inheritance-is-explicit-versioned-operation');
+ await editor().getByRole('combobox',{name:'Scope',exact:true}).selectOption('user');
+ await editor().getByRole('combobox',{name:'Connection preference',exact:true}).selectOption('account-a');
+ await editor().getByRole('combobox',{name:'Model preference',exact:true}).selectOption('model-a');
+ await page.evaluate(()=>window.__configurationQa.setModels('account-a',[]));
+ assert.equal(await editor().getByRole('combobox',{name:'Model preference',exact:true}).inputValue(),'model-a');
+ assert.match(await editor().getByRole('combobox',{name:'Model preference',exact:true}).locator('option:checked').innerText(),/not reported here/);
+ assert.equal(await editor().getByRole('combobox',{name:'Connection preference',exact:true}).inputValue(),'account-a');
+ checks.push('missing-model-retained-without-homonym-account-remap');
+
+ await tabs().getByRole('tab',{name:'Action modes',exact:true}).click();
+ await definition().selectOption('development');
+ await instructions().fill('Preserved conflicting draft');
+ await page.evaluate(()=>window.__configurationQa.conflict());await save();
+ await editor().getByRole('alert').filter({hasText:'Your draft is preserved'}).waitFor();
+ assert.equal(await instructions().inputValue(),'Preserved conflicting draft');
+ await editor().getByRole('button',{name:'Compare with latest',exact:true}).click();
+ await editor().locator('details').filter({has:page.locator('summary',{hasText:'Latest saved version'})}).waitFor();
+ await editor().getByRole('button',{name:'Reload latest and discard this draft',exact:true}).click();
+ await instructions().filter({hasText:''}).waitFor();
+ await page.waitForFunction(()=>document.querySelector('textarea')?.value==='Saved by another window');
+ assert.equal(await instructions().inputValue(),'Saved by another window');
+ checks.push('cas-conflict-preserves-compare-and-explicit-reload');
+
+ await instructions().fill('Lost response new version');await page.evaluate(()=>window.__configurationQa.loseSave());await save();
+ await editor().getByRole('alert').filter({hasText:'fixture-response-lost'}).waitFor();
+ const savesBefore=await page.evaluate(()=>window.__configurationQa.calls.filter(row=>row.type==='save-mode'));
+ await save();await editor().getByRole('status').filter({hasText:'Version saved'}).waitFor();
+ const savesAfter=await page.evaluate(()=>window.__configurationQa.calls.filter(row=>row.type==='save-mode'));
+ assert.equal(savesAfter.at(-1).commandId,savesBefore.at(-1).commandId);
+ assert.equal(await page.evaluate(()=>window.__configurationQa.catalog.modes.find(row=>row.id==='development').version),4);
+ checks.push('lost-response-reuses-original-command-identity');
+ await instructions().fill('Keep this unsaved draft while inspecting history');
+ await editor().getByRole('spinbutton',{name:'Version',exact:true}).fill('3');
+ await editor().getByRole('button',{name:'Load exact version',exact:true}).click();
+ await editor().getByRole('region',{name:'Historical version',exact:true}).waitFor();
+ assert.equal(await instructions().inputValue(),'Keep this unsaved draft while inspecting history');
+ assert.match(await editor().getByRole('region',{name:'Historical version',exact:true}).innerText(),/v3/);
+ checks.push('exact-historical-version-is-read-only-with-draft-preserved');
+
+ await page.evaluate(()=>window.__configurationQa.holdPreview());
+ await editor().getByRole('button',{name:'Inspect effective configuration',exact:true}).click();
+ await page.waitForFunction(()=>window.__configurationQa.hasHeldPreview());
+ // Inputs remain disabled during a request; returning a late preview after an
+ // activity switch cannot publish a definition into another editor generation.
+ await page.evaluate(()=>{window.__configurationQa.setActive(false);window.__configurationQa.releasePreview();});
+ await page.evaluate(()=>window.__configurationQa.setActive(true));
+ await editor().getByRole('region',{name:'Effective configuration preview',exact:true}).waitFor();
+ assert.equal((await page.evaluate(()=>window.__configurationQa.calls)).some(row=>!['catalog','get','preview','save-mode','save-profile','save-scope'].includes(row.type)),false);
+ checks.push('preview-is-pure-synthetic-boundary');
+
+ for(const language of ['en','pt','es'])for(const scale of [100,200])for(const width of [900,1440]){
+  await page.setViewportSize({width,height:1000});await page.evaluate(({language,scale})=>window.__configurationQa.setLanguage(language,scale),{language,scale});
+  await page.waitForTimeout(50);
+  const geometry=await page.evaluate(()=>({document:document.documentElement.scrollWidth,width:innerWidth,controls:[...document.querySelectorAll('.o-configuration-editor input,.o-configuration-editor textarea,.o-configuration-editor select,.o-configuration-editor button')].filter(node=>node.getClientRects().length).map(node=>{const rect=node.getBoundingClientRect();return {left:rect.left,right:rect.right};})}));
+  assert.ok(geometry.document<=width+1,`${language}/${scale}/${width} document overflow`);
+  assert.ok(geometry.controls.every(rect=>rect.left>=0&&rect.right<=width+1),`${language}/${scale}/${width} inaccessible control`);
+  await page.screenshot({path:`${output}/${language}-${scale}-${width}.png`,fullPage:true});
+  if((language==='en'&&scale===100&&width===1440)||(language!=='en'&&scale===200&&width===900)){
+   await page.evaluate(()=>scrollTo(0,0));await page.screenshot({path:`${output}/${language}-${scale}-${width}-top.png`});
+   await page.evaluate(()=>scrollTo(0,document.documentElement.scrollHeight));await page.screenshot({path:`${output}/${language}-${scale}-${width}-bottom.png`});
+  }
+ }
+ checks.push('twelve-renderer-language-scale-width-conditions');
+ assert.deepEqual(errors,[]);
+ await writeFile(`${output}/result.json`,JSON.stringify({passed:true,kind:'renderer-component-mock',checks,errors},null,2));
+ process.stdout.write(JSON.stringify({passed:checks.length,checks,output},null,2)+'\n');
+}finally{await browser.close();}

@@ -84,7 +84,9 @@ try{
   }
   await page.getByRole('button',{name:'Settings',exact:true}).click();await page.getByRole('button',{name:'General',exact:true}).click();
   for(const language of ['pt-BR','es','en']){
-    await page.locator('.o-settings select').first().selectOption(language);
+    // The definitions editor stays mounted but hidden to preserve its drafts.
+    // Interact with General's visible language control, never a hidden editor.
+    await page.locator('.o-settings select:visible').first().selectOption(language);
     await page.waitForFunction(language=>window.__qa.state.settings.language===language,language);
     await page.screenshot({path:output+`language-${language}.png`,fullPage:true});
   }

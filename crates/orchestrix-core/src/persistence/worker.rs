@@ -195,6 +195,8 @@ pub(super) fn validate(state: &SavedState) -> StoreResult<()> {
 pub(super) fn apply(state: &mut SavedState, command: &WorkerCommand) -> StoreResult<()> {
     match command {
         WorkerCommand::Reserve(r) => {
+            crate::configuration::guard_context_snapshot(state, &r.intent.context)
+                .map_err(|_| StoreError::Configuration)?;
             // Initial production profile is serial per installation/database, including unresolved effects.
             if state
                 .reviews

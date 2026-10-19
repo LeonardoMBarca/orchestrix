@@ -10,6 +10,8 @@ The allowlist carries language, theme, density, text scale, close preference, th
 
 Exports omit credentials, authentication stores, runtime/home/directory bindings, connection source IDs, transcripts, personal system instructions, context/file contents, artifacts, diagnostics, session identities, approvals, receipts, execution authorization and recurring-read consent. Logical connection/model aliases replace source bindings. No unsupported mode engine or provider is added to make a document importable.
 
+Local definition editing keeps format v1: managed/nonlegacy mode/profile references require explicit mapping to an existing, nonarchived exact destination version. The documented Development v1 / Implementation Engineer v1 baseline retains its legacy compatibility exception, without claiming a rich definition. Rich instructions, derived definitions and project paths are never installed by import. The canonical User scope is projected into the existing portable User layer; an atomic import replaces that preference authority while preserving local mandatory restrictions. Identified Project overrides remain local. A legacy document with an unbound Project layer is blocked as `portable-project-scope-unresolved`, because v1 does not identify a destination project; it cannot silently apply that layer globally.
+
 ## Preview and explicit remapping
 
 The host reads only a bounded file selected in the native chooser and retains an immutable document under an opaque reference. A renderer path does not grant access. Export uses a native destination chooser and a create-new publication: an existing file is preserved, and an unavailable filesystem publication fails explicitly.

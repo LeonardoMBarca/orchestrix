@@ -20,6 +20,8 @@ OX-016 extends that same service with [`connection_refresh`](src/connection_refr
 
 ## Run
 
+OX-016 local configuration uses [`configuration`](src/configuration.rs) over the existing immutable Store definitions. It composes native/local mode and executor-profile contributions, identified User/Project overrides and the existing policy resolver, with an observation-only preview and admission fingerprint. Worker/review Context Packs carry exact definition versions and source provenance; active/historical attempts are not reinterpreted. Portable v1 continues to transport references and supported policy fields, without installing definitions, instructions or credentials. [Mode/profile contract](../../docs/design/action-modes-and-worker-profiles.md) describes supported execution versus editable definitions.
+
 Requires Rust/Cargo and the platform's linker/toolchain. The development Windows environment uses Rust **1.99.0**, x64/MSVC; no MSRV or macOS/Linux execution is certified by that result. Cargo.lock fixes dependency versions; it does not install providers or run inference.
 
 ```powershell

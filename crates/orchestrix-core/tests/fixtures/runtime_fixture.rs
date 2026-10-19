@@ -147,6 +147,28 @@ fn main() {
         }
         let id = request["id"].clone();
         let params = &request["params"];
+        // Explicit opt-in in an owned synthetic home only. This fixture is not
+        // a production adapter/logger and never handles provider credentials.
+        // Preserve the exact received JSON bytes for Context Pack provenance.
+        if auth_home.join("capture-configuration-requests").is_file()
+            && matches!(method, "thread/start" | "thread/resume" | "turn/start")
+        {
+            assert!(line.len() <= 1_048_576, "bounded configuration capture");
+            let nonce = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos();
+            let mut capture = std::fs::OpenOptions::new()
+                .write(true)
+                .create_new(true)
+                .open(auth_home.join(format!(
+                    "configuration-request-{}-{turn}-{nonce}.json",
+                    std::process::id()
+                )))
+                .unwrap();
+            capture.write_all(line.as_bytes()).unwrap();
+            capture.sync_all().unwrap();
+        }
         match method {
             "initialize" => {
                 let counter = auth_home.join("metadata-reads");
@@ -339,6 +361,20 @@ fn main() {
                 send(
                     json!({"method":"turn/started","params":{"threadId":thread,"turn":{"id":turn_id,"status":"inProgress"}}}),
                 );
+                // Give the integrated configuration test an observable active
+                // attempt while another client saves a future definition. The
+                // finite watchdog cannot silently complete or fabricate a turn.
+                if auth_home.join("capture-configuration-requests").is_file() {
+                    let release = auth_home.join("hold-configuration-turn");
+                    let began = std::time::Instant::now();
+                    while release.is_file() {
+                        assert!(
+                            began.elapsed() < Duration::from_secs(10),
+                            "configuration fixture hold watchdog"
+                        );
+                        std::thread::sleep(Duration::from_millis(10));
+                    }
+                }
                 if scenario == "qa-controlled" {
                     let watchdog = args
                         .windows(2)

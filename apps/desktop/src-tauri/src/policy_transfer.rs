@@ -1,5 +1,6 @@
 //! Native-selected policy documents. Opaque references never grant filesystem execution.
-use super::{Host, Settings, id};
+use super::Settings;
+use super::{Host, id};
 use orchestrix_core::{
     desktop::DesktopRequest,
     policy_portability::{ImportMappings, MAX_PORTABLE_POLICY_BYTES},
@@ -24,6 +25,27 @@ pub(super) struct ImportExpectation {
 }
 
 impl Host {
+    /// Bind Settings bytes and the configuration fingerprint to one Store revision.
+    /// A concurrent writer makes this preparation fail closed, never pair an old
+    /// preference snapshot with a newer fingerprint that would grant admission.
+    pub(super) fn preparation_settings(&self) -> Result<(Value, Settings, String), String> {
+        let catalog = self.desktop(DesktopRequest::Configurations {
+            request: Box::new(orchestrix_core::configuration::ConfigurationRequest::Catalog {}),
+        })?;
+        let snapshot = self.desktop(DesktopRequest::Bootstrap)?;
+        if catalog["revision"].as_u64().is_none()
+            || catalog["revision"].as_u64() != snapshot["revision"].as_u64()
+        {
+            return Err("prepared-policy-changed-prepare-again".into());
+        }
+        let settings =
+            serde_json::from_value(snapshot["settings"].clone()).map_err(|_| "settings-schema")?;
+        let fingerprint = catalog["executionFingerprint"]
+            .as_str()
+            .ok_or("configuration-fingerprint-required")?
+            .to_owned();
+        Ok((snapshot, settings, fingerprint))
+    }
     pub fn select_policy_import(&self, path: &Path) -> Result<Value, String> {
         let metadata = fs::metadata(path).map_err(|_| "policy-file-unavailable")?;
         if !metadata.is_file() || metadata.len() > MAX_PORTABLE_POLICY_BYTES as u64 {
@@ -164,14 +186,15 @@ impl Host {
             json!({"saved":true,"name":path.file_name().unwrap_or_default().to_string_lossy(),"credentialsIncluded":false,"executionAuthorityIncluded":false}),
         )
     }
+    #[cfg(test)]
     pub(super) fn settings_fingerprint(settings: &Settings) -> Result<String, String> {
         settings.execution_fingerprint()
     }
     pub(super) fn guard_prepared_settings(&self, fingerprint: &str) -> Result<(), String> {
-        let snapshot = self.desktop(DesktopRequest::Bootstrap)?;
-        let settings: Settings =
-            serde_json::from_value(snapshot["settings"].clone()).map_err(|_| "settings-schema")?;
-        if Self::settings_fingerprint(&settings)? != fingerprint {
+        let catalog = self.desktop(DesktopRequest::Configurations {
+            request: Box::new(orchestrix_core::configuration::ConfigurationRequest::Catalog {}),
+        })?;
+        if catalog["executionFingerprint"].as_str() != Some(fingerprint) {
             return Err("prepared-policy-changed-prepare-again".into());
         }
         Ok(())
@@ -185,14 +208,55 @@ mod tests {
     use std::sync::{Arc, Mutex};
 
     #[test]
+    fn preparation_never_pairs_old_settings_with_a_newer_configuration_fingerprint() {
+        for (catalog_revision, snapshot_revision, valid) in
+            [(3, 3, true), (3, 4, false), (4, 3, false)]
+        {
+            let mut host =
+                Host::new(std::env::temp_dir().join(id("preparation-snapshot-test"))).unwrap();
+            let mut settings = Settings::default();
+            settings.policy.mode_defaults.strategy = Some(Strategy::Efficiency);
+            let expected = settings.execution_fingerprint().unwrap();
+            let fingerprint = expected.clone();
+            host.test_transport = Some(Arc::new(move |operation| match operation {
+                Operation::Desktop { request } => match *request {
+                    DesktopRequest::Configurations { .. } => {
+                        Ok(json!({"revision":catalog_revision,"executionFingerprint":fingerprint}))
+                    }
+                    DesktopRequest::Bootstrap => {
+                        Ok(json!({"revision":snapshot_revision,"settings":settings}))
+                    }
+                    _ => panic!("preparation reads no provider or worker operation"),
+                },
+                _ => panic!("preparation reads no provider or worker operation"),
+            }));
+            let result = host.preparation_settings();
+            if valid {
+                let (_, settings, actual) = result.unwrap();
+                assert_eq!(actual, expected);
+                assert_eq!(
+                    settings.policy.mode_defaults.strategy,
+                    Some(Strategy::Efficiency)
+                );
+            } else {
+                assert_eq!(result.unwrap_err(), "prepared-policy-changed-prepare-again");
+            }
+        }
+    }
+
+    #[test]
     fn changed_policy_or_instructions_withdraw_preparation_but_appearance_does_not() {
         let root = std::env::temp_dir().join(id("policy-preparation-test"));
         let mut host = Host::new(root).unwrap();
         let settings = Arc::new(Mutex::new(Settings::default()));
         let observed = Arc::clone(&settings);
         host.test_transport = Some(Arc::new(move |operation| match operation {
-            Operation::Desktop { request } if matches!(*request, DesktopRequest::Bootstrap) => {
-                Ok(json!({"settings":*observed.lock().unwrap()}))
+            Operation::Desktop { request }
+                if matches!(*request, DesktopRequest::Configurations { .. }) =>
+            {
+                Ok(
+                    json!({"executionFingerprint":observed.lock().unwrap().execution_fingerprint().unwrap()}),
+                )
             }
             _ => panic!("preparation validation must never execute or query a provider"),
         }));

@@ -45,7 +45,7 @@ Um modo não exige famílias de modelo diferentes. Uma conta e um runtime compat
 ## Regras de execução e histórico
 
 1. **Preferências ficam subordinadas aos requisitos obrigatórios.** Modo ou perfil não desativa restrições de conta, cobrança, ferramentas, paths, isolamento, orçamento, verificações ou aprovação. Um perfil revisor definido como leitura não passa a editar arquivos porque suas instruções pedem isso.
-2. **Resolver antes de executar.** Combinar modo, perfil e política pela resolução existente, mantendo precedência explícita. O modo deve fornecer requisitos e valores padrão; sua inclusão não cria uma nova precedência implícita. A localização exata desses padrões no schema será decidida com OX-008.
+2. **Resolver antes de executar.** Combinar modo, perfil e política pela resolução existente, mantendo precedência explícita. Os padrões do modo entram em `mode_defaults`; os padrões do perfil em `profile_defaults`, antes dos overrides de Profile. Requisitos acumulam-se. A sequência permanece System → User → Project → Profile → CategoryRisk → Execution → Task.
 3. **Configuração versionada e inspecionável.** Cada tentativa referencia a versão do modo, do perfil, o contexto enviado, a política efetiva, a conexão, a base e os artefatos. Edições alteram novas decisões; snapshots anteriores continuam preservados.
 4. **Mudança de modo preserva o trabalho.** Trocar de `Improvement Review` para `Development`, por exemplo, encaminha propostas como contexto identificado para novo trabalho. Não aplica resultados anteriores nem concede aprovação. Cancelar, substituir ou criar nova tentativa segue os comandos explícitos do Core.
 5. **Resultado depende de evidência.** Código continua sujeito às verificações e integração existentes. Documentos, análises e apresentações têm critérios adequados ao artefato: fontes, formato, conteúdo e revisão. Relatos dos agentes não comprovam testes, referências ou geração de arquivos.
@@ -55,7 +55,19 @@ Um modo não exige famílias de modelo diferentes. Uma conta e um runtime compat
 
 Esses recursos continuam sendo configuração da orquestração. Não exigem construir uma IDE, editor de apresentações ou ambiente de testes interativos dentro do Orchestrix, em acordo com o [ADR-0003](../adr/0003-desktop-app-editor-agnostic-core.md).
 
-## Integração proposta ao plano existente
+## Edição local implementada — OX-016
+
+`configuration.rs` usa registros imutáveis `Configuration` no Store existente para definições ricas e políticas User/Project. Mantém as referências mínimas Mode/Profile do domínio. Identidade, versão e revisão de edição são distintas; salvar, restaurar ou arquivar usa CAS, recibo idempotente e evento da mesma transação. Não há novo banco, localStorage autoritativo ou migração de conteúdos antigos.
+
+Os seis modos nativos e os dois perfis de papel começam na versão **2**. A versão 1 anteriormente usada pelo worker permanece legada, com o conteúdo mínimo efetivamente registrado; não recebe retrospectivamente instruções, nome ou capacidades da versão 2. Uma derivação local fixa uma base nativa exata, sem cadeias arbitrárias. Campos e limites são validados por tipo/papel. O revisor mantém leitura, rede desabilitada e sessão independente, mesmo se renomeado ou suas instruções pedirem escrita.
+
+O editor permite personalizar instruções, papéis válidos, saídas/critérios e preferências permitidas; finalidade, origem e requisitos nativos ficam protegidos. Perfis permitem instruções, idioma de resultado, convenções e especialidade. Políticas User e Project identificado usam o mesmo resolver. Restaurar herança remove preferências e conserva restrições obrigatórias. O idioma da interface não altera instruções salvas.
+
+A prévia resolve os valores e suas origens sem consultar o provedor. Observações persistidas conservam datas, escopo e validade; ausência ou vencimento não comprova elegibilidade. Na preparação, o conjunto é fixado e alterações relevantes exigem nova preparação. Instruções/versionamento chegam ao Context Pack; a reserva transacional confere o fingerprint novamente, fechando a janela entre consulta externa e admissão. Tentativas admitidas conservam seus snapshots. Revisão usa o modo original e seu perfil revisor fixado; correção resolve novas contribuições sem duplicar as antigas como instruções do usuário.
+
+Development, Documentation e Refactoring reutilizam o worker manual compatível e seus checks/revisão; isso não certifica todos os artefatos desses domínios. Research, Presentations e Improvement Review podem ser configurados, mas a execução pelo worker de código é bloqueada com `artifact-flow-unproven`. Seus fluxos representativos continuam no aceite alpha de OX-017, sem adiamento para M4. As evidências executadas e limitações atuais ficam no [status](../DEVELOPMENT_STATUS.md).
+
+## Integração ao plano existente
 
 Esta ampliação mantém a ordem **D0 → D1 → M0 → M1 → M2** e os gates atuais. A versão inicial pretendida deve entregar os seis modos e a configuração de perfis; a implementação pode começar pelo ciclo de código como incremento técnico, sem considerar os outros modos concluídos por estarem descritos no site.
 

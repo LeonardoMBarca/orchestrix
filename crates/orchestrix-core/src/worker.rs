@@ -252,6 +252,29 @@ impl ManualWorker {
             }
             return Self::inspect(store, &input.id);
         }
+        // Resolve once for this new attempt. A later edit must not reinterpret
+        // an admitted attempt; the reservation atomically checks this pin.
+        let configuration = crate::configuration::resolve_for_task(
+            &store.load()?,
+            &input.policy,
+            Some(&input.project_id),
+        )
+        .map_err(|_| WorkerError("configuration-definition-or-scope"))?;
+        if configuration.mode.as_ref().is_some_and(|mode| {
+            mode.execution_support != crate::configuration::ExecutionSupport::ManualWorker
+        }) {
+            return Err(WorkerError("action-mode-artifact-path-not-supported"));
+        }
+        if configuration
+            .profile
+            .as_ref()
+            .is_some_and(|profile| profile.role != crate::configuration::WorkerRole::Implementation)
+        {
+            return Err(WorkerError("implementation-profile-role-required"));
+        }
+        let mut effective_input = input.clone();
+        effective_input.policy = configuration.policy.clone();
+        let input = &effective_input;
         let _lease = lease(store)?.ok_or(WorkerError("worker-host-busy"))?;
         if store
             .load()?
@@ -389,6 +412,7 @@ impl ManualWorker {
             &repository,
             &context_id,
             selection.context_bytes.min(32768),
+            &configuration.context_sources,
         )?;
         let runtime_request =
             selection.runtime_request(session_id.as_str(), attempt_id.as_str(), &context_id)?;
@@ -401,18 +425,52 @@ impl ManualWorker {
                 LocalRef::new(format!("directory-{}", input.project_id))?,
             ),
         );
+        let mode_definition = configuration
+            .definitions
+            .iter()
+            .find(|d| d.kind == DefinitionKind::Mode)
+            .cloned()
+            .unwrap_or_else(|| definition(
+                DefinitionKind::Mode,
+                &input.policy.mode.id,
+                input.policy.mode.version,
+                json!({"name":"Manual work","purpose":"User-directed work under the captured policy"}),
+            ));
+        let profile_definition = configuration
+            .definitions
+            .iter()
+            .find(|d| d.kind == DefinitionKind::Profile)
+            .cloned()
+            .unwrap_or_else(|| definition(
+                DefinitionKind::Profile,
+                &input.policy.profile.id,
+                input.policy.profile.version,
+                json!({"name":"Executor","role":"Execute the authorized Context Pack","instructions_ref":"manual-instructions"}),
+            ));
         let mode = ActionMode::new(
             ModeId::new(&input.policy.mode.id)?,
             DefinitionVersion::new(input.policy.mode.version)?,
-            "Manual work",
-            "User-directed work under the captured policy",
+            mode_definition.body["name"]
+                .as_str()
+                .ok_or(WorkerError("mode-definition"))?,
+            mode_definition.body["purpose"]
+                .as_str()
+                .ok_or(WorkerError("mode-definition"))?,
         )?;
         let profile = AgentProfile::new(
             ProfileId::new(&input.policy.profile.id)?,
             DefinitionVersion::new(input.policy.profile.version)?,
-            "Executor",
-            "Execute the authorized Context Pack",
-            LocalRef::new("manual-instructions")?,
+            profile_definition.body["name"]
+                .as_str()
+                .ok_or(WorkerError("profile-definition"))?,
+            profile_definition.body["role"]
+                .as_str()
+                .ok_or(WorkerError("profile-definition"))?,
+            LocalRef::new(
+                profile_definition.body["instructions_ref"]
+                    .as_str()
+                    .ok_or(WorkerError("profile-definition"))?,
+            )?,
         )?;
         let attempt = TaskAttempt::new(
             &connection,
@@ -465,19 +523,9 @@ impl ManualWorker {
         if correction.is_some() {
             run = Run::restore_checkpoint(&store.load()?.runs()[&run_id].checkpoint())?;
         }
-        let definitions = vec![
-            definition(
-                DefinitionKind::Mode,
-                &input.policy.mode.id,
-                input.policy.mode.version,
-                json!({"name":"Manual work","purpose":"User-directed work under the captured policy"}),
-            ),
-            definition(
-                DefinitionKind::Profile,
-                &input.policy.profile.id,
-                input.policy.profile.version,
-                json!({"name":"Executor","role":"Execute the authorized Context Pack","instructions_ref":"manual-instructions"}),
-            ),
+        let mut definitions = vec![
+            mode_definition,
+            profile_definition,
             definition(
                 DefinitionKind::Context,
                 &context_id,
@@ -502,6 +550,16 @@ impl ManualWorker {
             },
             diagnostics: vec![diagnostic_id.clone()],
         };
+        // Preserve rich immutable records in addition to the domain's compact
+        // definition bodies, with exact versions rather than "latest" aliases.
+        for d in &configuration.definitions {
+            if !definitions
+                .iter()
+                .any(|existing| existing.reference() == d.reference())
+            {
+                definitions.push(d.clone());
+            }
+        }
         let intent = WorkerIntent {
             id: input.id.clone(),
             request_hash,
@@ -1296,6 +1354,7 @@ fn context(
     repository: &Path,
     id: &str,
     max_bytes: usize,
+    configuration_sources: &[ContextSource],
 ) -> Result<policy::ContextPack> {
     let mut files = vec![];
     for file in &input.context_files {
@@ -1327,7 +1386,7 @@ fn context(
             priority: 0,
         });
     }
-    let sources = input
+    let mut sources: Vec<_> = input
         .instructions
         .iter()
         .enumerate()
@@ -1343,6 +1402,7 @@ fn context(
             priority: 0,
         })
         .collect();
+    sources.extend_from_slice(configuration_sources);
     Ok(policy::compile_context(
         &ContextInput {
             schema_version: 1,

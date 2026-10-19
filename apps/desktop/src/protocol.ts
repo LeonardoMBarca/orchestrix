@@ -23,6 +23,7 @@ export type DaemonSnapshot={state:{suspended:boolean,generation:number,cursor:Cu
 export type Workspace={revision:number,projects:Project[],conversations:Conversation[],settings:Settings,connections:Connection[],eventCursor:Cursor,admissionsSuspended:boolean};
 export type Bootstrap=Workspace&{nativeTestMode?:boolean,daemon?:DaemonSnapshot,runtime?:{available:boolean,version?:string,reason?:string}};
 export type DesktopRequest=
+ |{type:'configurations',request:import('./configuration-types').ConfigurationRequest}
  |{type:'prepare-policy-export'}
  |{type:'preview-policy-import',importRef:string,mappings:ImportMappings}
  |{type:'apply-policy-import',commandId:string,expectedRevision:number,importRef:string,mappings:ImportMappings,expectedPreviewDigest:string,confirm:boolean}
@@ -61,8 +62,8 @@ export type DesktopRequest=
  |{type:'request-review',commandId:string,workerId:string,authorizeRuntime:boolean}
  |{type:'authorize-correction',commandId:string,workerId:string,reviewId:string,authorizeRuntime:boolean};
 export type CheckDraft={id:string,executable:string,args:string[],timeoutSeconds:number};
-export type TaskDraft={conversationId:string,projectId?:string|null,repositoryGrant:string,worktreeGrant:string,connectionId:string,connectionRevision?:number,objective:string,acceptanceCriteria:string[],contextFiles:{grant:string,relative:string}[],checks:CheckDraft[],strategy:string,preset:string,model:string,effort:string,correctionBudget:number,fallback:string,allowMetadataRead?:boolean};
-export type PreparedTask={id:string,task:unknown,decision?:unknown,context?:unknown,warning?:string};
+export type TaskDraft={mode?:{id:string,version:number},profile?:{id:string,version:number},conversationId:string,projectId?:string|null,repositoryGrant:string,worktreeGrant:string,connectionId:string,connectionRevision?:number,objective:string,acceptanceCriteria:string[],contextFiles:{grant:string,relative:string}[],checks:CheckDraft[],strategy:string,preset:string,model:string,effort:string,correctionBudget:number,fallback:string,allowMetadataRead?:boolean};
+export type PreparedTask={id:string,task:unknown,configuration?:import('./configuration-types').ConfigurationPreview,decision?:unknown,context?:unknown,warning?:string};
 export type RefreshSettings={schemaVersion:1,mode:'manual'|'automatic',intervalMs:number,validityMs:{identity:number,configuration:number,availability:number,models:number},recurringConsent:boolean};
 export type RefreshStatus={connectionId:string,connectionRevision?:number,bindingRevision?:number,refreshRevision:number,requested:RefreshSettings,effective?:RefreshSettings,reason:string,nextOpportunityAtMs?:number|null,activeDiagnosticId?:string|null,activeSource?:'periodic'|'foreground'|null,recurringAuthorized:boolean,sourceTtlMs?:number,policyValidityMs?:RefreshSettings['validityMs'],consentScope?:string,consentPortable?:false,limits?:{globalConcurrentReads:number,perConnectionConcurrentReads:number,minimumIntervalMs:number,maximumIntervalMs:number,metadataDeadlineMs:number,maximumBackoffMs:number,retainedDiagnosticRows:number,remainingDiagnosticRows:number}};
 export type ImportMappings={connections:{alias:string,connectionId:string,bindingRevision:number}[],models:{alias:string,connectionAlias:string,modelId:string}[],mode?:{id:string,version:number}|null,profile?:{id:string,version:number}|null};

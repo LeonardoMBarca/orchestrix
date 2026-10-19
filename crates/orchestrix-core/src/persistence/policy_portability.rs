@@ -200,9 +200,30 @@ fn make_preview(
     now: u64,
 ) -> StoreResult<ImportPreview> {
     let bundle = parse(document).map_err(|_| StoreError::Configuration)?;
-    let current = settings_from_state(state).map_err(|_| StoreError::InvalidState)?;
+    let current =
+        crate::configuration::export_settings(state).map_err(|_| StoreError::InvalidState)?;
     let allow_soft_unknown = compatible_soft_preferences(&bundle, &current, mappings);
-    let (issues, declared_unknown) = mapping_issues(c, &bundle, mappings, now, allow_soft_unknown)?;
+    let (mut issues, declared_unknown) =
+        mapping_issues(c, &bundle, mappings, now, allow_soft_unknown)?;
+    let mode = mappings.mode.as_ref().unwrap_or(&bundle.policy.mode);
+    let profile = mappings.profile.as_ref().unwrap_or(&bundle.policy.profile);
+    if crate::configuration::validate_selection(state, mode, profile).is_err() {
+        issues.push(ImportIssue {
+            code: "portable-definition-unavailable".into(),
+            reference: None,
+        });
+    }
+    if bundle
+        .policy
+        .layers
+        .iter()
+        .any(|layer| layer.scope == crate::policy::Scope::Project)
+    {
+        issues.push(ImportIssue {
+            code: "portable-project-scope-unresolved".into(),
+            reference: None,
+        });
+    }
     let mut preview =
         crate::policy_portability::preview(&bundle, &current, mappings, state.revision(), issues);
     if declared_unknown {
@@ -240,7 +261,8 @@ pub(super) fn validate_import_command(
 impl Store {
     pub fn portable_policy_export(&self) -> StoreResult<Value> {
         let state = self.load()?;
-        let settings = settings_from_state(&state).map_err(|_| StoreError::InvalidState)?;
+        let settings =
+            crate::configuration::export_settings(&state).map_err(|_| StoreError::InvalidState)?;
         let bundle = export(&settings).map_err(|_| StoreError::Configuration)?;
         let document = serde_json::to_string(&bundle).map_err(|_| StoreError::InvalidState)?;
         Ok(

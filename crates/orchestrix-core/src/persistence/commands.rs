@@ -43,6 +43,7 @@ pub enum Command {
     Review(crate::review_records::ReviewCommand),
     Integration(crate::integration_records::IntegrationCommand),
     Desktop(crate::desktop::DesktopCommand),
+    Configuration(Box<crate::configuration::ConfigurationCommand>),
 }
 
 pub enum RunAction {
@@ -271,6 +272,7 @@ impl Command {
             Self::Review(value) => value.body(),
             Self::Integration(value) => value.body(),
             Self::Desktop(value) => json!(["desktop", value]),
+            Self::Configuration(value) => value.fingerprint(),
         }
     }
     pub(super) fn name(&self) -> &'static str {
@@ -292,6 +294,7 @@ impl Command {
             Self::Review(_) => "review",
             Self::Integration(_) => "integration",
             Self::Desktop(_) => "desktop",
+            Self::Configuration(_) => "configuration",
         }
     }
     pub(super) fn observed_failure(&self, error: &DomainError) -> bool {
@@ -312,6 +315,9 @@ impl Command {
         )
     }
     pub(crate) fn apply(&self, state: &mut SavedState) -> StoreResult<Value> {
+        if let Self::Configuration(command) = self {
+            return command.apply(state);
+        }
         if let Self::Integration(command) = self {
             super::integration::apply(state, command)?;
             return Ok(Value::Null);
@@ -532,7 +538,7 @@ impl Command {
             }
             Self::Git(_) => unreachable!("Git commands handled before domain commands"),
             Self::Worker(_) => unreachable!("Worker commands handled before domain commands"),
-            Self::Review(_) | Self::Integration(_) | Self::Desktop(_) => {
+            Self::Review(_) | Self::Integration(_) | Self::Desktop(_) | Self::Configuration(_) => {
                 unreachable!("infrastructure commands handled first")
             }
         }

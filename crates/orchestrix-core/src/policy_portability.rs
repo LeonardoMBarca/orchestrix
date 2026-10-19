@@ -565,9 +565,8 @@ impl PortableBundle {
             .as_ref()
             .unwrap_or(&self.policy.profile)
             .clone();
-        if mode != current.policy.mode || profile != current.policy.profile {
-            return Err("portable-definition-unavailable".into());
-        }
+        // The owning Store validates exact destination definitions in the same
+        // transaction as preview/confirmation. Names or source IDs grant nothing.
         for rank in &self.policy.model_ranks {
             let owner = mappings
                 .models

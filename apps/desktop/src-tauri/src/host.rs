@@ -167,6 +167,10 @@ pub struct TaskDraft {
     pub fallback: String,
     #[serde(default)]
     pub allow_metadata_read: bool,
+    #[serde(default)]
+    pub mode: Option<orchestrix_core::policy::DefinitionBinding>,
+    #[serde(default)]
+    pub profile: Option<orchestrix_core::policy::DefinitionBinding>,
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -190,6 +194,9 @@ pub struct CheckDraft {
     deny_unknown_fields
 )]
 pub enum HostRequest {
+    Configurations {
+        request: Box<orchestrix_core::configuration::ConfigurationRequest>,
+    },
     PreparePolicyExport,
     PreviewPolicyImport {
         import_ref: String,
@@ -922,6 +929,22 @@ impl Host {
     }
     fn handle_new(&self, request: HostRequest, fingerprint: &str) -> Result<Value, String> {
         match request {
+            HostRequest::Configurations { request } => {
+                let changed = !matches!(
+                    request.as_ref(),
+                    orchestrix_core::configuration::ConfigurationRequest::Catalog {}
+                        | orchestrix_core::configuration::ConfigurationRequest::Get { .. }
+                        | orchestrix_core::configuration::ConfigurationRequest::Preview { .. }
+                );
+                let result = self.desktop(DesktopRequest::Configurations { request })?;
+                if changed {
+                    self.prepared
+                        .lock()
+                        .map_err(|_| "preparation-lock")?
+                        .clear();
+                }
+                Ok(result)
+            }
             #[cfg(feature = "test-fixtures")]
             HostRequest::TestFixture => self.test_fixture(),
             HostRequest::PreparePolicyExport => self.prepare_policy_export(),
@@ -1818,9 +1841,7 @@ impl Host {
             return Err(err("task-budget"));
         }
         let binding = self.preparation_binding(&draft.connection_id, draft.connection_revision)?;
-        let snapshot = self.desktop(DesktopRequest::Bootstrap)?;
-        let settings: Settings =
-            serde_json::from_value(snapshot["settings"].clone()).map_err(|_| "settings-schema")?;
+        let (snapshot, settings, settings_fingerprint) = self.preparation_settings()?;
         let (repository, worktrees, context_files, checks) = {
             let editor = self.editor.lock().map_err(|_| "editor-lock")?;
             let repository = editor.directory(&draft.repository_grant)?;
@@ -1867,14 +1888,13 @@ impl Host {
         let base = GitExecutor::new()
             .and_then(|g| g.inspect_head(&repository))
             .map_err(|_| "git-head-inspection")?;
-        let scope_evidence = self.preparation_scope(
-            &draft.connection_id,
-            binding.revision,
-            repository.clone(),
-            draft.allow_metadata_read,
-        )?;
-        let settings_fingerprint = Self::settings_fingerprint(&settings)?;
         let mut policy = settings.policy;
+        if let Some(mode) = draft.mode {
+            policy.mode = mode;
+        }
+        if let Some(profile) = draft.profile {
+            policy.profile = profile;
+        }
         policy.revision = policy
             .revision
             .checked_add(1)
@@ -1882,22 +1902,41 @@ impl Host {
         policy.mode_requirements.subscription_only = true;
         policy.mode_requirements.max_concurrency = Some(1);
         policy.mode_requirements.require_review = true;
-        policy.mode_defaults.strategy =
-            Some(serde_json::from_value(json!(draft.strategy)).map_err(|_| "strategy")?);
-        policy.mode_defaults.fallback =
-            Some(serde_json::from_value(json!(draft.fallback)).map_err(|_| "fallback-policy")?);
-        policy.mode_defaults.connection_id = Some(draft.connection_id.clone());
-        policy.mode_defaults.model_id = (!draft.model.is_empty()).then_some(draft.model);
-        policy.mode_defaults.reasoning = if draft.effort.is_empty() {
-            None
-        } else {
-            Some(serde_json::from_value(json!(draft.effort)).map_err(|_| "reasoning")?)
+        let task_preferences = orchestrix_core::policy::Preferences {
+            strategy: if draft.strategy.is_empty() {
+                None
+            } else {
+                Some(serde_json::from_value(json!(draft.strategy)).map_err(|_| "strategy")?)
+            },
+            fallback: if draft.fallback.is_empty() {
+                None
+            } else {
+                Some(serde_json::from_value(json!(draft.fallback)).map_err(|_| "fallback-policy")?)
+            },
+            connection_id: Some(draft.connection_id.clone()),
+            model_id: (!draft.model.is_empty()).then_some(draft.model),
+            reasoning: if draft.effort.is_empty() {
+                None
+            } else {
+                Some(serde_json::from_value(json!(draft.effort)).map_err(|_| "reasoning")?)
+            },
+            preset: if draft.preset.is_empty() {
+                None
+            } else {
+                Some(serde_json::from_value(json!(draft.preset)).map_err(|_| "preset")?)
+            },
+            ..Default::default()
         };
-        policy.mode_defaults.preset = if draft.preset.is_empty() {
-            None
-        } else {
-            Some(serde_json::from_value(json!(draft.preset)).map_err(|_| "preset")?)
-        };
+        policy
+            .layers
+            .retain(|layer| layer.scope != orchestrix_core::policy::Scope::Task);
+        policy.layers.push(orchestrix_core::policy::PolicyLayer {
+            scope: orchestrix_core::policy::Scope::Task,
+            reference: "desktop-task-preferences".into(),
+            revision: policy.revision,
+            preferences: task_preferences,
+            requirements: Default::default(),
+        });
         policy.validate().map_err(|_| "policy-schema")?;
         let project_id = if let Some(project) = draft.project_id {
             project
@@ -1917,6 +1956,28 @@ impl Host {
             .as_str()
             .ok_or("repository-id")?
             .to_owned();
+        let configuration_preview = self.desktop(DesktopRequest::ResolveConfiguration {
+            policy: Box::new(policy.clone()),
+            project_id: Some(project_id.clone()),
+        })?;
+        if configuration_preview["fingerprint"].as_str() != Some(&settings_fingerprint) {
+            return Err("prepared-policy-changed-prepare-again".into());
+        }
+        if configuration_preview["definitions"]["mode"]["executionSupport"]
+            == "artifact-flow-unproven"
+        {
+            return Err("configuration-mode-artifact-flow-unproven".into());
+        }
+        if configuration_preview["definitions"]["profile"]["role"] == "review" {
+            return Err("configuration-implementation-profile-required".into());
+        }
+        let scope_evidence = self.preparation_scope(
+            &draft.connection_id,
+            binding.revision,
+            repository.clone(),
+            draft.allow_metadata_read,
+        )?;
+        self.guard_prepared_settings(&settings_fingerprint)?;
         let task = ManualTaskRequest {
             schema_version: 1,
             id: id("worker"),
@@ -1947,7 +2008,7 @@ impl Host {
             checks,
         };
         let key = id("preparation");
-        let public = json!({"id":key,"task":task,"scopeEvidence":scope_evidence,"warning":"Preparation is not execution. Policy/capability/context admission is authoritatively revalidated by Core before any turn."});
+        let public = json!({"id":key,"task":task,"configuration":configuration_preview,"scopeEvidence":scope_evidence,"warning":"Preparation is not execution. Policy/capability/context admission is authoritatively revalidated by Core before any turn."});
         let mut prepared = self.prepared.lock().map_err(|_| "preparation-lock")?;
         if prepared.len() >= 32 {
             return Err(err("preparation-limit"));
@@ -2195,6 +2256,7 @@ fn compatible(snapshot: Value) -> Result<Value, String> {
         || !features.iter().any(|f| f == "review-v1")
         || !features.iter().any(|f| f == "connections-v1")
         || !features.iter().any(|f| f == "control-settings-v1")
+        || !features.iter().any(|f| f == "configuration-v1")
     {
         return Err(err("daemon-version-incompatible"));
     }

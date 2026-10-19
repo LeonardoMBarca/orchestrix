@@ -171,6 +171,8 @@ fn validate_final_evidence(
 pub(super) fn apply(state: &mut SavedState, command: &ReviewCommand) -> StoreResult<()> {
     match command {
         ReviewCommand::Reserve { record, session } => {
+            crate::configuration::guard_context_snapshot(state, &record.intent.context)
+                .map_err(|_| StoreError::Configuration)?;
             if !record.intent.validate()
                 || !record.observations.is_empty()
                 || state.reviews.contains_key(&record.intent.id)

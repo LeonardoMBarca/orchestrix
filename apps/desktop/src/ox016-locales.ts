@@ -1,4 +1,5 @@
 export const controlTranslations:Record<string,[string,string]>={
+ 'This file has an unbound project scope. Configure an identified project in Modes & executor profiles; importing cannot apply it to every project.':['Este arquivo tem um escopo de projeto sem destino. Configure um projeto identificado em Modos e perfis executores; importar não pode aplicá-lo a todos os projetos.','Este archivo tiene un ámbito de proyecto sin destino. Configura un proyecto identificado en Modos y perfiles ejecutores; la importación no puede aplicarlo a todos los proyectos.'],
  'Select a local connection for this reference':['Selecione uma conexão local para esta referência','Selecciona una conexión local para esta referencia'],
  'Select a local model for this reference':['Selecione um modelo local para esta referência','Selecciona un modelo local para esta referencia'],
  'Recheck this connection, then refresh the preview':['Verifique esta conexão e atualize a prévia','Verifica esta conexión y actualiza la vista previa'],

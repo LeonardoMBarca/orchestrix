@@ -50,6 +50,112 @@ fn current(store: &Store) -> Settings {
     serde_json::from_value(store.desktop_snapshot().unwrap()["settings"].clone()).unwrap()
 }
 
+fn scope(store: &mut Store, key: &str, strategy: Strategy, network: bool) {
+    use orchestrix_core::configuration::{ConfigurationRequest, ScopedPolicy};
+    let revision = store.load().unwrap().revision();
+    orchestrix_core::configuration::handle(
+        store,
+        &ConfigurationRequest::SaveScope {
+            command_id: key.into(),
+            expected_revision: revision,
+            scope: ScopedPolicy {
+                scope: Scope::User,
+                project_id: None,
+                version: 0,
+                edit_revision: 0,
+                removed: false,
+                preferences: Preferences {
+                    strategy: Some(strategy),
+                    ..Default::default()
+                },
+                requirements: Requirements {
+                    forbid_network: network,
+                    ..Default::default()
+                },
+            },
+        },
+    )
+    .unwrap();
+}
+
+#[test]
+fn portable_user_scope_has_one_authority_and_preserves_local_restrictions() {
+    let mut source = store();
+    scope(&mut source, "source-scope", Strategy::Efficiency, false);
+    let exported = source.portable_policy_export().unwrap();
+    let document = exported["document"].as_str().unwrap().to_owned();
+    assert!(!document.contains("scoped-policy-user"));
+    let mut destination = store();
+    scope(
+        &mut destination,
+        "destination-scope",
+        Strategy::Performance,
+        true,
+    );
+    let request = import_request(
+        &destination,
+        document,
+        ImportMappings::default(),
+        "import-scope",
+    );
+    destination.execute(&request).unwrap();
+    assert!(destination.execute(&request).unwrap().replayed);
+    let state = destination.load().unwrap();
+    let effective = orchestrix_core::configuration::export_settings(&state).unwrap();
+    let users: Vec<_> = effective
+        .policy
+        .layers
+        .iter()
+        .filter(|l| l.scope == Scope::User)
+        .collect();
+    assert_eq!(users.len(), 1);
+    assert_eq!(users[0].preferences.strategy, Some(Strategy::Efficiency));
+    assert!(users[0].requirements.forbid_network);
+    assert!(
+        !current(&destination)
+            .policy
+            .layers
+            .iter()
+            .any(|l| l.scope == Scope::User)
+    );
+    assert_eq!(
+        orchestrix_core::configuration::catalog(&state)
+            .unwrap()
+            .scopes[0]
+            .version,
+        2
+    );
+}
+
+#[test]
+fn portable_project_layer_without_destination_identity_is_blocked() {
+    let mut settings = Settings::default();
+    settings.policy.layers.push(PolicyLayer {
+        scope: Scope::Project,
+        reference: "private-project".into(),
+        revision: 1,
+        preferences: Preferences {
+            strategy: Some(Strategy::Efficiency),
+            ..Default::default()
+        },
+        requirements: Requirements::default(),
+    });
+    let document = serde_json::to_string(&export(&settings).unwrap()).unwrap();
+    let destination = store();
+    let before = destination.load().unwrap().revision();
+    let preview = destination
+        .portable_policy_preview(&document, &ImportMappings::default())
+        .unwrap();
+    assert!(!preview.can_apply);
+    assert!(
+        preview
+            .issues
+            .iter()
+            .any(|i| i.code == "portable-project-scope-unresolved")
+    );
+    assert_eq!(destination.load().unwrap().revision(), before);
+}
+
 #[test]
 fn allowlist_excludes_private_content_authorizations_and_binding_identifiers() {
     let mut s = Settings {

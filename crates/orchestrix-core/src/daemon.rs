@@ -629,7 +629,8 @@ fn handle_inner(
                 "review-v1",
                 "integration-v1",
                 "connections-v1",
-                "control-settings-v1"
+                "control-settings-v1",
+                "configuration-v1"
             ]);
             return Ok(snapshot);
         }
@@ -1372,7 +1373,11 @@ fn guard_preparation_settings(store: &Store, expected: &str) -> Result<(), Strin
     let snapshot = store.desktop_snapshot().map_err(|_| "database")?;
     let current: crate::desktop::Settings =
         serde_json::from_value(snapshot["settings"].clone()).map_err(|_| "settings-schema")?;
-    if current.execution_fingerprint()? != expected {
+    if crate::configuration::execution_fingerprint(
+        &store.load().map_err(|_| "database")?,
+        &current,
+    )? != expected
+    {
         return Err("prepared-policy-changed-prepare-again".into());
     }
     Ok(())

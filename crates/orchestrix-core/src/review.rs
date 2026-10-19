@@ -164,12 +164,20 @@ impl ReviewPipeline {
         let session_id = format!("review-session-{suffix}");
         let attempt_id = format!("review-attempt-{suffix}");
         let mut policy = input.policy.clone();
+        // Review the implementation's pinned mode, not whichever mode became
+        // the current default while that implementation was running.
+        policy.mode = serde_json::from_value(source.intent.policy["policy"]["mode"].clone())
+            .map_err(|_| WorkerError("review-source-mode"))?;
+        let configuration = crate::configuration::resolve_for_review(
+            &store.load()?,
+            &policy,
+            Some(&source.intent.project_id),
+        )
+        .map_err(|_| WorkerError("review-profile-configuration"))?;
+        policy = configuration.policy;
         policy.mode_requirements.read_only = true;
         policy.mode_requirements.forbid_network = true;
         policy.mode_defaults.sandbox_write = Some(false);
-        if policy.profile.id == "implementation-engineer" {
-            policy.profile.id = "independent-reviewer".into();
-        }
         let observed = crate::worker::observed(&metadata, &format!("review-observation-{suffix}"))?;
         let decision = policy::resolve(
             &policy,
@@ -185,7 +193,38 @@ impl ReviewPipeline {
         }
         let context_id = format!("review-context-{suffix}");
         let source_text=json!({"artifact_revision":artifact.revision,"artifact":artifact,"checks":checks,"implementation_instructions":source.intent.context["sources"],"implementation_constraints":source.intent.context["constraints"]}).to_string();
-        let context=policy::compile_context(&ContextInput{schema_version:1,id:context_id.clone(),version:1,objective,acceptance_criteria:criteria,constraints:vec!["Independent review only: read-only, no delegation, no network, do not change or apply files.".into(),format!("REVIEW_ARTIFACT_REVISION={}",input.artifact_revision)],sources:vec![ContextSource{identity:ContextSourceIdentity{reference:format!("artifact-{}",&artifact.revision[..24]),revision:artifact.revision.clone()},kind:ContextSourceKind::DependencyArtifact,authorization_ref:Some(input.authorization_ref.clone()),text:source_text,required:true,priority:0}],files:vec![]},ContextBudget{max_bytes:selected.context_bytes.min(32768),max_file_bytes:262_144,..ContextBudget::default()})?;
+        let mut sources = vec![ContextSource {
+            identity: ContextSourceIdentity {
+                reference: format!("artifact-{}", &artifact.revision[..24]),
+                revision: artifact.revision.clone(),
+            },
+            kind: ContextSourceKind::DependencyArtifact,
+            authorization_ref: Some(input.authorization_ref.clone()),
+            text: source_text,
+            required: true,
+            priority: 0,
+        }];
+        sources.extend(configuration.context_sources);
+        let context = policy::compile_context(
+            &ContextInput {
+                schema_version: 1,
+                id: context_id.clone(),
+                version: 1,
+                objective,
+                acceptance_criteria: criteria,
+                constraints: vec![
+                    "Independent review only: read-only, no delegation, no network, do not change or apply files.".into(),
+                    format!("REVIEW_ARTIFACT_REVISION={}", input.artifact_revision),
+                ],
+                sources,
+                files: vec![],
+            },
+            ContextBudget {
+                max_bytes: selected.context_bytes.min(32768),
+                max_file_bytes: 262_144,
+                ..ContextBudget::default()
+            },
+        )?;
         let request = selected.runtime_request(&session_id, &attempt_id, &context_id)?;
         if request.as_json()["requested"]["sandbox"] != "read-only" {
             return Err(WorkerError("review-read-only-required"));
@@ -480,6 +519,11 @@ impl ReviewPipeline {
             .into_iter()
             .flatten()
             .filter(|source| source["kind"] == "user-instructions")
+            .filter(|source| {
+                source["identity"]["reference"]
+                    .as_str()
+                    .is_some_and(|reference| reference.starts_with("user-instruction-"))
+            })
             .filter_map(|source| source["content"].as_str().map(ToOwned::to_owned))
             .collect();
 
