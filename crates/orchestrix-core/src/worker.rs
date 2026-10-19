@@ -332,15 +332,7 @@ impl ManualWorker {
         let hash = content_hash(input.id.as_bytes());
         let suffix = &hash[..24];
         let diagnostic_id = format!("diagnostic-{suffix}");
-        static METADATA: std::sync::OnceLock<crate::runtime::CodexMetadataService> =
-            std::sync::OnceLock::new();
-        let discovery = METADATA.get_or_init(|| {
-            crate::runtime::CodexMetadataService::new(
-                std::sync::Arc::new(crate::runtime::SystemRefreshClock),
-                crate::runtime::refresh::RefreshBounds::default(),
-            )
-            .expect("constant refresh bounds")
-        });
+        let discovery = crate::runtime::CodexMetadataService::shared();
         let metadata = match discovery.read(
             launch.clone().with_cwd(repository.clone()),
             &input.connection_id,

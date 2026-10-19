@@ -595,7 +595,29 @@ fn handle_inner(
                 .daemon_integration_view(integration_id)
                 .map_err(|_| "integration-history-query".into());
         }
-        Operation::Desktop { request } => return crate::desktop::handle(store, request),
+        Operation::Desktop { request } => {
+            let changes_settings = matches!(
+                request.as_ref(),
+                crate::desktop::DesktopRequest::SaveSettings { .. }
+                    | crate::desktop::DesktopRequest::ApplyPolicyImport { .. }
+            );
+            let previous_validity = changes_settings
+                .then(|| store.connection_policy_validity())
+                .transpose()
+                .map_err(|_| "policy-validity")?;
+            let result = crate::desktop::handle(store, request)?;
+            if let Some(previous) = previous_validity
+                && previous
+                    != store
+                        .connection_policy_validity()
+                        .map_err(|_| "policy-validity")?
+            {
+                // The Settings effect/receipt is already durable; no writer is held
+                // while cancelling cache reads. Replays do not invalidate again.
+                connections.invalidate_policy_observations(store)?;
+            }
+            return Ok(result);
+        }
         Operation::Snapshot => {
             let mut snapshot = store.daemon_snapshot().map_err(|_| "snapshot")?;
             snapshot["activeWorkerId"] = json!(active.as_ref().map(|a| &a.worker_id));

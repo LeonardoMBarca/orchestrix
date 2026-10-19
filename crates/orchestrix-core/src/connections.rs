@@ -396,14 +396,27 @@ pub(crate) struct ConnectionService {
 }
 impl ConnectionService {
     pub(crate) fn new() -> Self {
-        Self::with_clock(Arc::new(crate::runtime::SystemRefreshClock))
+        Self::with_metadata(
+            Arc::new(crate::runtime::SystemRefreshClock),
+            CodexMetadataService::shared().clone(),
+        )
     }
+    #[cfg(test)]
     pub(crate) fn with_clock(clock: Arc<dyn crate::runtime::RefreshClock>) -> Self {
         let metadata = CodexMetadataService::new(
             Arc::clone(&clock),
-            crate::runtime::refresh::RefreshBounds::default(),
+            crate::runtime::refresh::RefreshBounds {
+                max_in_flight: 1,
+                ..crate::runtime::refresh::RefreshBounds::default()
+            },
         )
         .expect("bounds");
+        Self::with_metadata(clock, metadata)
+    }
+    fn with_metadata(
+        clock: Arc<dyn crate::runtime::RefreshClock>,
+        metadata: CodexMetadataService,
+    ) -> Self {
         let coordinator = crate::runtime::MetadataRefreshCoordinator::new(
             metadata.clone(),
             Arc::clone(&clock),
@@ -427,6 +440,22 @@ impl ConnectionService {
             #[cfg(test)]
             fail_next_metadata_spawn: false,
         }
+    }
+    /// Settings policy TTL mutations affect future reads/admissions, not active
+    /// turns. Called only after the corresponding Settings transaction commits.
+    pub(crate) fn invalidate_policy_observations(&self, store: &Store) -> Result<(), String> {
+        for link in store
+            .connection_links_current()
+            .map_err(|_| "connection-store")?
+        {
+            self.metadata
+                .invalidate_observations(&link.id, link.binding_revision);
+            if let Some(f) = self.flights.get(&link.id) {
+                f.cancel.cancel();
+            }
+            self.coordinator.defer(&link.id);
+        }
+        Ok(())
     }
     fn sync_refresh(&mut self, store: &Store) -> Result<(), String> {
         for link in store
@@ -816,6 +845,11 @@ impl ConnectionService {
                 settings,
             } => {
                 settings.validate()?;
+                let previous_validity = store
+                    .connection_refresh_configuration(id)
+                    .map_err(|_| "connection-store")?
+                    .map_or_else(RefreshSettings::default, |c| c.settings)
+                    .validity_ms;
                 let value = store
                     .connection_configure_refresh(
                         command_id,
@@ -833,6 +867,15 @@ impl ConnectionService {
                             "refresh-configuration"
                         }
                     })?;
+                if previous_validity != settings.validity_ms {
+                    let binding = value["bindingRevision"]
+                        .as_u64()
+                        .ok_or("connection-binding-revision")?;
+                    // The same pool serves future worker discovery. Detach old
+                    // tickets as well as cached values before acknowledging the
+                    // new validity; pending old observations cannot publish.
+                    self.metadata.invalidate_observations(id, binding);
+                }
                 self.sync_refresh(store)?;
                 Ok(value)
             }
@@ -1502,6 +1545,254 @@ mod tests {
             diagnostic_id
         );
         assert!(store.load().unwrap().workers().is_empty());
+    }
+    #[cfg(windows)]
+    #[test]
+    #[ignore = "requires the owned orchestrix-runtime-fixture binary; synthetic metadata RPC, no account"]
+    fn worker_metadata_cache_does_not_rejuvenate_after_validity_relaxation() {
+        use crate::connection_refresh::{ObservationValidity, RefreshMode, RefreshSettings};
+        use crate::runtime::{ManualRefreshClock, MetadataRead};
+        use std::time::{Duration, Instant};
+
+        let binary = std::env::current_exe()
+            .unwrap()
+            .parent()
+            .unwrap()
+            .parent()
+            .unwrap()
+            .join("orchestrix-runtime-fixture.exe");
+        assert!(binary.is_file(), "build the existing fixture binary first");
+        let root = path("worker-cache.sqlite").parent().unwrap().to_owned();
+        let home = root.join("synthetic-home");
+        let directory = root.join("registration");
+        let project = root.join("project");
+        for p in [&home, &directory, &project] {
+            std::fs::create_dir_all(p).unwrap();
+        }
+        let home = std::fs::canonicalize(home).unwrap();
+        let project = std::fs::canonicalize(project).unwrap();
+        let mut store = Store::open(root.join("worker-cache.sqlite")).unwrap();
+        let clock = Arc::new(ManualRefreshClock::new(100));
+        let mut service = ConnectionService::with_clock(clock.clone());
+        let reads = || {
+            std::fs::read_to_string(home.join("metadata-reads"))
+                .ok()
+                .and_then(|s| s.parse::<u64>().ok())
+                .unwrap_or(0)
+        };
+        service
+            .handle(
+                &mut store,
+                &ConnectionRequest::Link {
+                    command_id: "cache-link".into(),
+                    id: "cache-fixture".into(),
+                    expected_revision: None,
+                    name: "Synthetic cache".into(),
+                    runtime: RuntimeChoice::Synthetic {
+                        executable: binary.clone(),
+                        home: home.clone(),
+                        scenario: "connection-metadata".into(),
+                    },
+                    metadata_directory: std::fs::canonicalize(directory).unwrap(),
+                    executable_sha256: runtime_executable_sha256(&binary).unwrap(),
+                    allow_metadata_read: true,
+                },
+                false,
+            )
+            .unwrap();
+        let until = Instant::now() + Duration::from_secs(20);
+        while !service.is_idle() {
+            service.drain(&mut store).unwrap();
+            assert!(Instant::now() < until, "owned registration read completes");
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        assert_eq!(reads(), 1);
+        let launch = store
+            .connection_link("cache-fixture")
+            .unwrap()
+            .unwrap()
+            .launch()
+            .unwrap()
+            .with_cwd(project);
+        // Production workers and ConnectionService use this same read pool.
+        let discovery = service.metadata.clone();
+        let read = || {
+            discovery
+                .read(
+                    launch.clone(),
+                    "cache-fixture",
+                    1,
+                    true,
+                    &CancellationToken::new(),
+                )
+                .unwrap()
+        };
+        clock.set(1_000);
+        let MetadataRead::Ready {
+            metadata: original,
+            cached: false,
+            ..
+        } = read()
+        else {
+            panic!("initial worker-scope observation")
+        };
+        assert_eq!(original.observed_at_ms, 1_000);
+        assert_eq!(reads(), 2);
+        let configure = |service: &mut ConnectionService,
+                         store: &mut Store,
+                         revision: u64,
+                         settings: RefreshSettings| {
+            service
+                .handle(
+                    store,
+                    &ConnectionRequest::ConfigureRefresh {
+                        command_id: format!("cache-config-{revision}"),
+                        id: "cache-fixture".into(),
+                        expected_revision: 1,
+                        expected_refresh_revision: revision,
+                        settings,
+                    },
+                    false,
+                )
+                .unwrap();
+        };
+        let strict = RefreshSettings {
+            validity_ms: ObservationValidity {
+                identity: 1_000,
+                ..ObservationValidity::default()
+            },
+            ..RefreshSettings::default()
+        };
+        configure(&mut service, &mut store, 0, strict.clone());
+        let MetadataRead::Ready {
+            metadata: strict_observation,
+            cached: false,
+            ..
+        } = read()
+        else {
+            panic!("TTL mutation invalidates worker cache")
+        };
+        assert_eq!(reads(), 3);
+        let automatic = RefreshSettings {
+            mode: RefreshMode::Automatic,
+            recurring_consent: true,
+            interval_ms: 60_000,
+            ..strict.clone()
+        };
+        configure(&mut service, &mut store, 1, automatic.clone());
+        assert!(matches!(read(), MetadataRead::Ready { cached: true, .. }));
+        assert_eq!(
+            reads(),
+            3,
+            "cadence-only change retains valid source observation"
+        );
+        clock.set(2_001);
+        assert_eq!(strict_observation.observed_at_ms, 1_000);
+        let relaxed = RefreshSettings {
+            validity_ms: ObservationValidity::default(),
+            ..automatic.clone()
+        };
+        configure(&mut service, &mut store, 2, relaxed.clone());
+        let MetadataRead::Ready {
+            metadata: fresh,
+            cached: false,
+            ..
+        } = read()
+        else {
+            panic!("expired strict observation must not regain authority after relaxation")
+        };
+        assert_eq!(fresh.observed_at_ms, 2_001);
+        assert_eq!(
+            strict_observation.observed_at_ms, 1_000,
+            "old snapshot retains source time"
+        );
+        assert_eq!(reads(), 4);
+
+        // Change validity while a different scope is physically reading. Its
+        // detached ticket must neither publish later nor open another slot
+        // until its own process shutdown has completed.
+        std::fs::write(home.join("connection-metadata-hang"), b"owned barrier").unwrap();
+        configure(&mut service, &mut store, 3, automatic);
+        let reader = discovery.clone();
+        let pending_launch = launch.clone();
+        let pending = std::thread::spawn(move || {
+            reader.read(
+                pending_launch,
+                "cache-fixture",
+                1,
+                true,
+                &CancellationToken::new(),
+            )
+        });
+        let until = Instant::now() + Duration::from_secs(5);
+        while reads() != 5 {
+            assert!(Instant::now() < until, "owned worker metadata RPC starts");
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        assert!(matches!(read(), MetadataRead::Coalesced));
+        assert_eq!(reads(), 5);
+        configure(&mut service, &mut store, 4, relaxed);
+        std::fs::remove_file(home.join("connection-metadata-hang")).unwrap();
+        let after_invalidation = read();
+        assert!(
+            pending.join().unwrap().is_err(),
+            "invalidated old response cannot publish"
+        );
+        let after_shutdown = match after_invalidation {
+            MetadataRead::Busy => read(),
+            ready => ready,
+        };
+        assert!(matches!(
+            after_shutdown,
+            MetadataRead::Ready { cached: false, .. }
+        ));
+        assert_eq!(
+            reads(),
+            6,
+            "one replacement read, no old-response cache reuse"
+        );
+
+        let save_policy = |store: &mut Store, command: &str, ttl: u64| {
+            let revision = store.desktop_snapshot().unwrap()["revision"]
+                .as_u64()
+                .unwrap();
+            let mut settings = crate::desktop::Settings::default();
+            settings.policy.observation_ttls.identity_billing_ms = ttl;
+            crate::desktop::handle(
+                store,
+                &crate::desktop::DesktopRequest::SaveSettings {
+                    command_id: command.into(),
+                    expected_revision: revision,
+                    settings: Box::new(settings),
+                },
+            )
+            .unwrap();
+        };
+        save_policy(&mut store, "strict-policy-cache", 1_000);
+        service.invalidate_policy_observations(&store).unwrap();
+        assert!(matches!(read(), MetadataRead::Ready { cached: false, .. }));
+        assert_eq!(reads(), 7);
+        clock.set(3_002);
+        save_policy(&mut store, "relax-policy-cache", 300_000);
+        service.invalidate_policy_observations(&store).unwrap();
+        let MetadataRead::Ready {
+            metadata,
+            cached: false,
+            ..
+        } = read()
+        else {
+            panic!("policy relaxation also invalidates prior discovery")
+        };
+        assert_eq!(metadata.observed_at_ms, 3_002);
+        assert_eq!(reads(), 8);
+        assert!(!home.join("dispatch-count").exists());
+        assert!(!std::fs::read_dir(home).unwrap().any(|entry| {
+            entry
+                .unwrap()
+                .file_name()
+                .to_string_lossy()
+                .starts_with("fixture-thread-")
+        }));
     }
     #[cfg(windows)]
     #[test]

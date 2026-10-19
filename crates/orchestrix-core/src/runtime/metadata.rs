@@ -65,8 +65,25 @@ pub struct CodexMetadataService {
     active: Arc<Mutex<BTreeMap<u64, Active>>>,
     deadline: Duration,
     source_ttl_ms: u64,
+    max_in_flight: usize,
 }
 impl CodexMetadataService {
+    /// One read pool per Core process, shared by diagnostic refresh and the
+    /// worker's pre-reservation metadata discovery. No timer or provider read
+    /// starts when this value is initialized.
+    pub(crate) fn shared() -> &'static Self {
+        static SHARED: std::sync::OnceLock<CodexMetadataService> = std::sync::OnceLock::new();
+        SHARED.get_or_init(|| {
+            Self::new(
+                Arc::new(SystemRefreshClock),
+                RefreshBounds {
+                    max_in_flight: 1,
+                    ..RefreshBounds::default()
+                },
+            )
+            .expect("constant shared metadata bounds")
+        })
+    }
     pub fn new(clock: Arc<dyn RefreshClock>, bounds: RefreshBounds) -> Option<Self> {
         Some(Self {
             cache: RefreshCache::new(bounds)?,
@@ -74,6 +91,7 @@ impl CodexMetadataService {
             active: Arc::new(Mutex::new(BTreeMap::new())),
             deadline: Duration::from_millis(bounds.deadline_ms),
             source_ttl_ms: bounds.ttl_ms,
+            max_in_flight: bounds.max_in_flight,
         })
     }
     /// Upper bound granted by this metadata source, independent of UI cadence.
@@ -152,17 +170,25 @@ impl CodexMetadataService {
             RefreshAction::Invalid => return Err(RuntimeError::new("ownership", "not-sent")),
         };
         let owned_cancel = CancellationToken::new();
-        self.active
+        let mut active = self
+            .active
             .lock()
-            .map_err(|_| RuntimeError::new("transport-loss", "not-sent"))?
-            .insert(
-                ticket.generation(),
-                Active {
-                    connection_id: connection_id.into(),
-                    revision,
-                    token: owned_cancel.clone(),
-                },
-            );
+            .map_err(|_| RuntimeError::new("transport-loss", "not-sent"))?;
+        // Invalidating a logical ticket does not prove its process has closed.
+        // Retain the physical read's slot until shutdown has actually returned.
+        if active.len() >= self.max_in_flight {
+            self.cache.cancel(&ticket);
+            return Ok(MetadataRead::Busy);
+        }
+        active.insert(
+            ticket.generation(),
+            Active {
+                connection_id: connection_id.into(),
+                revision,
+                token: owned_cancel.clone(),
+            },
+        );
+        drop(active);
         let completed = Arc::new(AtomicBool::new(false));
         let watch_done = Arc::clone(&completed);
         let watch_cancel = owned_cancel.clone();
