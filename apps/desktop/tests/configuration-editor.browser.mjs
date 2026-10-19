@@ -20,8 +20,23 @@ try{
  assert.equal(await editor().getByRole('textbox',{name:'Purpose',exact:true}).getAttribute('readonly'),'');
  assert.equal(await editor().getByRole('textbox',{name:'Name',exact:true}).getAttribute('readonly'),'');
  assert.equal(await definition().locator('option').count(),6);
+ const previewSelection=()=>editor().locator('.o-configuration-preview-selection');
+ await previewSelection().locator('summary').click();
+ assert.equal(await previewSelection().getByRole('combobox',{name:'Action mode',exact:true}).isDisabled(),true);
+ assert.equal(await previewSelection().getByRole('combobox',{name:'Executor profile',exact:true}).isEnabled(),true);
+ assert.match(await previewSelection().innerText(),/uses this action-mode draft/);
  await instructions().fill('Native customization draft');
  await tabs().getByRole('tab',{name:'Executor profiles',exact:true}).click();
+ if(await previewSelection().getAttribute('open')===null)await previewSelection().locator('summary').click();
+ assert.equal(await previewSelection().getByRole('combobox',{name:'Action mode',exact:true}).isEnabled(),true);
+ assert.equal(await previewSelection().getByRole('combobox',{name:'Executor profile',exact:true}).isDisabled(),true);
+ assert.match(await previewSelection().innerText(),/uses this executor-profile draft/);
+ await previewSelection().getByRole('combobox',{name:'Action mode',exact:true}).selectOption('research@2');
+ await editor().getByRole('button',{name:'Inspect effective configuration',exact:true}).click();
+ await editor().getByRole('region',{name:'Effective configuration preview',exact:true}).waitFor();
+ const selectedPreview=await page.evaluate(()=>window.__configurationQa.calls.filter(call=>call.type==='preview').at(-1));
+ assert.equal(selectedPreview.mode.id,'research');assert.equal(selectedPreview.profileDraft.id,'implementation-engineer');
+ checks.push('preview-fixes-only-draft-axis-and-free-selection-reaches-request');
  await tabs().getByRole('tab',{name:'Action modes',exact:true}).click();
  assert.equal(await instructions().inputValue(),'Native customization draft');
  await page.evaluate(()=>window.__configurationQa.setActive(false));
@@ -58,6 +73,9 @@ try{
  checks.push('local-review-profile-read-only-and-output-language');
 
  await tabs().getByRole('tab',{name:'Scoped preferences',exact:true}).click();
+ if(await previewSelection().getAttribute('open')===null)await previewSelection().locator('summary').click();
+ assert.equal(await previewSelection().getByRole('combobox',{name:'Action mode',exact:true}).isEnabled(),true);
+ assert.equal(await previewSelection().getByRole('combobox',{name:'Executor profile',exact:true}).isEnabled(),true);
  await editor().getByRole('combobox',{name:'Scope',exact:true}).selectOption('project');
  await editor().getByRole('combobox',{name:'Resource strategy',exact:true}).selectOption('efficiency');
  await editor().getByRole('combobox',{name:'Project',exact:true}).selectOption('project-b');
@@ -126,6 +144,52 @@ try{
  await editor().getByRole('region',{name:'Effective configuration preview',exact:true}).waitFor();
  assert.equal((await page.evaluate(()=>window.__configurationQa.calls)).some(row=>!['catalog','get','preview','save-mode','save-profile','save-scope'].includes(row.type)),false);
  checks.push('preview-is-pure-synthetic-boundary');
+
+ await editor().getByRole('button',{name:'Create local mode',exact:true}).click();
+ await editor().getByRole('textbox',{name:'Name',exact:true}).fill('Keep this new definition after CAS');
+ await instructions().fill('Preserve every unsaved instruction across an unrelated Store edit');
+ const newIdentity=await definition().inputValue();
+ await page.evaluate(()=>window.__configurationQa.advanceRevision());
+ await save();await editor().getByRole('alert').filter({hasText:'Your draft is preserved'}).waitFor();
+ const rejectedSave=await page.evaluate(()=>window.__configurationQa.calls.filter(call=>call.type==='save-mode').at(-1));
+ await editor().getByRole('button',{name:'Compare with latest',exact:true}).click();
+ await editor().getByRole('button',{name:'Update editing revision and keep draft',exact:true}).click();
+ await editor().getByRole('status').filter({hasText:'Editing revision updated'}).waitFor();
+ assert.equal(await definition().inputValue(),newIdentity);
+ assert.equal(await editor().getByRole('textbox',{name:'Name',exact:true}).inputValue(),'Keep this new definition after CAS');
+ assert.equal(await instructions().inputValue(),'Preserve every unsaved instruction across an unrelated Store edit');
+ const savesBeforeRetry=await page.evaluate(()=>window.__configurationQa.calls.filter(call=>call.type==='save-mode').length);
+ assert.equal(await page.evaluate(id=>window.__configurationQa.catalog.modes.some(mode=>mode.id===id),newIdentity),false,'recovery must not save or retry automatically');
+ await save();await editor().getByRole('status').filter({hasText:'Version saved'}).waitFor();
+ const explicitRetry=await page.evaluate(()=>window.__configurationQa.calls.filter(call=>call.type==='save-mode').at(-1));
+ assert.notEqual(explicitRetry.commandId,rejectedSave.commandId,'explicit rebase needs a new command identity');
+ assert.deepEqual(explicitRetry.definition,rejectedSave.definition,'only the expected Store revision changes; the draft and pinned base stay exact');
+ assert.equal(explicitRetry.expectedRevision,rejectedSave.expectedRevision+1);
+ assert.equal(await page.evaluate(()=>window.__configurationQa.calls.filter(call=>call.type==='save-mode').length),savesBeforeRetry+1);
+ checks.push('new-unsaved-definition-cas-recovery-preserves-draft-with-explicit-rebase');
+
+ await definition().selectOption('development');
+ await editor().getByRole('button',{name:'Create local mode',exact:true}).click();
+ await editor().getByRole('textbox',{name:'Name',exact:true}).fill('Keep this colliding draft');
+ await instructions().fill('Do not replace a definition created under the same identifier');
+ const collidingIdentity=await definition().inputValue();
+ await page.evaluate(id=>window.__configurationQa.claimMode(id),collidingIdentity);
+ await save();await editor().getByRole('alert').filter({hasText:'Your draft is preserved'}).waitFor();
+ const collidingSave=await page.evaluate(()=>window.__configurationQa.calls.filter(call=>call.type==='save-mode').at(-1));
+ const collisionSaveCount=await page.evaluate(()=>window.__configurationQa.calls.filter(call=>call.type==='save-mode').length);
+ await editor().getByRole('button',{name:'Update editing revision and keep draft',exact:true}).click();
+ await editor().getByRole('status').filter({hasText:'This identifier now belongs to a saved definition'}).waitFor();
+ assert.equal(await instructions().inputValue(),'Do not replace a definition created under the same identifier');
+ assert.equal(await editor().getByRole('textbox',{name:'Name',exact:true}).inputValue(),'Keep this colliding draft');
+ assert.equal(await page.evaluate(()=>window.__configurationQa.calls.filter(call=>call.type==='save-mode').length),collisionSaveCount,'occupied identity recovery must not retry automatically');
+ await save();await editor().getByRole('alert').filter({hasText:'Your draft is preserved'}).waitFor();
+ const unchangedConflict=await page.evaluate(()=>window.__configurationQa.calls.filter(call=>call.type==='save-mode').at(-1));
+ assert.equal(unchangedConflict.expectedRevision,collidingSave.expectedRevision,'occupied identity must not rebase');
+ assert.equal(unchangedConflict.commandId,collidingSave.commandId,'occupied identity must not replace its rejected command identity');
+ assert.deepEqual(unchangedConflict.definition,collidingSave.definition);
+ assert.equal(await page.evaluate(id=>window.__configurationQa.catalog.modes.find(mode=>mode.id===id).instructions,collidingIdentity),'Separate saved definition');
+ checks.push('occupied-definition-identity-blocks-rebase-without-overwriting-either-buffer');
+ await editor().getByRole('button',{name:'Cancel changes',exact:true}).click();
 
  for(const language of ['en','pt','es'])for(const scale of [100,200])for(const width of [900,1440]){
   await page.setViewportSize({width,height:1000});await page.evaluate(({language,scale})=>window.__configurationQa.setLanguage(language,scale),{language,scale});

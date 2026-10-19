@@ -66,6 +66,8 @@ try {
  await page.locator('.o-session-row').filter({hasText:'Inspect configuration task'}).click();
  await page.getByRole('button',{name:'Prepare task',exact:true}).click();
  const form=page.locator('.o-task-form');
+ assert.equal(await form.getByRole('combobox',{name:'Action mode',exact:true}).isEnabled(),true);
+ assert.equal(await form.getByRole('combobox',{name:'Executor profile',exact:true}).isEnabled(),true);
  await form.locator('button').filter({hasText:'Select repository'}).click();
  await form.locator('button').filter({hasText:'Grant worktree folder'}).click();
  await form.getByRole('textbox',{name:'Acceptance criteria',exact:true}).fill('Fixture check passes');
