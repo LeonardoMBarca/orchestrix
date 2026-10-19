@@ -117,6 +117,8 @@ In Connections (or Settings → Accounts), select a linked connection and open D
 
 Settings → Orchestration → Policy portability exports supported policy/appearance only. Prepare export shows the summary and optional JSON; Save uses a native destination dialog and never overwrites an existing file. Import starts with a native file chooser, strict preview, explicit local connection/model (and custom definition) mappings, then exact-preview confirmation. Cancel/invalid/stale imports preserve Settings. Local restrictions and Subscription Only prevail; recurring consent, credentials, personal instructions and historical work do not travel. A prepared task must be prepared again after a policy change, including one from another window.
 
+The two native policy-file commands require matching entries in the Tauri handler registry, build AppManifest, generated permissions and `main-window` capability. `tests/native-command-boundary.test.mjs` checks that restricted boundary; it does not substitute for native dialog QA. The renderer receives an opaque selection/export reference, never generic filesystem authority.
+
 A catalog model with unknown access stays unknown. Importing it as a soft preference requires explicit Compatible fallback and the preview warning; a mandatory model or Block remains blocked. Importing preferences does not authorize execution or certify entitlement.
 
 HOME reflows cards into fewer columns when both docks and enlarged text leave limited central width. Content stays scrollable; this temporary adaptation does not change persisted dock widths, collapse preferences, text scale or conversation draft.
