@@ -5,6 +5,14 @@ export function diagnosticRunning(report:ConnectionDiagnostic|undefined){return 
 export function diagnosticStillCurrent(id:string,revision:number,selection:{id:string,revision:number}|null,generation:number,currentGeneration:number){return !!selection&&selection.id===id&&selection.revision===revision&&generation===currentGeneration;}
 export function exactConnectionChoice(connections:Connection[],id:string){return connections.find(connection=>connection.id===id&&selectableConnection(connection));}
 export function connectionLabel(connection:Connection){return connection.name??connection.label;}
+// An unhydrated catalog is not an instruction to discard a saved preference.
+// This is a display placeholder, never an observed model or admission grant.
+export function retainedModelPreference(connections:readonly Connection[],connectionId:string,modelId:string){
+ if(!modelId)return null;
+ const connection=connections.find(connection=>connection.id===connectionId);
+ if(connection?.models?.some(model=>model.id===modelId))return null;
+ return {value:`${connectionId}|${modelId}`,connectionId,modelId,connectionLabel:connection?.label??connectionId};
+}
 export function connectionError(error:string){
  if(error.includes('auth-store-already-linked'))return 'This Codex home is already linked. Use the existing connection.';
  if(error.includes('connection-binding-revision-required')||error.includes('connection-binding-revision-changed'))return 'The connection configuration changed. Select it again and authorize a new preparation.';

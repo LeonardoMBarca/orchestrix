@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {selectableConnection,diagnosticRunning,diagnosticStillCurrent,reportedModels,connectionResourceFacts,diagnosticNextAction,diagnosticLabel,connectionError} from '../src/connection-state.ts';
+import {selectableConnection,diagnosticRunning,diagnosticStillCurrent,reportedModels,connectionResourceFacts,diagnosticNextAction,diagnosticLabel,connectionError,retainedModelPreference} from '../src/connection-state.ts';
 import {connectionTranslations} from '../src/connection-locales.ts';
 const connection={id:'connection-a',revision:3,bindingRevision:2,name:'My account',label:'My account',provider:'Codex',mode:'subscription',status:'observed',enabled:true,linked:true};
 const report={latest:{id:'diagnostic-a',state:'partial',connectionRevision:2,current:true,observedAtMs:10,validUntilMs:200,complete:false},catalog:{runtimeVersion:'0.162.0-alpha.17.2',connection:{id:'connection-a',revision:2,authentication:'authenticated',billing:'subscription'},models:[{id:'model-opaque',availability:'unknown',reasoningLevels:['low','maximum']}],capabilities:{contextManagement:{support:'runtime-managed'}}},catalogLabels:[{id:'model-opaque',label:'Actual provider model',nativeEfforts:['low','xhigh']}],controlObservations:['control:native-delegation-disabled']};
@@ -9,6 +9,22 @@ test('selection excludes disabled or unlinked connections without fabricating ol
  assert.equal(selectableConnection({...connection,enabled:false}),false);
  assert.equal(selectableConnection({...connection,linked:false}),false);
  assert.equal(selectableConnection({id:'legacy-renderer-fixture'}),true);
+});
+
+test('unhydrated or missing catalog options retain the exact saved model and connection as a display preference',()=>{
+ const original=structuredClone(connection),connections=[Object.freeze({...connection})];
+ assert.deepEqual(retainedModelPreference(connections,connection.id,'saved-model'),{
+  value:'connection-a|saved-model',connectionId:'connection-a',modelId:'saved-model',connectionLabel:'My account',
+ });
+ assert.deepEqual(connection,original);
+ assert.equal(connections[0].models,undefined,'no observed catalog or availability is manufactured');
+ assert.equal(retainedModelPreference(connections,connection.id,''),null,'automatic remains an explicit empty preference');
+ const catalog=[{...connection,models:[{id:'observed-model',name:'Observed model'}]}];
+ assert.equal(retainedModelPreference(catalog,connection.id,'observed-model'),null,'an existing real option needs no placeholder');
+ assert.equal(retainedModelPreference(catalog,connection.id,'saved-model').modelId,'saved-model','a changed catalog does not silently switch models');
+ assert.equal(retainedModelPreference(catalog,'other-connection','observed-model').value,'other-connection|observed-model','same model on another connection cannot satisfy the saved binding');
+ assert.equal(retainedModelPreference([],connection.id,'saved-model').connectionId,connection.id,'a missing connection is not reassigned');
+ assert.ok(connectionTranslations['Saved preference; model not reported here']?.every(label=>label.length>0));
 });
 test('late diagnostic replies cannot cross identity, registration revision or selection generation',()=>{
  assert.equal(diagnosticStillCurrent('a',2,{id:'a',revision:2},4,4),true);

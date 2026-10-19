@@ -1,4 +1,5 @@
 export const connectionTranslations:Record<string,[string,string]>={
+ 'Saved preference; model not reported here':['Preferência salva; modelo não informado nesta janela','Preferencia guardada; modelo no informado en esta ventana'],
  'No connections yet':['Nenhuma conexão ainda','Todavía no hay conexiones'],
  'Unlinked':['Desvinculada','Desvinculada'],
  'Disabled':['Desabilitada','Deshabilitada'],

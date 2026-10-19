@@ -3,7 +3,7 @@ import {Icon} from './icons';
 import {pick,type Grant} from './editor';
 import {request,type Bootstrap,type PreparedTask,type TaskDraft} from './protocol';
 import {preparationStillCurrent,taskFingerprint} from './task-preparation';
-import {selectableConnection} from './connection-state';
+import {selectableConnection,retainedModelPreference} from './connection-state';
 
 type Props={
  task:TaskDraft,setTask:(task:TaskDraft)=>void,prepared:PreparedTask|null,setPrepared:(prepared:PreparedTask|null)=>void,
@@ -31,6 +31,7 @@ export function TaskForm({task,setTask,prepared,setPrepared,grants,setGrants,con
  const grantName=(id:string)=>grants.find(grant=>grant.id===id)?.name??t('Not selected');
  const connection=connections.find(connection=>connection.id===task.connectionId);
  const model=connection?.models?.find(model=>model.id===task.model);
+ const savedModelOption=retainedModelPreference(connections,task.connectionId,task.model);
  useEffect(()=>{if(task.connectionRevision!==undefined&&(!connection||connection.linked===false||connection.enabled===false||connection.bindingRevision!==task.connectionRevision)){patch({connectionId:'',connectionRevision:undefined,allowMetadataRead:false,model:'',effort:''});}},[task.connectionRevision,connection?.bindingRevision,connection?.linked,connection?.enabled]);
  useEffect(()=>{if(task.connectionId)void onLoadCatalog(task.connectionId);},[task.connectionId]);
  useEffect(()=>{const pinned=(prepared?.task as {connection_revision?:number}|undefined)?.connection_revision;if(pinned!==undefined&&connection&&(connection.linked===false||connection.enabled===false||(connection.bindingRevision??pinned)!==pinned)){setPrepared(null);setRuntimeConsent(false);setCheckConsent(false);}},[prepared,connection?.bindingRevision,connection?.linked,connection?.enabled]);
@@ -43,7 +44,7 @@ export function TaskForm({task,setTask,prepared,setPrepared,grants,setGrants,con
     <label>{t('Repository')}<button className="o-secondary o-path-picker" onClick={async()=>{const grant=await pick('folder');if(grant){setGrants(all=>[...all,grant]);patch({repositoryGrant:grant.id});}}}><Icon name="folder"/><span>{task.repositoryGrant?grantName(task.repositoryGrant):t('Select repository')}</span></button></label>
     <label>{t('Worktree folder')}<button className="o-secondary o-path-picker" onClick={async()=>{const grant=await pick('folder');if(grant){setGrants(all=>[...all,grant]);patch({worktreeGrant:grant.id});}}}><Icon name="folder"/><span>{task.worktreeGrant?grantName(task.worktreeGrant):t('Grant worktree folder')}</span></button></label>
     <label>{t('Connection')}<select value={task.connectionId} onChange={event=>patch({connectionId:event.target.value,connectionRevision:connections.find(c=>c.id===event.target.value)?.bindingRevision,allowMetadataRead:false,model:'',effort:''})}><option value="">{t('Select connection')}</option>{connections.filter(selectableConnection).map(connection=><option key={connection.id} value={connection.id}>{connection.label}</option>)}</select></label>
-    <label>{t('Model')}<select value={task.model} onChange={event=>patch({model:event.target.value,effort:''})}><option value="">{t('Automatic selection')}</option>{connection?.models?.map(model=><option key={model.id} value={model.id}>{model.name}</option>)}</select></label>
+    <label>{t('Model')}<select value={task.model} onChange={event=>patch({model:event.target.value,effort:''})}><option value="">{t('Automatic selection')}</option>{savedModelOption&&<option value={savedModelOption.modelId}>{savedModelOption.modelId} · {t('Saved preference; model not reported here')}</option>}{connection?.models?.map(model=><option key={model.id} value={model.id}>{model.name}</option>)}</select></label>
     <label>{t('Reasoning effort')}<select value={task.effort} onChange={event=>patch({effort:event.target.value})}><option value="">{t('Runtime default')}</option>{model?.efforts?.map(effort=><option key={effort} value={effort}>{effort}</option>)}</select></label>
     <label>{t('Correction budget')}<input type="number" min={0} max={3} value={task.correctionBudget} onChange={event=>patch({correctionBudget:Number(event.target.value)})}/></label>
    </div>
