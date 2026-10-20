@@ -1836,7 +1836,7 @@ impl Host {
                     if current["current"] == true && current["identityChanged"] == false =>
                 {
                     return Ok(
-                        json!({"diagnosticId":diagnostic,"registrationRevision":registration,"connectionRevision":binding_revision,"scopeKey":current["scopeKey"],"observedAtMs":current["observedAtMs"],"validUntilMs":current["validUntilMs"],"effectiveValidUntilMs":current["effectiveValidUntilMs"],"effectiveRuntimeConfirmed":false}),
+                        json!({"diagnosticId":diagnostic,"registrationRevision":registration,"connectionRevision":binding_revision,"scopeKey":current["scopeKey"],"observedAtMs":current["observedAtMs"],"validUntilMs":current["validUntilMs"],"effectiveValidUntilMs":current["effectiveValidUntilMs"],"effectiveRuntimeConfirmed":false,"capacity":{"diagnosticId":diagnostic,"observation":current["capacity"],"current":current["current"],"effectiveValidUntilMs":current["effectiveValidUntilMs"],"identityChanged":current["identityChanged"]}}),
                     );
                 }
                 Some("running") => {}
@@ -2034,7 +2034,16 @@ impl Host {
             checks,
         };
         let key = id("preparation");
-        let public = json!({"id":key,"task":task,"configuration":configuration_preview,"scopeEvidence":scope_evidence,"warning":"Preparation is not execution. Policy/capability/context admission is authoritatively revalidated by Core before any turn."});
+        let capacity = scope_evidence
+            .get("capacity")
+            .cloned()
+            .filter(|v| !v["observation"].is_null());
+        let mut scope_evidence = scope_evidence;
+        scope_evidence
+            .as_object_mut()
+            .expect("scope evidence")
+            .remove("capacity");
+        let public = json!({"id":key,"task":task,"configuration":configuration_preview,"scopeEvidence":scope_evidence,"capacity":capacity,"warning":"Preparation is not execution. Policy/capability/context admission is authoritatively revalidated by Core before any turn."});
         let mut prepared = self.prepared.lock().map_err(|_| "preparation-lock")?;
         if prepared.len() >= 32 {
             return Err(err("preparation-limit"));
@@ -2284,6 +2293,7 @@ fn compatible(snapshot: Value) -> Result<Value, String> {
         || !features.iter().any(|f| f == "control-settings-v1")
         || !features.iter().any(|f| f == "configuration-v1")
         || !features.iter().any(|f| f == "diagnostic-history-v1")
+        || !features.iter().any(|f| f == "connection-capacity-v1")
     {
         return Err(err("daemon-version-incompatible"));
     }

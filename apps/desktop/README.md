@@ -88,6 +88,12 @@ A saved model preference remains visible when this window has not loaded that co
 
 For focused offline coverage, run `node tests/connections.browser.mjs` (its own Vite server and mocked bridge). For native onboarding QA, generate `node scripts/native-fixture.mjs --connections --release` after a QA build and pass the emitted configuration through `ORCHESTRIX_DESKTOP_FIXTURE_CONFIG`. This mode starts with no registered connection and uses only the explicitly labelled synthetic runtime. It does not read a real account or certify provider behavior.
 
+## Subscription capacity (CAP-01)
+
+Connections / Settings → Accounts show provider-reported permission and resource windows from the same diagnostic read. Load details to inspect original use percentage, explicitly derived remaining percentage, duration, renewal time, provenance and validity; no bar is fabricated when a quantity is missing/null/invalid. Windows and legacy views are not added. Historical exact inspection preserves the original observation and grants no present authority. A failed update retains the last success until its original deadline. Reaching a reported renewal never confirms restoration.
+
+Task preparation shows its exact selected binding and project-scope observation. The daemon revalidates mandatory permission before dispatch; unavailable usage does not disable local inspection/cancellation or enable paid fallback. This Desktop requires daemon feature `connection-capacity-v1`. Source mapping is pinned to Codex alpha.17.2; unsupported quantities such as monetary balance and remaining tasks remain unknown. This is observation, not predictive reserves or completion guarantees.
+
 ## Explicit synthetic native QA
 
 The nondefault Rust feature `test-fixtures` is reserved for controlled tests. Normal builds ignore `ORCHESTRIX_DESKTOP_FIXTURE_CONFIG` and expose no synthetic runtime registration action. A test build reads only an explicit fixture configuration prepared by `scripts/native-fixture.mjs`, uses separate app data, and labels the window as native synthetic validation.
@@ -131,3 +137,5 @@ The two native policy-file commands require matching entries in the Tauri handle
 A catalog model with unknown access stays unknown. Importing it as a soft preference requires explicit Compatible fallback and the preview warning; a mandatory model or Block remains blocked. Importing preferences does not authorize execution or certify entitlement.
 
 HOME reflows cards into fewer columns when both docks and enlarged text leave limited central width. Content stays scrollable; this temporary adaptation does not change persisted dock widths, collapse preferences, text scale or conversation draft.
+
+The workspace footer follows the connection selected for the task or composer. An unresolved preference stays unknown; it never substitutes another account. Detailed observations hydrate only the exact transitions in the current snapshot. A later identity change, completed read awaiting details, or stricter validity cannot revive a prepared allowance. Transport failures retain the original observation and deadline rather than refreshing them.

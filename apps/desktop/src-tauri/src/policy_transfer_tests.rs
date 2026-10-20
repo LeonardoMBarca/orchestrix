@@ -604,6 +604,19 @@ fn real_daemon_policy_transfer_remaps_then_prepares_without_execution_or_importe
     );
     assert_eq!(prepared["scopeEvidence"]["connectionRevision"], 1);
     assert_eq!(
+        prepared["capacity"]["observation"]["connectionId"],
+        "destination-connection"
+    );
+    assert_eq!(prepared["capacity"]["observation"]["connectionRevision"], 1);
+    assert_eq!(
+        prepared["capacity"]["observation"]["ordinaryUsage"]["value"],
+        true
+    );
+    assert_eq!(
+        prepared["capacity"]["diagnosticId"],
+        prepared["scopeEvidence"]["diagnosticId"]
+    );
+    assert_eq!(
         destination.metadata_reads(),
         reads + 1,
         "preparation has a separate authorized directory scope"
