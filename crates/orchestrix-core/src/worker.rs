@@ -1336,15 +1336,23 @@ pub(crate) fn observed(m: &RuntimeMetadata, evidence_ref: &str) -> Result<Observ
     }
     let observations = facts
         .into_iter()
-        .map(|fact| ObservationLease {
-            fact,
-            model_id: None,
-            evidence_ref: evidence_ref.into(),
-            connection_id: d["connection"]["id"].as_str().unwrap_or("").into(),
-            connection_revision: d["connection"]["revision"].as_u64().unwrap_or(0),
-            runtime_version: d["runtimeVersion"].as_str().unwrap_or("").into(),
-            observed_at_ms: m.observed_at_ms,
-            valid_until_ms: m.observed_at_ms.saturating_add(60_000),
+        .map(|fact| {
+            let valid_until_ms = if fact == "availability" {
+                m.capacity
+                    .valid_until(m.observed_at_ms.saturating_add(60_000))
+            } else {
+                m.observed_at_ms.saturating_add(60_000)
+            };
+            ObservationLease {
+                fact,
+                model_id: None,
+                evidence_ref: evidence_ref.into(),
+                connection_id: d["connection"]["id"].as_str().unwrap_or("").into(),
+                connection_revision: d["connection"]["revision"].as_u64().unwrap_or(0),
+                runtime_version: d["runtimeVersion"].as_str().unwrap_or("").into(),
+                observed_at_ms: m.observed_at_ms,
+                valid_until_ms,
+            }
         })
         .collect();
     Ok(ObservedRuntime::new(m.descriptor.clone(), observations)?)
@@ -1472,9 +1480,13 @@ pub(crate) fn diagnostic_input(
         },
         outcome: DiagnosticOutcome::Success,
         checked_at: Some(stamp(metadata.observed_at_ms)?),
-        valid_until: Some(stamp(metadata.observed_at_ms.saturating_add(60_000))?),
+        valid_until: Some(stamp(
+            metadata
+                .capacity
+                .valid_until(metadata.observed_at_ms.saturating_add(60_000)),
+        )?),
         complete: descriptor["catalog"]["completeness"] == "complete",
-        values: json!({"descriptor":descriptor,"observations":observation.observations,"controls":metadata.controls}),
+        values: json!({"descriptor":descriptor,"observations":observation.observations,"controls":metadata.controls,"capacity":metadata.capacity}),
         error_code: None,
     })
 }

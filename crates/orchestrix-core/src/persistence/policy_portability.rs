@@ -103,8 +103,8 @@ fn mapping_issues(
         };
         let validity = super::connections::diagnostic_effective_validity(c, &diagnostic)?;
         if diagnostic
-            .observed_at_ms
-            .is_none_or(|observed| now >= observed.saturating_add(validity.minimum()))
+            .effective_valid_until(validity.minimum())
+            .is_none_or(|until| now >= until)
         {
             issues.push(ImportIssue {
                 code: "portable-current-observation-required".into(),
@@ -315,6 +315,14 @@ mod tests {
         now: u64,
         availability: &str,
     ) -> ConnectionDiagnostic {
+        registration_details(store, now, availability, None)
+    }
+    fn registration_details(
+        store: &mut Store,
+        now: u64,
+        availability: &str,
+        capacity: Option<crate::capacity::CapacityObservation>,
+    ) -> ConnectionDiagnostic {
         let parent = store.path().parent().unwrap().to_path_buf();
         let link = ConnectionLink {
             schema_version: 1,
@@ -363,6 +371,7 @@ mod tests {
             cached: false,
             purpose: "registration".into(),
             scope_key: None,
+            capacity: None,
         };
         store.connection_begin_diagnostic(&d, None).unwrap();
         d.state = "complete".into();
@@ -376,6 +385,10 @@ mod tests {
         d.descriptor = Some(
             json!({"version":{"major":1,"minor":1},"adapterId":"fixture","runtimeVersion":"synthetic-rust-1","connection":{"id":"destination-account","revision":1,"authentication":"authenticated","billing":"subscription","availability":"available"},"catalog":{"completeness":"complete"},"models":[{"id":"destination-model","availability":availability,"reasoningLevels":["low","high"]}]}),
         );
+        if let Some(capacity) = capacity {
+            d.schema_version = 2;
+            d.capacity = Some(capacity);
+        }
         store.connection_record_diagnostic(&d).unwrap();
         d
     }
@@ -400,6 +413,44 @@ mod tests {
             }],
             ..Default::default()
         }
+    }
+    #[test]
+    fn capacity_reset_expires_mapping_without_renewing_or_authorizing_a_read() {
+        let mut s = store();
+        let window = |slot: &str, reported: bool| json!({"slot":slot,"state":if reported{"reported"}else{"missing"},"unit":"percent-of-window","usedPercent":if reported{json!({"state":"reported","value":20})}else{json!({"state":"missing"})},"remainingPercent":null,"durationMinutes":{"state":"missing"},"resetsAtSeconds":if reported{json!({"state":"reported","value":2})}else{json!({"state":"missing"})}});
+        let capacity=serde_json::from_value(json!({"schemaVersion":1,"source":"codex-account-rate-limits","connectionId":"destination-account","connectionRevision":1,"runtimeVersion":"synthetic-rust-1","observedAtMs":1000,"synthetic":true,"ordinaryUsage":{"state":"reported","value":true},"bucketView":"legacy","buckets":[{"reference":"resource","limitId":{"state":"missing"},"name":{"state":"missing"},"modelDisplayAlias":{"state":"missing"},"reachedReason":{"state":"missing"},"windows":[window("primary",true),window("secondary",false)]}],"legacyBucket":null,"completeness":"complete","coverage":"reported-subset","issues":[],"capacityGroupIds":[]})).unwrap();
+        registration_details(&mut s, 1000, "available", Some(capacity));
+        assert!(
+            s.portable_policy_preview_at(&document(), &mappings(), 1999)
+                .unwrap()
+                .can_apply
+        );
+        let expired = s
+            .portable_policy_preview_at(&document(), &mappings(), 2000)
+            .unwrap();
+        assert!(!expired.can_apply);
+        assert!(
+            expired
+                .issues
+                .iter()
+                .any(|i| i.code == "portable-current-observation-required")
+        );
+        assert_eq!(
+            s.connection_diagnostics_run_at("destination-account", None, 2000)
+                .unwrap()["latest"]["current"],
+            false
+        );
+        assert_eq!(
+            s.connection_diagnostics_run_at("destination-account", None, 2000)
+                .unwrap()["latest"]["observedAtMs"],
+            1000
+        );
+        assert_eq!(
+            super::super::connections::diagnostics(&s.connection, "destination-account")
+                .unwrap()
+                .len(),
+            2
+        );
     }
     #[test]
     fn persisted_current_registration_remaps_explicitly_without_rpc_and_imports_atomically() {

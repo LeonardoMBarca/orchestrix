@@ -1,4 +1,7 @@
 //! Runtime-managed connection lifecycle. A link is not a login or an independent quota.
+#[cfg(all(test, windows))]
+#[path = "capacity_service_tests.rs"]
+mod capacity_service_tests;
 #[cfg(test)]
 #[path = "diagnostic_retention_tests.rs"]
 mod diagnostic_retention_tests;
@@ -284,11 +287,25 @@ pub struct ConnectionDiagnostic {
     pub cached: bool,
     pub purpose: String,
     pub scope_key: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub capacity: Option<crate::capacity::CapacityObservation>,
 }
 impl ConnectionDiagnostic {
+    pub(crate) fn effective_valid_until(&self, maximum_age_ms: u64) -> Option<u64> {
+        self.observed_at_ms
+            .zip(self.valid_until_ms)
+            .map(|(observed, source)| {
+                let until = source.min(observed.saturating_add(maximum_age_ms));
+                self.capacity
+                    .as_ref()
+                    .map_or(until, |c| c.valid_until(until))
+            })
+    }
     pub(crate) fn validate(&self) -> Result<(), String> {
-        if self.schema_version != 1
-            || self.connection_revision == 0
+        if !matches!(
+            (self.schema_version, self.capacity.is_some()),
+            (1, false) | (2, true)
+        ) || self.connection_revision == 0
             || self.registration_revision == 0
             || !["registration", "task-preparation"].contains(&self.purpose.as_str())
             || !["unknown", "observed-label", "synthetic"]
@@ -316,6 +333,20 @@ impl ConnectionDiagnostic {
             })
         {
             return Err("diagnostic-schema".into());
+        }
+        if let Some(capacity) = &self.capacity {
+            capacity.validate()?;
+            if capacity.connection_id != self.connection_id
+                || capacity.connection_revision != self.connection_revision
+                || Some(capacity.observed_at_ms) != self.observed_at_ms
+                || capacity.synthetic != self.synthetic
+                || self
+                    .descriptor
+                    .as_ref()
+                    .is_some_and(|d| d["runtimeVersion"] != capacity.runtime_version)
+            {
+                return Err("diagnostic-capacity".into());
+            }
         }
         if matches!(self.state.as_str(), "complete" | "partial")
             && ((self.state == "complete") != self.complete
@@ -374,7 +405,7 @@ impl ConnectionDiagnostic {
             matches!(self.state.as_str(), "complete" | "partial")
                 && self.daemon_generation == current_generation
                 && self
-                    .valid_until_ms
+                    .effective_valid_until(u64::MAX)
                     .is_some_and(|t| now >= self.observed_at_ms.unwrap_or(u64::MAX) && now < t)
         );
         v["stages"] = json!([{"stage":"runtime-metadata","state":self.state}]);
@@ -745,6 +776,12 @@ impl ConnectionService {
                         scope,
                     )) => {
                         d.scope_key = Some(scope);
+                        d.schema_version = 2;
+                        let mut capacity = (*metadata.capacity).clone();
+                        let groups = store.connection_capacity_groups(&d.connection_id);
+                        let invalid_groups = groups.is_err();
+                        capacity.capacity_group_ids = groups.unwrap_or_default();
+                        d.capacity = Some(capacity);
                         d.state = if complete { "complete" } else { "partial" }.into();
                         d.complete = complete;
                         d.cached = cached;
@@ -762,12 +799,17 @@ impl ConnectionService {
                             .is_some_and(|old| old != metadata.observation_fingerprint());
                         d.catalog_labels = metadata.model_presentation.clone();
                         d.control_observations = metadata.controls.clone();
-                        d.structured_result_support = Some(
+                        d.structured_result_support = (!metadata.controls.is_empty()).then_some(
                             metadata.synthetic
                                 || metadata.descriptor.as_json()["runtimeVersion"]
                                     == "0.162.0-alpha.17.2",
                         );
                         d.descriptor = Some(metadata.descriptor.as_json().clone());
+                        if invalid_groups {
+                            d.state = "failed".into();
+                            d.complete = false;
+                            d.error_code = Some("capacity-group-evidence-invalid".into());
+                        }
                     }
                     Ok((MetadataRead::Backoff { until_ms }, _)) => {
                         d.state = "backoff".into();
@@ -787,6 +829,13 @@ impl ConnectionService {
             store
                 .connection_record_diagnostic(&d)
                 .map_err(|_| "connection-diagnostic-store")?;
+            if d.capacity
+                .as_ref()
+                .is_some_and(|c| c.usage_allowed() != Some(true))
+            {
+                self.metadata
+                    .invalidate_observations(&id, d.connection_revision);
+            }
             if let Some(claim) = &f.periodic {
                 let pause = d.identity_changed
                     || matches!(
@@ -1211,6 +1260,7 @@ impl ConnectionService {
             }
             .into(),
             scope_key: None,
+            capacity: None,
         };
         d.validate()?;
         store
@@ -1309,6 +1359,21 @@ pub(crate) fn guard_metadata(
     revision: u64,
     metadata: &RuntimeMetadata,
 ) -> Result<(), String> {
+    if !metadata.usage_available_at(now_ms(), metadata.observed_at_ms.saturating_add(60_000)) {
+        return Err(if metadata.capacity.usage_allowed() == Some(false) {
+            "connection-usage-unavailable"
+        } else {
+            "connection-availability-unconfirmed"
+        }
+        .into());
+    }
+    if store
+        .connection_capacity_denied_at(id, revision)
+        .map_err(|_| "connection-store")?
+        .is_some_and(|at| metadata.observed_at_ms <= at)
+    {
+        return Err("connection-usage-unavailable".into());
+    }
     if let Some(l) = store.connection_link(id).map_err(|_| "connection-store")? {
         l.guard_binding(revision)?;
         let now = now_ms();

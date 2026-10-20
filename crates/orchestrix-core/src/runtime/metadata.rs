@@ -149,6 +149,10 @@ impl CodexMetadataService {
             let now = self.clock.now_ms();
             if now < metadata.observed_at_ms
                 || now >= metadata.observed_at_ms.saturating_add(maximum_age_ms)
+                || now
+                    >= metadata
+                        .capacity
+                        .valid_until(metadata.observed_at_ms.saturating_add(maximum_age_ms))
             {
                 self.cache.invalidate_observations(connection_id, revision);
                 action = self.cache.begin(scope, self.clock.now_ms(), true);
@@ -212,18 +216,13 @@ impl CodexMetadataService {
         // The owned Job deadline is a second bound if a protocol read or write stops responding.
         launch.process_limits.lifetime = launch.process_limits.lifetime.min(self.deadline);
         launch.request_timeout = launch.request_timeout.min(self.deadline);
-        let result = (|| {
-            let mut adapter = CodexAdapter::connect(
-                launch,
-                connection_id,
-                revision,
-                self.clock.now_ms(),
-                &owned_cancel,
-            )?;
-            let metadata = adapter.metadata().clone();
-            adapter.shutdown()?;
-            Ok(metadata)
-        })();
+        let result = CodexAdapter::read_metadata(
+            launch,
+            connection_id,
+            revision,
+            self.clock.now_ms(),
+            &owned_cancel,
+        );
         completed.store(true, Ordering::Release);
         let _ = watchdog.join();
         self.active
@@ -251,6 +250,9 @@ impl CodexMetadataService {
                 let completion = self.cache.finish(&ticket, self.clock.now_ms(), outcome);
                 if completion == RefreshCompletion::Stale {
                     return Err(RuntimeError::new("ownership", "not-sent"));
+                }
+                if metadata.capacity.usage_allowed() != Some(true) {
+                    self.invalidate_observations(connection_id, revision);
                 }
                 Ok(MetadataRead::Ready {
                     metadata,

@@ -631,7 +631,8 @@ fn handle_inner(
                 "connections-v1",
                 "control-settings-v1",
                 "configuration-v1",
-                "diagnostic-history-v1"
+                "diagnostic-history-v1",
+                "connection-capacity-v1"
             ]);
             return Ok(snapshot);
         }

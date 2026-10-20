@@ -43,6 +43,12 @@ Admission, bounded archive maintenance, terminal reservation and the original co
 
 The operational bound is 512 transitions, maintenance starts at 384 and touches at most 64 completed rounds per admission. Legacy terminal recovery may perform that same bounded batch to make room for previously unreserved pending starts. Accounted history budgets are 256 MiB per connection/1 GiB globally, with a maximum terminal body reserved before admission. Exhaustion blocks new reads explicitly and preserves historical access and local cancellation/recovery. These logical accounting bounds are distinct from SQLite/WAL file allocation and other retained product data. Page/detail byte budgets and the cursor contract are specified in [Connection Diagnostics](../design/connection-diagnostics.md#queryable-diagnostic-archive--schema-10).
 
+## Capacity observation extension — schema 11
+
+Schema 11 adds `connection_capacity_denied`, a partial index over the original immutable diagnostic bodies. No historical body, hash, ID, ordinal or validity envelope is rewritten. Schema-1 diagnostics omit capacity exactly as before; schema-2 diagnostics carry bounded typed `CapacityObservation` version 1. Negative observations remain queryable after archive and form a cross-directory fence for the same binding; expiration/failure/reset cannot erase a denial. A newer explicit positive read may supersede it. Cache and identity fingerprints do not acquire volatile consumption fields. Memberships reference existing CapacityGroups only.
+
+Bucket bodies are omitted from compact snapshots/list/history pages; explicit reports and exact details retain them within the existing evidence/frame/storage budgets. Overflow remains an explicit terminal failure using the reserved capacity, never silent truncation. Local storage accounting is not subscription capacity. No second history/database or provider query is introduced by inspection.
+
 ## Durable command contract
 
 A command contains a validated idempotency scope/key, its typed business content and an expected store revision. The initial optimistic concurrency boundary is the **whole store**: a successful business transition advances its revision once. This is intentionally conservative for serial V1 operation and does not create a scheduler.

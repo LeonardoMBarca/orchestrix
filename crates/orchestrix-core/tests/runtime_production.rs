@@ -963,6 +963,138 @@ fn authorized_metadata_service_uses_scoped_cache_without_new_process_or_inferenc
     ));
 }
 #[test]
+fn capacity_expiration_between_thread_configuration_and_dispatch_sends_no_turn() {
+    let fixture = Fixture::new();
+    std::fs::write(fixture.home.join("synthetic-capacity-response.json"),json!({"ordinaryUsageAllowed":true,"rateLimits":{"primary":{"usedPercent":20,"resetsAt":1}}}).to_string()).unwrap();
+    let mut adapter = fixture.connect("success");
+    let mut delayed = false;
+    let report = adapter
+        .execute(
+            execution("expiry-before-dispatch"),
+            &CancellationToken::new(),
+            |event, _| {
+                if event["type"] == "configuration.observation-recorded" {
+                    delayed = true;
+                    std::thread::sleep(Duration::from_millis(1000));
+                }
+                Ok(())
+            },
+        )
+        .unwrap();
+    assert!(delayed);
+    assert_eq!(report.dispatch, "not-sent");
+    assert_eq!(report.fault.unwrap().code(), "availability-unknown");
+    assert!(!fixture.home.join("dispatch-count").exists());
+}
+#[test]
+fn capacity_metadata_negative_is_durable_input_not_an_executable_adapter() {
+    use orchestrix_core::runtime::refresh::RefreshBounds;
+    use orchestrix_core::runtime::{CodexMetadataService, ManualRefreshClock, MetadataRead};
+    let fixture = Fixture::new();
+    let clock = std::sync::Arc::new(ManualRefreshClock::new(100));
+    let service = CodexMetadataService::new(clock.clone(), RefreshBounds::default()).unwrap();
+    let response = fixture.home.join("synthetic-capacity-response.json");
+    let read = |launch| {
+        service
+            .read(launch, "connection", 1, true, &CancellationToken::new())
+            .unwrap()
+    };
+    std::fs::write(&response,json!({"ordinaryUsageAllowed":true,"rateLimits":{"primary":{"usedPercent":0,"resetsAt":1}}}).to_string()).unwrap();
+    let MetadataRead::Ready {
+        metadata: first, ..
+    } = read(fixture.launch("success"))
+    else {
+        panic!("positive read")
+    };
+    assert!(first.usage_available_at(999, 60_100));
+    assert!(!first.usage_available_at(1_000, 60_100));
+    let initial_reads = metadata_read_count(&fixture);
+    let MetadataRead::Ready {
+        metadata: cached,
+        cached: true,
+        ..
+    } = read(fixture.launch("success"))
+    else {
+        panic!("cached")
+    };
+    assert_eq!(cached.capacity, first.capacity);
+    assert_eq!(metadata_read_count(&fixture), initial_reads);
+    std::fs::write(&response,json!({"ordinaryUsageAllowed":false,"rateLimits":{"primary":{"usedPercent":100,"resetsAt":1}}}).to_string()).unwrap();
+    clock.set(1_001);
+    let MetadataRead::Ready {
+        metadata: negative,
+        complete: false,
+        cached: false,
+    } = read(fixture.launch("success"))
+    else {
+        panic!("negative observation")
+    };
+    assert_eq!(negative.capacity.usage_allowed(), Some(false));
+    assert_eq!(
+        negative.descriptor.as_json()["connection"]["authentication"],
+        "authenticated"
+    );
+    assert_eq!(
+        negative.descriptor.as_json()["connection"]["availability"],
+        "unavailable"
+    );
+    assert_eq!(
+        negative.descriptor.as_json()["connection"]["billing"],
+        "unknown"
+    );
+    assert!(negative.controls.is_empty());
+    assert!(!negative.usage_available_at(1_002, 61_001));
+    let blocked = CodexAdapter::connect(
+        fixture.launch("success"),
+        "connection",
+        1,
+        1_002,
+        &CancellationToken::new(),
+    )
+    .err()
+    .unwrap();
+    assert_eq!(blocked.code(), "unavailable");
+    assert_eq!(blocked.dispatch(), "not-sent");
+    assert!(!fixture.home.join("dispatch-count").exists());
+    clock.set(3_000);
+    std::fs::write(&response,json!({"ordinaryUsageAllowed":true,"rateLimits":{"primary":{"usedPercent":"invalid-optional"}}}).to_string()).unwrap();
+    let MetadataRead::Ready {
+        metadata: eligible, ..
+    } = read(fixture.launch("success"))
+    else {
+        panic!("new positive")
+    };
+    assert_eq!(eligible.capacity.completeness, "partial");
+    assert!(eligible.usage_available_at(3_000, 63_000));
+    let mut adapter = CodexAdapter::connect(
+        fixture.launch("success"),
+        "connection",
+        1,
+        3_000,
+        &CancellationToken::new(),
+    )
+    .unwrap();
+    let report = adapter
+        .execute(
+            execution("capacity-eligible"),
+            &CancellationToken::new(),
+            |_, _| Ok(()),
+        )
+        .unwrap();
+    assert_eq!(report.dispatch, "sent");
+    assert!(report.fault.is_none());
+    assert_eq!(
+        RuntimeObserver::restore_checkpoint(&report.observer_checkpoint)
+            .unwrap()
+            .snapshot()["outcome"],
+        "completed"
+    );
+    assert_eq!(
+        std::fs::read_to_string(fixture.home.join("dispatch-count")).unwrap(),
+        "1"
+    );
+}
+#[test]
 fn real_metadata_reads_coalesce_cancel_and_backoff_with_controlled_clock() {
     use orchestrix_core::runtime::refresh::RefreshBounds;
     use orchestrix_core::runtime::{CodexMetadataService, ManualRefreshClock, MetadataRead};
@@ -1147,7 +1279,7 @@ fn metadata_resource_error_events_cannot_reset_backoff() {
     // dedicated timeout tests cover that independent, valid outcome.
     assert!(matches!(
         &schedule.tick(&CancellationToken::new()).unwrap()[0].outcome,
-        ScheduledMetadataOutcome::Failed(error) if error.code() == "unavailable"
+        ScheduledMetadataOutcome::Read(MetadataRead::Ready {metadata,complete:false,cached:false}) if metadata.capacity.usage_allowed()==Some(false)
     ));
     for now in [1_100, 2_100] {
         clock.set(now);
@@ -1166,7 +1298,7 @@ fn metadata_resource_error_events_cannot_reset_backoff() {
     clock.set(5_100);
     assert!(matches!(
         &schedule.tick(&CancellationToken::new()).unwrap()[0].outcome,
-        ScheduledMetadataOutcome::Failed(error) if error.code() == "unavailable"
+        ScheduledMetadataOutcome::Read(MetadataRead::Ready {metadata,complete:false,cached:false}) if metadata.capacity.usage_allowed()==Some(false)
     ));
     assert_eq!(metadata_read_count(&fixture), 2);
 }

@@ -179,6 +179,113 @@ fn diagnose(id: &str, key: &str, revision: u64) -> ConnectionRequest {
     }
 }
 #[test]
+fn capacity_diagnostic_roundtrip_preserves_negative_failure_history_and_binding() {
+    let f = Fixture::new();
+    let response = f.home.join("synthetic-capacity-response.json");
+    let sample = |allowed: bool, used: u32| json!({"ordinaryUsageAllowed":allowed,"rateLimits":{"primary":{"usedPercent":used,"windowDurationMins":300}},"rateLimitsByLimitId":{"shared-resource":{"limitName":"Shared subscription resource","primary":{"usedPercent":used,"windowDurationMins":300},"secondary":{"usedPercent":10,"windowDurationMins":10080}}}});
+    std::fs::write(&response, sample(true, 0).to_string()).unwrap();
+    let mut d = f.start();
+    d.request(f.link("capacity", "connection-metadata", true));
+    let first = d.wait("capacity", None);
+    let first_id = first["latest"]["id"].as_str().unwrap().to_owned();
+    assert_eq!(first["latest"]["schemaVersion"], 2);
+    assert_eq!(
+        first["latest"]["capacity"]["buckets"][0]["windows"][0]["usedPercent"]["value"],
+        0
+    );
+    assert_eq!(
+        first["latest"]["capacity"]["buckets"][0]["windows"][0]["remainingPercent"]["value"],
+        100
+    );
+    let scope = |key: &str| {
+        let directory = f.root.join(key);
+        std::fs::create_dir(&directory).unwrap();
+        ConnectionRequest::DiagnoseScope {
+            command_id: key.into(),
+            id: "capacity".into(),
+            expected_revision: 1,
+            metadata_directory: directory,
+            allow_metadata_read: true,
+        }
+    };
+    std::fs::write(&response, sample(false, 100).to_string()).unwrap();
+    let started = d.request(scope("negative-scope"));
+    let negative = d.wait(
+        "capacity",
+        started["diagnosticId"].as_str().map(String::from),
+    );
+    assert_eq!(negative["latest"]["state"], "partial");
+    assert_eq!(
+        negative["latest"]["capacity"]["ordinaryUsage"]["value"],
+        false
+    );
+    assert_eq!(
+        negative["catalog"]["connection"]["authentication"],
+        "authenticated"
+    );
+    assert_eq!(negative["identityChanged"], false);
+    let negative_id = negative["latest"]["id"].as_str().unwrap().to_owned();
+    std::fs::write(
+        f.home.join("synthetic-capacity-read-failure"),
+        "explicit synthetic failure",
+    )
+    .unwrap();
+    let started = d.request(scope("failure-scope"));
+    let failed = d.wait(
+        "capacity",
+        started["diagnosticId"].as_str().map(String::from),
+    );
+    assert_eq!(failed["latest"]["state"], "failed");
+    assert_eq!(failed["lastSuccessful"]["id"], negative_id);
+    assert_eq!(
+        failed["lastSuccessful"]["observedAtMs"],
+        negative["latest"]["observedAtMs"]
+    );
+    assert_eq!(
+        failed["lastSuccessful"]["capacity"],
+        negative["latest"]["capacity"]
+    );
+    std::fs::remove_file(f.home.join("synthetic-capacity-read-failure")).unwrap();
+    std::fs::write(&response, sample(true, 25).to_string()).unwrap();
+    let started = d.request(scope("revalidation-scope"));
+    let positive = d.wait(
+        "capacity",
+        started["diagnosticId"].as_str().map(String::from),
+    );
+    assert_eq!(
+        positive["latest"]["capacity"]["ordinaryUsage"]["value"],
+        true
+    );
+    assert_eq!(positive["identityChanged"], false);
+    assert!(!f.home.join("dispatch-count").exists());
+    let original = d.request(ConnectionRequest::DiagnosticObservation {
+        id: "capacity".into(),
+        diagnostic_id: first_id.clone(),
+        ordinal: Some(2),
+    });
+    assert_eq!(
+        original["diagnostic"]["capacity"],
+        first["latest"]["capacity"]
+    );
+    d.stop();
+    let mut reopened = f.start();
+    let historical = reopened.diagnostic("capacity", None);
+    assert_eq!(historical["lastSuccessful"]["current"], false);
+    let exact = reopened.request(ConnectionRequest::DiagnosticObservation {
+        id: "capacity".into(),
+        diagnostic_id: first_id,
+        ordinal: Some(2),
+    });
+    assert_eq!(exact["digest"], original["digest"]);
+    assert_eq!(
+        exact["diagnostic"]["capacity"],
+        original["diagnostic"]["capacity"]
+    );
+    assert_eq!(f.reads(), 4);
+    assert!(!f.home.join("dispatch-count").exists());
+    reopened.stop();
+}
+#[test]
 fn two_clients_share_one_flight_and_cache_without_creating_threads_or_turns() {
     let f = Fixture::new();
     let mut d = f.start();
@@ -844,5 +951,59 @@ fn live_connection_api_metadata_only_three_authorized_rounds() {
     let evidence = f.root.join("metadata-only-evidence.json");
     std::fs::write(&evidence,serde_json::to_vec_pretty(&json!({"first":first,"recheck":second,"scoped":third,"database":snapshot["state"]["cursor"]["database"],"turnsAuthorized":0,"maximumMetadataJobs":3})).unwrap()).unwrap();
     println!("metadata-only-evidence={}", evidence.display());
+    d.stop();
+}
+
+#[test]
+#[ignore = "CAP-01 single authenticated metadata round requires a fresh explicit opt-in"]
+fn codex_capacity_single_round_opt_in() {
+    assert_eq!(
+        std::env::var("ORCHESTRIX_ALLOW_CAPACITY_METADATA").as_deref(),
+        Ok("one-round")
+    );
+    let f = Fixture::new();
+    let mut d = f.start();
+    let path = |name| PathBuf::from(std::env::var_os(name).expect("explicit bound path"));
+    let executable = path("ORCHESTRIX_METADATA_CODEX_EXE");
+    let began = Instant::now();
+    d.request(ConnectionRequest::Link {
+        command_id: "capacity-metadata-one-round".into(),
+        id: "authorized-capacity".into(),
+        expected_revision: None,
+        name: "Authorized Codex capacity observation".into(),
+        runtime: RuntimeChoice::Codex {
+            executable: executable.clone(),
+            home: path("ORCHESTRIX_METADATA_CODEX_HOME"),
+            version: "0.162.0-alpha.17.2".into(),
+            allow_live: false,
+        },
+        metadata_directory: f.cwd.clone(),
+        executable_sha256: runtime_executable_sha256(&executable).unwrap(),
+        allow_metadata_read: true,
+    });
+    let result = d.wait_bounded(
+        "authorized-capacity",
+        None,
+        Duration::from_secs(30).saturating_sub(began.elapsed()),
+    );
+    assert!(
+        matches!(
+            result["latest"]["state"].as_str(),
+            Some("complete" | "partial")
+        ),
+        "bounded diagnostic did not produce observation: {}",
+        result["latest"]["errorCode"]
+    );
+    assert_eq!(result["latest"]["capacity"]["synthetic"], false);
+    assert_eq!(
+        result["latest"]["capacity"]["runtimeVersion"],
+        "0.162.0-alpha.17.2"
+    );
+    let snapshot = d.raw(Operation::Snapshot).unwrap();
+    assert_eq!(snapshot["activeWorkerId"], Value::Null);
+    assert_eq!(snapshot["workers"], json!([]));
+    let output = path("ORCHESTRIX_CAPACITY_EVIDENCE");
+    std::fs::write(&output,serde_json::to_vec_pretty(&json!({"synthetic":false,"maximumRounds":1,"inference":false,"login":false,"elapsedMs":began.elapsed().as_millis(),"diagnosticId":result["latest"]["id"],"state":result["latest"]["state"],"observedAtMs":result["latest"]["observedAtMs"],"effectiveValidUntilMs":result["latest"]["effectiveValidUntilMs"],"capacity":result["latest"]["capacity"],"catalogCompleteness":result["catalog"]["catalog"],"authentication":result["catalog"]["connection"]["authentication"],"billing":result["catalog"]["connection"]["billing"],"availability":result["catalog"]["connection"]["availability"]})).unwrap()).unwrap();
+    println!("capacity-metadata-evidence={}", output.display());
     d.stop();
 }

@@ -436,6 +436,7 @@ impl Store {
                 "catalogLabels",
                 "controlObservations",
                 "structuredResultSupport",
+                "capacity",
             ] {
                 diagnostic
                     .as_object_mut()
@@ -491,13 +492,8 @@ impl Store {
         let effective =
             super::connections::diagnostic_effective_validity(&self.connection, &e.diagnostic)?;
         diagnostic["effectiveValidityMs"] = json!(effective);
-        diagnostic["effectiveValidUntilMs"] = json!(
-            e.diagnostic
-                .observed_at_ms
-                .map(|at| at.saturating_add(effective.minimum()))
-                .zip(e.diagnostic.valid_until_ms)
-                .map(|(configured, source)| configured.min(source))
-        );
+        diagnostic["effectiveValidUntilMs"] =
+            json!(e.diagnostic.effective_valid_until(effective.minimum()));
         let validity:Option<(String,String,i64,i64)>=self.connection.query_row("SELECT body,digest,refresh_revision,policy_version FROM connection_diagnostic_validity WHERE id=?1",[diagnostic_id],|r|Ok((r.get(0)?,r.get(1)?,r.get(2)?,r.get(3)?))).optional()?;
         let validity=validity.map(|(body,digest,refresh,policy)|{if hash(&body)!=digest {return Err(StoreError::InvalidState);}serde_json::from_str::<Value>(&body).map(|v|json!({"captured":v,"digest":digest,"refreshRevision":refresh,"policyVersion":policy})).map_err(|_|StoreError::InvalidState)}).transpose()?;
         let value = json!({"connectionId":id,"sequence":e.sequence,"ordinal":e.ordinal,"archived":e.archived,"digest":e.digest,"bodyBytes":e.body_bytes,"diagnostic":diagnostic,"validity":validity,"historical":true,"grantsCurrentAuthority":false,"observationRenewedOnRead":false});

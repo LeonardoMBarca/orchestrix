@@ -195,7 +195,17 @@ fn main() {
                 json!({"id":id,"result":{"account":if scenario == "auth-failure" || (scenario=="connection-metadata"&&auth_home.join("connection-auth-invalid").exists()) {Value::Null} else {json!({"type":if scenario == "api" {"apiKey"} else {"chatgpt"},"accountId":if scenario == "connection-metadata" {std::fs::read_to_string(auth_home.join("connection-identity")).unwrap_or_else(|_|"synthetic-identity".into())} else if scenario == "wrong-account" {"different-fixture-identity".into()} else {"synthetic-identity".into()},"planType":"pro"})},"requiresOpenaiAuth":true}}),
             ),
             "account/rateLimits/read" => {
-                send(json!({"id":id,"result":{"ordinaryUsageAllowed":scenario != "quota-failure"}}))
+                if auth_home.join("synthetic-capacity-read-failure").exists() {
+                    send(
+                        json!({"id":id,"error":{"code":-32000,"message":"synthetic read unavailable"}}),
+                    );
+                } else {
+                    // Explicit test-runtime input, never consulted by the production Codex adapter.
+                    let response = std::fs::read(auth_home.join("synthetic-capacity-response.json"))
+                        .ok().map(|bytes| { assert!(bytes.len() <= 64*1024); serde_json::from_slice::<Value>(&bytes).unwrap() })
+                        .unwrap_or_else(||json!({"ordinaryUsageAllowed":scenario != "quota-failure","rateLimits":{}}));
+                    send(json!({"id":id,"result":response}));
+                }
             }
             "config/read" => send(
                 json!({"id":id,"result":{"config":{"model_provider":"openai","chatgpt_base_url":"https://chatgpt.com/backend-api/","openai_base_url":"","web_search":"disabled","windows":{"sandbox":"mxc"},"features":{"hooks":false,"plugins":false,"apps":false,"multi_agent":scenario == "delegation-enabled"},"agents":{"enabled":scenario == "agents-enabled"},"notify":[],"mcp_servers":{}}}}),

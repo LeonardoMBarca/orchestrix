@@ -8,6 +8,10 @@ One dedicated daemon per canonical database/user scope owns operational access a
 
 API v1 uses bounded JSON request/reply frames over a user-restricted local named pipe. `Request { api_version: 1, operation: { type, ... } }` and `Response { api_version, ok, error, result }` are shared Rust application types. Provider frames, credentials, arbitrary shell commands and client-supplied supervisor assertions are not API commands.
 
+### Capacity observation extension
+
+The additive `connection-capacity-v1` feature is required by this Desktop. Existing authorized Connections diagnostics carry optional typed capacity observations in schema-2 results; legacy schema-1 results remain valid without invented telemetry. Full reports and exact observation queries expose facts on demand, compact polling/pages omit bucket bodies. No new read timer or RPC command is added. Permission false can be a successful metadata observation while execution stays unavailable; transport/authentication failures remain separate. Preparation carries the exact selected binding/project-scope evidence, and Core revalidates at admission. See the [pinned mapping and limits](../design/capacity-and-continuity.md#codex-cap-01-mapping--pinned-alpha172).
+
 ### Diagnostic history extension
 
 The additive `diagnostic-history-v1` feature is required by the updated Desktop. Under `Connections`, `DiagnosticHistory { id, cursor?, limit: 1..20 }` returns a bounded page of transition summaries and storage accounting; `DiagnosticObservation { id, diagnosticId, ordinal?: 1|2 }` resolves one exact transition (latest transition of that ID when ordinal is omitted). The restricted host exposes only corresponding typed local queries. Neither operation has metadata consent, runtime, login or dispatch effects; both remain local inspection operations during suspension/shutdown.

@@ -230,6 +230,7 @@ pub struct RuntimeMetadata {
     pub synthetic: bool,
     /// Display-only rows from the same official catalog read; not admission authority.
     pub model_presentation: Vec<RuntimeModelPresentation>,
+    pub capacity: Box<crate::capacity::CapacityObservation>,
     account_fingerprint: String,
 }
 impl std::fmt::Debug for RuntimeMetadata {
@@ -244,6 +245,12 @@ impl std::fmt::Debug for RuntimeMetadata {
     }
 }
 impl RuntimeMetadata {
+    pub fn usage_available_at(&self, now_ms: u64, source_until: u64) -> bool {
+        self.capacity.usage_allowed() == Some(true)
+            && now_ms >= self.observed_at_ms
+            && now_ms < self.capacity.valid_until(source_until)
+            && self.descriptor.as_json()["connection"]["availability"] == "available"
+    }
     /// Compares opaque adapter-owned identity; no email/account ID leaves the adapter.
     pub fn same_identity(&self, other: &Self) -> bool {
         self.account_fingerprint == other.account_fingerprint
@@ -367,6 +374,7 @@ pub struct CodexAdapter {
     models: BTreeMap<String, NativeModel>,
     account_fingerprint: String,
     used: bool,
+    observation_started: Instant,
 }
 struct NativeModel {
     name: String,
@@ -380,6 +388,21 @@ struct Discovery {
     ready: bool,
 }
 impl CodexAdapter {
+    fn assert_usage_current(&self) -> RuntimeResult<()> {
+        let now = self.metadata.observed_at_ms.saturating_add(
+            self.observation_started
+                .elapsed()
+                .as_millis()
+                .min(u64::MAX as u128) as u64,
+        );
+        if !self
+            .metadata
+            .usage_available_at(now, self.metadata.observed_at_ms.saturating_add(60_000))
+        {
+            return Err(RuntimeError::new("availability-unknown", "not-sent"));
+        }
+        Ok(())
+    }
     /// Authorized read-only metadata; this never creates a thread, sends a turn or refreshes login.
     pub fn connect(
         launch: RuntimeLaunch,
@@ -388,6 +411,7 @@ impl CodexAdapter {
         now_ms: u64,
         cancel: &CancellationToken,
     ) -> RuntimeResult<Self> {
+        let observation_started = Instant::now();
         if !local(Some(connection_id)) || revision == 0 {
             return Err(RuntimeError::new("ownership", "not-sent"));
         }
@@ -406,6 +430,16 @@ impl CodexAdapter {
             initialize(&mut rpc, &launch, cancel)?;
             discovery = discover(&mut rpc, &launch, connection_id, revision, now_ms, cancel)?;
         }
+        if discovery.metadata.capacity.usage_allowed() != Some(true) {
+            return Err(RuntimeError::new(
+                if discovery.metadata.capacity.usage_allowed() == Some(false) {
+                    "unavailable"
+                } else {
+                    "availability-unknown"
+                },
+                "not-sent",
+            ));
+        }
         if !discovery.ready {
             return Err(RuntimeError::new("policy", "not-sent"));
         }
@@ -416,10 +450,43 @@ impl CodexAdapter {
             models: discovery.models,
             account_fingerprint: discovery.account_fingerprint,
             used: false,
+            observation_started,
         })
     }
     pub fn metadata(&self) -> &RuntimeMetadata {
         &self.metadata
+    }
+    /// Observation-only path. Negative permission never constructs an executable adapter.
+    pub(crate) fn read_metadata(
+        launch: RuntimeLaunch,
+        connection_id: &str,
+        revision: u64,
+        now_ms: u64,
+        cancel: &CancellationToken,
+    ) -> RuntimeResult<RuntimeMetadata> {
+        if !local(Some(connection_id)) || revision == 0 {
+            return Err(RuntimeError::new("ownership", "not-sent"));
+        }
+        launch.validate()?;
+        if !launch.is_synthetic() {
+            verify_binary_version(&launch, cancel)?;
+        }
+        let mut rpc = launch.spawn(&[])?;
+        initialize(&mut rpc, &launch, cancel)?;
+        let mut d = discover(&mut rpc, &launch, connection_id, revision, now_ms, cancel)?;
+        if d.metadata.capacity.usage_allowed() == Some(true) && !d.ready && !d.mcp_names.is_empty()
+        {
+            rpc.process.terminate(Duration::from_secs(3))?;
+            drop(rpc);
+            rpc = launch.spawn(&d.mcp_names)?;
+            initialize(&mut rpc, &launch, cancel)?;
+            d = discover(&mut rpc, &launch, connection_id, revision, now_ms, cancel)?;
+        }
+        if d.metadata.capacity.usage_allowed() == Some(true) && !d.ready {
+            return Err(RuntimeError::new("policy", "not-sent"));
+        }
+        stop_process(&mut rpc)?;
+        Ok(d.metadata)
     }
     pub fn shutdown(&mut self) -> RuntimeResult<TreeState> {
         stop_process(&mut self.rpc)
@@ -469,6 +536,7 @@ impl CodexAdapter {
         if self.used {
             return Err(RuntimeError::new("busy", "not-sent"));
         }
+        self.assert_usage_current()?;
         self.used = true;
         let mut observer = RuntimeObserver::new(
             self.metadata.descriptor.clone(),
@@ -701,6 +769,7 @@ impl CodexAdapter {
         if let Some(effort) = effort {
             turn_params["effort"] = json!(effort);
         }
+        self.assert_usage_current()?;
         let acknowledgement = self.rpc.request(
             "turn/start",
             turn_params,
@@ -1130,15 +1199,38 @@ fn discover(
         launch.request_timeout,
         cancel,
     )?;
-    if quota["ordinaryUsageAllowed"] != true {
-        return Err(RuntimeError::new(
-            if quota["ordinaryUsageAllowed"] == false {
-                "unavailable"
-            } else {
-                "availability-unknown"
+    let capacity = super::codex_capacity::normalize(
+        &quota,
+        connection_id,
+        revision,
+        &launch.version,
+        now_ms,
+        launch.is_synthetic(),
+    );
+    capacity
+        .validate()
+        .map_err(|_| RuntimeError::new("protocol", "not-sent"))?;
+    if capacity.usage_allowed() != Some(true) {
+        // Account/read succeeded, but configuration/catalog were not inspected.
+        // Do not claim subscription routing, permissions or executable readiness.
+        let descriptor = normalize_descriptor(
+            &json!({"version":{"major":1,"minor":1},"adapterId":if launch.is_synthetic(){"synthetic-codex-app-server"}else{"codex-app-server"},"runtimeVersion":launch.version,"connection":{"id":connection_id,"revision":revision,"authentication":"authenticated","billing":"unknown","availability":if capacity.usage_allowed()==Some(false){"unavailable"}else{"unknown"}},"catalog":{"completeness":"partial"},"models":[],"capabilities":{}}),
+        )?;
+        return Ok(Discovery {
+            metadata: RuntimeMetadata {
+                descriptor,
+                observed_at_ms: now_ms,
+                controls: Vec::new(),
+                synthetic: launch.is_synthetic(),
+                model_presentation: Vec::new(),
+                capacity: Box::new(capacity),
+                account_fingerprint: account_fingerprint.clone(),
             },
-            "not-sent",
-        ));
+            models: BTreeMap::new(),
+            account_fingerprint,
+            mcp_names: Vec::new(),
+            ready: false,
+        });
     }
     let configuration = rpc.request(
         "config/read",
@@ -1286,6 +1378,7 @@ fn discover(
     Ok(Discovery {
         metadata: RuntimeMetadata {
             descriptor,
+            capacity: Box::new(capacity),
             observed_at_ms: now_ms,
             controls: [
                 "control:read-only",

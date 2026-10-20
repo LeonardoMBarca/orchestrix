@@ -1,5 +1,6 @@
 //! First production runtime boundary. Provider protocol and OS ownership stay outside the domain.
 mod codex;
+mod codex_capacity;
 mod metadata;
 mod metadata_schedule;
 pub mod refresh;

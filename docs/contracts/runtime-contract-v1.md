@@ -12,6 +12,12 @@ The semantic wire version is distinct from `inputProfile: {id: "orchestrix-runti
 
 The host allocates `connectionId`, `sessionId`, `attemptId` and a positive `connectionRevision`. These are bounded **local references**, not native thread IDs, e-mails, auth tokens or paths. Adapters keep the native mapping separately. A request belongs to exactly one connection revision; every event must match all four references. The host assigns a contiguous sequence starting at 1 across runtime and supervisor observations. A duplicate or gap is rejected and cannot apply the same transition twice. This is validation without external effects, not durable replay/recovery for the future Core.
 
+## Capacity observation adjunct (CAP-01)
+
+The normalized execution descriptor/events retain v1.1 and the existing conformance bytes. `RuntimeMetadata.capacity` is a separate bounded typed observation from the same authorized metadata read, not a provider message exposed to the domain or an execution event. Diagnostic schema 2 retains it; old schema-1 evidence omits it. The [pinned Codex mapping](../design/capacity-and-continuity.md#codex-cap-01-mapping--pinned-alpha172) documents fields, units and exclusions.
+
+Discovery can return metadata-only negative/unknown permission observations, after successful account identification but before inspecting configuration/catalog. Their descriptor marks uninspected billing/capabilities/catalog unknown/partial; no executable adapter exists for that result. `CodexAdapter::connect` still requires explicit ordinary usage permission plus all existing authentication, subscription routing, permissions and version guards. A lease/reset guard also runs immediately before `turn/start`. Optional malformed telemetry is an explicit partial observation, not a fabricated balance or a new execution threshold. Consumption never enters the authentication fingerprint. This extension does not regenerate normalized conformance expectations.
+
 ## Descriptor and capabilities
 
 `normalizeRuntimeDescriptor()` retains:

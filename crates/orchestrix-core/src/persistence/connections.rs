@@ -29,6 +29,11 @@ CREATE TABLE connection_diagnostic_validity(id TEXT PRIMARY KEY,refresh_revision
 CREATE TRIGGER connection_validity_no_update BEFORE UPDATE ON connection_diagnostic_validity BEGIN SELECT RAISE(ABORT,'immutable diagnostic validity'); END;
 CREATE TRIGGER connection_validity_no_delete BEFORE DELETE ON connection_diagnostic_validity BEGIN SELECT RAISE(ABORT,'retained diagnostic validity'); END;
 "#;
+// Index immutable source bodies: no new authority/projection, no rewrite of legacy evidence.
+pub(super) const MIGRATION_V11: &str = r#"
+CREATE INDEX connection_capacity_denied ON connection_diagnostic_runs(connection_id,connection_revision,CAST(json_extract(body,'$.observedAtMs') AS INTEGER) DESC)
+ WHERE json_extract(body,'$.capacity.ordinaryUsage.state')='reported' AND json_extract(body,'$.capacity.ordinaryUsage.value')=0;
+"#;
 fn refresh_configuration(c: &Connection, id: &str) -> StoreResult<Option<RefreshConfiguration>> {
     crate::domain::ConnectionId::new(id)?;
     let row: Option<(i64,String,String)> = c.query_row(
@@ -343,11 +348,7 @@ fn summary(
     validity: &ObservationValidity,
 ) -> Value {
     let mut v = d.view(now, current_generation);
-    let effective_until = d
-        .observed_at_ms
-        .map(|at| at.saturating_add(validity.minimum()))
-        .zip(d.valid_until_ms)
-        .map(|(configured, source)| configured.min(source));
+    let effective_until = d.effective_valid_until(validity.minimum());
     v["effectiveValidUntilMs"] = json!(effective_until);
     v["effectiveValidityMs"] = json!(validity);
     v["sourceValidityAuthority"] = json!("metadata-source-upper-bound");
@@ -368,7 +369,13 @@ fn summary(
         .remove("structuredResultSupport");
     v
 }
-fn report(c: &Connection, id: &str, detailed: bool, now: u64) -> StoreResult<Value> {
+fn report(
+    c: &Connection,
+    id: &str,
+    detailed: bool,
+    capacity_details: bool,
+    now: u64,
+) -> StoreResult<Value> {
     let current_revision = current(c, id)?.map(|l| l.binding_revision);
     let current_generation = c.query_row(
         "SELECT generation FROM daemon_meta WHERE singleton=1",
@@ -386,16 +393,18 @@ fn report(c: &Connection, id: &str, detailed: bool, now: u64) -> StoreResult<Val
         .iter()
         .map(|e| {
             let d = &e.diagnostic;
-            Ok(summary(
+            let mut item = summary(
                 d,
                 now,
                 current_revision,
                 current_generation,
                 &diagnostic_effective_validity(c, d)?,
-            ))
+            );
+            item.as_object_mut().expect("summary").remove("capacity");
+            Ok(item)
         })
         .collect::<StoreResult<Vec<_>>>()?;
-    let latest_summary = latest
+    let mut latest_summary = latest
         .as_ref()
         .map(|d| -> StoreResult<Value> {
             Ok(summary(
@@ -407,7 +416,7 @@ fn report(c: &Connection, id: &str, detailed: bool, now: u64) -> StoreResult<Val
             ))
         })
         .transpose()?;
-    let successful_summary = successful
+    let mut successful_summary = successful
         .as_ref()
         .map(|d| -> StoreResult<Value> {
             Ok(summary(
@@ -419,6 +428,14 @@ fn report(c: &Connection, id: &str, detailed: bool, now: u64) -> StoreResult<Val
             ))
         })
         .transpose()?;
+    if !capacity_details {
+        for value in [&mut latest_summary, &mut successful_summary]
+            .into_iter()
+            .flatten()
+        {
+            value.as_object_mut().expect("summary").remove("capacity");
+        }
+    }
     let storage = history::storage(c, id)?;
     let mut value = json!({"latest":latest_summary,"lastSuccessful":successful_summary,"lastSuccessfulAtMs":successful.as_ref().and_then(|d|d.observed_at_ms),"identityChanged":current_revision.map(|r|identity_changed(c,id,r)).transpose()?.unwrap_or(false),"history":history,"historyLimit":if detailed{16}else{0},"historyHasMore":storage["completedRounds"].as_u64().unwrap_or(0)>if detailed{16}else{0},"storage":storage,"observationRenewedOnRead":false});
     if detailed {
@@ -440,6 +457,55 @@ fn report(c: &Connection, id: &str, detailed: bool, now: u64) -> StoreResult<Val
     Ok(value)
 }
 impl Store {
+    /// A later negative permission applies across metadata directories, even after
+    /// expiration/archive. Only a newer explicit positive read can supersede it.
+    pub(crate) fn connection_capacity_denied_at(
+        &self,
+        id: &str,
+        revision: u64,
+    ) -> StoreResult<Option<u64>> {
+        let found: Option<String> = self.connection.query_row(
+            "SELECT id FROM connection_diagnostic_runs WHERE connection_id=?1 AND connection_revision=?2 AND json_extract(body,'$.capacity.ordinaryUsage.state')='reported' AND json_extract(body,'$.capacity.ordinaryUsage.value')=0 ORDER BY CAST(json_extract(body,'$.observedAtMs') AS INTEGER) DESC LIMIT 1",
+            params![id, revision as i64], |row| row.get(0)).optional()?;
+        found
+            .map(|key| {
+                history::exact(&self.connection, id, &key, None)?
+                    .filter(|e| {
+                        e.diagnostic
+                            .capacity
+                            .as_ref()
+                            .is_some_and(|c| c.usage_allowed() == Some(false))
+                    })
+                    .and_then(|e| e.diagnostic.observed_at_ms)
+                    .ok_or(StoreError::InvalidState)
+            })
+            .transpose()
+    }
+    pub(crate) fn connection_capacity_groups(&self, id: &str) -> StoreResult<Vec<String>> {
+        let mut query = self.connection.prepare("SELECT id,checkpoint FROM capacity_groups WHERE EXISTS(SELECT 1 FROM json_each(checkpoint,'$.data.members') WHERE value=?1) LIMIT 65")?;
+        let groups = query
+            .query_map([id], |r| {
+                Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?))
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
+        if groups.len() > 64 {
+            return Err(StoreError::InvalidState);
+        }
+        groups
+            .into_iter()
+            .map(|(key, body)| {
+                let group = crate::domain::CapacityGroup::restore_checkpoint(
+                    &serde_json::from_str(&body).map_err(|_| StoreError::InvalidState)?,
+                )?;
+                if group.id().as_str() != key
+                    || !group.contains(&crate::domain::ConnectionId::new(id)?)
+                {
+                    return Err(StoreError::InvalidState);
+                }
+                Ok(key)
+            })
+            .collect()
+    }
     #[cfg(test)]
     pub(crate) fn connection_diagnostic_exact_raw(
         &self,
@@ -603,7 +669,7 @@ impl Store {
                 let l = current(&self.connection, &id)?.ok_or(StoreError::InvalidState)?;
                 views.push(l.view(
                     selected.as_deref() == Some(&id),
-                    report(&self.connection, &id, false, now)?,
+                    report(&self.connection, &id, false, false, now)?,
                 ));
             }
             Ok(json!({"connections":views,"selectedConnectionId":selected}))
@@ -632,7 +698,7 @@ impl Store {
                 history::exact(&self.connection, id, run, None)?.ok_or(StoreError::InvalidState)?;
             let d = &evidence.diagnostic;
             let current_revision = current(&self.connection, id)?.map(|l| l.binding_revision);
-            let mut v = report(&self.connection, id, false, now)?;
+            let mut v = report(&self.connection, id, false, true, now)?;
             v["latest"] = summary(
                 d,
                 now,
@@ -649,7 +715,7 @@ impl Store {
             v["catalogObservedAtMs"] = json!(d.observed_at_ms);
             return Ok(v);
         }
-        report(&self.connection, id, true, now)
+        report(&self.connection, id, true, true, now)
     }
     pub(crate) fn connection_command(
         &self,
@@ -762,11 +828,7 @@ impl Store {
                         |r| r.get::<_, i64>(0),
                     )? as u64;
                     let maximum_age = diagnostic_effective_validity(&tx, d)?.minimum();
-                    let effective_until = d
-                        .observed_at_ms
-                        .map(|observed| observed.saturating_add(maximum_age))
-                        .zip(d.valid_until_ms)
-                        .map(|(configured, source)| configured.min(source));
+                    let effective_until = d.effective_valid_until(maximum_age);
                     if d.daemon_generation != generation
                         || d.observed_at_ms.is_none_or(|t| now < t)
                         || effective_until.is_none_or(|t| now >= t)
@@ -1072,6 +1134,7 @@ mod tests {
             cached: false,
             purpose: "registration".into(),
             scope_key: None,
+            capacity: None,
         }
     }
     fn succeed(d: &mut ConnectionDiagnostic, partial: bool) {
@@ -1866,6 +1929,83 @@ mod tests {
         s
     }
     #[test]
+    fn capacity_negative_survives_archive_reopen_and_legacy_bytes_are_unchanged() {
+        let mut s = retention_store();
+        let mut d = diagnostic("capacity-negative");
+        s.connection_begin_diagnostic(&d, None).unwrap();
+        retention_succeed(&mut d);
+        d.schema_version = 2;
+        d.capacity=Some(serde_json::from_value(json!({"schemaVersion":1,"source":"codex-account-rate-limits","connectionId":"registered","connectionRevision":1,"runtimeVersion":d.descriptor.as_ref().unwrap()["runtimeVersion"],"observedAtMs":100,"synthetic":true,"ordinaryUsage":{"state":"reported","value":false},"bucketView":"not-reported","buckets":[],"legacyBucket":null,"completeness":"complete","coverage":"reported-subset","issues":[],"capacityGroupIds":[]})).unwrap());
+        s.connection_record_diagnostic(&d).unwrap();
+        let raw = |s: &Store, id: &str| {
+            s.connection
+                .query_row(
+                    "SELECT body,digest FROM connection_diagnostic_runs WHERE id=?1 AND ordinal=2",
+                    [id],
+                    |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)),
+                )
+                .unwrap()
+        };
+        let (original, hash) = raw(&s, &d.id);
+        assert_eq!(
+            s.connection_capacity_denied_at("registered", 1).unwrap(),
+            Some(100)
+        );
+        assert_eq!(
+            s.connection_capacity_denied_at("registered", 2).unwrap(),
+            None
+        );
+        let detailed = s
+            .connection_diagnostics_run_at("registered", Some(&d.id), 200)
+            .unwrap();
+        assert_eq!(
+            detailed["latest"]["capacity"]["ordinaryUsage"]["value"],
+            false
+        );
+        let compact = s.connection_list_at(200).unwrap();
+        assert!(!compact.to_string().contains("ordinaryUsage"));
+        for i in 1..280 {
+            retention_round(&mut s, i);
+        }
+        let path = s.path().to_owned();
+        drop(s);
+        let s = Store::open(path).unwrap();
+        let exact = s
+            .connection_diagnostic_observation("registered", &d.id, Some(2))
+            .unwrap();
+        assert_eq!(exact["archived"], true);
+        assert_eq!(exact["digest"], hash);
+        assert_eq!(
+            exact["diagnostic"]["capacity"]["ordinaryUsage"]["value"],
+            false
+        );
+        assert_eq!(raw(&s, &d.id), (original, hash));
+        assert_eq!(
+            s.connection_capacity_denied_at("registered", 1).unwrap(),
+            Some(100)
+        );
+        let page = s
+            .connection_diagnostic_history("registered", None, 20)
+            .unwrap();
+        assert!(!page.to_string().contains("ordinaryUsage"));
+        let before = raw(&s, "retention-000001");
+        assert!(!before.0.contains("capacity"));
+        s.connection
+            .pragma_update(None, "user_version", 10)
+            .unwrap();
+        s.connection
+            .execute_batch("DROP INDEX connection_capacity_denied")
+            .unwrap();
+        let path = s.path().to_owned();
+        drop(s);
+        let s = Store::open(path).unwrap();
+        assert_eq!(raw(&s, "retention-000001"), before);
+        assert_eq!(
+            s.connection_capacity_denied_at("registered", 1).unwrap(),
+            Some(100)
+        );
+    }
+    #[test]
     fn retention_rotates_beyond_old_cap_and_keeps_exact_oldest_bytes_and_authority() {
         let mut s = retention_store();
         let started = std::time::Instant::now();
@@ -2065,7 +2205,7 @@ mod tests {
             let path = s.path().to_owned();
             drop(s);
             let c = Connection::open(&path).unwrap();
-            c.execute_batch("DROP TABLE connection_diagnostic_reservations;DROP TABLE connection_diagnostic_history;DROP TABLE connection_diagnostic_storage;PRAGMA user_version=9;").unwrap();
+            c.execute_batch("DROP INDEX connection_capacity_denied;DROP TABLE connection_diagnostic_reservations;DROP TABLE connection_diagnostic_history;DROP TABLE connection_diagnostic_storage;PRAGMA user_version=9;").unwrap();
             drop(c);
             let mut migrated = Store::open(path).unwrap();
             migrated.connection_validate_history().unwrap();
@@ -2503,7 +2643,7 @@ mod tests {
         let path = s.path().to_owned();
         drop(s);
         let c = Connection::open(&path).unwrap();
-        c.execute_batch("DROP TABLE connection_diagnostic_reservations;DROP TABLE connection_diagnostic_history;DROP TABLE connection_diagnostic_storage;PRAGMA user_version=9;").unwrap();
+        c.execute_batch("DROP INDEX connection_capacity_denied;DROP TABLE connection_diagnostic_reservations;DROP TABLE connection_diagnostic_history;DROP TABLE connection_diagnostic_storage;PRAGMA user_version=9;").unwrap();
         drop(c);
         let mut migrated = Store::open(&path).unwrap();
         assert_eq!(
