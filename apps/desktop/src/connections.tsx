@@ -1,6 +1,7 @@
 import {useEffect,useRef,useState} from 'react';
 import {Icon} from './icons';
 import {DiagnosticRefresh} from './diagnostic-refresh';
+import {DiagnosticHistory} from './diagnostic-history';
 import {pick} from './editor';
 import {connectionLabel,diagnosticRunning,diagnosticStillCurrent,diagnosticLabel,connectionResourceFacts,diagnosticNextAction} from './connection-state';
 import {request,commandId,type Connection,type ConnectionDiagnostic,type DesktopRequest,type NativeCandidate,type RuntimeVersion} from './protocol';
@@ -53,6 +54,7 @@ export function ConnectionList({connections,busy,pending,t,onAdd,onMutate,onErro
    <div className="o-actions"><button className="o-secondary" disabled={busy||pending||!consent||selection.linked===false||selection.enabled===false||diagnosticRunning(report)} onClick={()=>void diagnose()}>{t('Recheck connection')}</button>{diagnosticRunning(report)&&<button disabled={pending||!report?.latest?.id} onClick={()=>report?.latest?.id&&void onMutate({type:'cancel-connection-diagnostic',commandId:commandId(),id:selection.id,expectedRevision:selection.revision??0,diagnosticId:report.latest.id},'cancel-connection-diagnostic')}>{t('Cancel diagnostic')}</button>}</div>
    {selection.identityStatus==='changed'&&<div className="o-notice"><p>{t('Observed account details changed. Review and confirm the link before new work; this does not prove that the account switched.')}</p><button disabled={busy||pending||!consent} onClick={()=>void update('reconfirm-identity')}>{t('Confirm changed identity')}</button></div>}
    {report?<DiagnosticReport report={report} t={t}/>:<p className="o-footnote">{t('No diagnostic report has been recorded.')}</p>}
+   <DiagnosticHistory key={selection.id} connection={selection} t={t}/>
    {!!selection.models?.length&&<details className="o-connection-models"><summary>{t('Models and reported reasoning levels')} ({selection.models.length})</summary>{selection.models.map(model=><div key={model.id}><strong>{model.name}</strong><code>{model.id}</code><span>{t('Orchestrix reasoning choices')}: {model.efforts?.length?model.efforts.join(' · '):t('Reasoning levels not reported')}</span><span>{t('Native provider levels')}: {model.nativeEfforts?.length?model.nativeEfforts.join(' · '):t('Not reported')}</span></div>)}<p className="o-footnote">{t('A model catalog does not confirm entitlement or an applied reasoning level.')}</p></details>}
   </section>}
  </div>;
