@@ -8,6 +8,12 @@ One dedicated daemon per canonical database/user scope owns operational access a
 
 API v1 uses bounded JSON request/reply frames over a user-restricted local named pipe. `Request { api_version: 1, operation: { type, ... } }` and `Response { api_version, ok, error, result }` are shared Rust application types. Provider frames, credentials, arbitrary shell commands and client-supplied supervisor assertions are not API commands.
 
+### Diagnostic history extension
+
+The additive `diagnostic-history-v1` feature is required by the updated Desktop. Under `Connections`, `DiagnosticHistory { id, cursor?, limit: 1..20 }` returns a bounded page of transition summaries and storage accounting; `DiagnosticObservation { id, diagnosticId, ordinal?: 1|2 }` resolves one exact transition (latest transition of that ID when ordinal is omitted). The restricted host exposes only corresponding typed local queries. Neither operation has metadata consent, runtime, login or dispatch effects; both remain local inspection operations during suspension/shutdown.
+
+Cursors bind database identity, connection, sequence high-water and exclusive next position. Ordering is descending immutable sequence, independent of coincident timestamps. New arrivals are omitted from the existing browse session; an explicit fresh first page observes them. Responses are capped at 64 KiB/page and 512 KiB/detail. Invalid scope, future/malformed cursor, unavailable evidence or corruption produces an explicit error rather than empty fabricated evidence. Exact details remain historical/no-authority and preserve original provenance, validity envelope, revisions and hashes. See [retention organization and budgets](../design/connection-diagnostics.md#queryable-diagnostic-archive--schema-10).
+
 ### Desktop and independent review extension
 
 `configuration-v1` extends the existing restricted Desktop operation with typed Catalog, Get, Preview, SaveMode, SaveProfile, SaveScope, Restore and Archive requests. Mutations use the same Store CAS, immutable definitions, command receipts and event journal. Preview and ResolveConfiguration consume only stored observations, retaining source dates and validity; neither starts metadata or inference. The native host does not expose a second configuration database or generic JSON/SQL write channel.

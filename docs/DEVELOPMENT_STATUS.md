@@ -1,8 +1,22 @@
 # Execução do plano — pesquisa, protótipo e primeiro spike
 
-Atualizado em **19 de outubro de 2026**. Este registro acompanha entregas e evidências do [plano](DEVELOPMENT_PLAN.md), sem transformar pesquisa ou protótipos em implementação de produção.
+Atualizado em **20 de outubro de 2026**. Este registro acompanha entregas e evidências do [plano](DEVELOPMENT_PLAN.md), sem transformar pesquisa ou protótipos em implementação de produção.
 
 **D0 concluído como pesquisa; gate piloto D1 liberado e M0 retomado em OX-001.** A [conclusão D0](research/d0-conclusion.md) registra decisões, evidências e a revisão explícita do critério metodológico de OX-D01: quinze jornadas completas não foram demonstradas integralmente e não contam como teste aprovado. Em 12/10, após o retorno geral favorável e a correção dos painéis, o responsável confirmou: “Passei pelo reteste e funcionou”. O [registro humano e decisão de passagem](design/d1-pilot.md#piloto-reportado-pelo-responsável--1210) encerram a falha reportada de docking e preservam os casos P0 indisponíveis e a avaliação externa em OX-017. A sequência continua D0 → D1/piloto → M0 → M1 → M2; M0 e os gates técnicos posteriores permanecem abertos.
+
+## Incremento atual — retenção consultável de diagnósticos
+
+**OX-016, continuação de `8470f84`, em validação integrada:** histórico original permanece imutável no mesmo SQLite. Migração 10 acrescenta projeção indexada, arquivamento lógico limitado e reserva de término; a janela operacional conserva 512 transições, sem impor esse teto ao histórico total. Orçamento contabilizado é 256 MiB por conexão/1 GiB global, separado da alocação física do banco e de cotas de assinatura. Exaustão bloqueia novas leituras explicitamente, preservando consulta e controles locais.
+
+API `diagnostic-history-v1` oferece páginas de até 20 itens/64 KiB e inspeção exata ID/ordinal até 512 KiB. Cursores vinculam banco, conexão e sequência durável, inclusive após VACUUM; novas linhas exigem atualizar o histórico. Connections/Settings carregam páginas sob demanda, distinguem recentes/arquivados, fonte/data/validade e permitem localizar um ID exato. Nenhuma consulta histórica inicia metadata ou concede autoridade atual; exportação de políticas e Context Pack permanecem sem esse histórico.
+
+**Provas combinadas até aqui:** frontend typecheck/build e 51/51 unidades passaram; renderer passou 12 grupos e 12 condições EN/PT/ES × 100/200% × 1440/900, com capturas examinadas e identificadores longos sem clipping (`artifacts/diagnostic-history-renderer/1792469052700/`). Rust workspace/lib/all-features passou **128 Core + 30 Desktop + 10 processos**, oito helpers/provas opt-in ignorados, em 149,410 s incluindo 64 s de compilação, fonte estável (`artifacts/diagnostic-history/lib-1792469614035/`). Os 27 testes de conexões incluem 14 casos novos de retenção: 800 transições, legado vazio/510/512, término de dois pendentes legados, orçamento controlado, identidade pendente/último sucesso, coorte encurtada, corrupção, rollback/reabertura, paginação entre clientes e VACUUM. Asserts e corpos dos 13 testes anteriores foram preservados integralmente.
+
+**Correções verificadas:** interrupção usa apenas reservas pendentes e evidência exata, sem varrer catálogos arquivados; recuperação legado/cheio faz manutenção limitada antes do término. Catálogo novo acima do tamanho permitido produz falha terminal explícita, preservando a reserva e a restrição de identidade, sem truncá-lo em falso sucesso. A massa inicialmente parseava a fixture de conformance de 4.685.242 bytes por rodada; cache do mesmo valor no helper reduziu o caso de 400 rodadas/reabertura a 5,495 s. Interrupção, erro transitório LNK1104 e duas falhas de preparação de teste ficam distinguidos do aceite final em `artifacts/diagnostic-history/storage-front-evidence.json`; não houve ampliação de deadlines ou redução de critérios.
+
+**Revisão final de fonte:** Clippy workspace/all-targets/all-features estrito passou em 26,118 s após substituir uma tupla complexa por campos nomeados, sem supressão de lint. As mesmas 168 unidades passaram novamente sobre essa fonte em 113,000 s, oito provas/helpers ignorados e fonte estável (`artifacts/diagnostic-history/lib-1792469901716/`). A primeira execução do lint ficou registrada separadamente; nenhuma expectativa foi regenerada.
+
+**Próxima ação deste lote:** concluir regressões pertinentes, executar o percurso da janela nativa em fixture própria e gerar/auditar o pacote normal após eventuais correções visuais. Ainda não há aceite nativo deste histórico nem pacote novo declarado. OX-016 permanece parcial pelos demais critérios; não houve leitura de conta real, login, inferência ou instalação.
 
 ## Incremento atual — definições locais e resolução por escopo
 

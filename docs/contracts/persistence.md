@@ -33,6 +33,16 @@ Run/conversation checkpoints retain the full validated aggregate; relational row
 
 Data values use SQL parameters. Fixed migration/DDL text may use SQL batches; user content never becomes an SQL identifier or concatenated query fragment. Foreign keys, unique identity constraints and necessary lookup indexes complement validated domain loading. Database constraints remain necessary even though the application checks identities first.
 
+## Diagnostic retention — schema 10
+
+Migration 10 adds an indexed operational/archive projection and storage/reservation accounting over the unchanged migration-8 diagnostic rows and migration-9 validity envelopes. Original IDs, ordinals, order, bodies and digests remain in place with their immutability triggers. The projection permits only monotonic archiving of completed rounds; evidence is never replaced by its projection. Startup validates original hashes, transitions, projection equivalence and accounting with a streaming pass rather than materializing the complete history.
+
+Normal connection reports use bounded/indexed first-identity, latest-round, last-success, pending-identity and exact-reference queries over both recent and archived evidence. Cached observations use narrow cohort validity aggregation, including archived envelopes and all subsequent stricter settings, without deserializing every historical catalog. Read-time history never renews observations or grants admission. Existing preparation, receipt and attempt references remain exact diagnostic IDs, not aliases for the latest result.
+
+Admission, bounded archive maintenance, terminal reservation and the original command receipt commit together in a short transaction before a runtime read. Terminal completion releases only its own reservation in the same transaction as evidence insertion. Rollback/crash cannot publish half a rotation or a terminal row without its accounting. Recovery records interruption without replaying metadata. No writer is held while waiting for a runtime, UI or process.
+
+The operational bound is 512 transitions, maintenance starts at 384 and touches at most 64 completed rounds per admission. Legacy terminal recovery may perform that same bounded batch to make room for previously unreserved pending starts. Accounted history budgets are 256 MiB per connection/1 GiB globally, with a maximum terminal body reserved before admission. Exhaustion blocks new reads explicitly and preserves historical access and local cancellation/recovery. These logical accounting bounds are distinct from SQLite/WAL file allocation and other retained product data. Page/detail byte budgets and the cursor contract are specified in [Connection Diagnostics](../design/connection-diagnostics.md#queryable-diagnostic-archive--schema-10).
+
 ## Durable command contract
 
 A command contains a validated idempotency scope/key, its typed business content and an expected store revision. The initial optimistic concurrency boundary is the **whole store**: a successful business transition advances its revision once. This is intentionally conservative for serial V1 operation and does not create a scheduler.

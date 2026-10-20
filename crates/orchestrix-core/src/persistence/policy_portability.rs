@@ -80,28 +80,20 @@ fn mapping_issues(
             });
             continue;
         }
-        let rows = super::connections::diagnostics(c, &mapping.connection_id)?;
-        if rows
-            .iter()
-            .any(|d| d.connection_revision == link.binding_revision && d.identity_changed)
-        {
+        if super::connections::identity_changed(c, &mapping.connection_id, link.binding_revision)? {
             issues.push(ImportIssue {
                 code: "portable-identity-reconfirmation-required".into(),
                 reference: Some(mapping.alias.clone()),
             });
             continue;
         }
-        let diagnostic = rows
-            .iter()
-            .filter(|d| {
-                d.connection_revision == link.binding_revision
-                    && d.daemon_generation == generation
-                    && d.purpose == "registration"
-                    && matches!(d.state.as_str(), "complete" | "partial")
-                    && d.observed_at_ms.is_some_and(|t| t <= now)
-                    && d.valid_until_ms.is_some_and(|t| now < t)
-            })
-            .max_by_key(|d| d.observed_at_ms);
+        let diagnostic = super::connections::latest_registration_success(
+            c,
+            &mapping.connection_id,
+            link.binding_revision,
+            generation,
+            now,
+        )?;
         let Some(diagnostic) = diagnostic else {
             issues.push(ImportIssue {
                 code: "portable-current-observation-required".into(),
@@ -109,7 +101,7 @@ fn mapping_issues(
             });
             continue;
         };
-        let validity = super::connections::diagnostic_effective_validity(c, diagnostic)?;
+        let validity = super::connections::diagnostic_effective_validity(c, &diagnostic)?;
         if diagnostic
             .observed_at_ms
             .is_none_or(|observed| now >= observed.saturating_add(validity.minimum()))

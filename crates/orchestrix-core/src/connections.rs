@@ -1,4 +1,7 @@
 //! Runtime-managed connection lifecycle. A link is not a login or an independent quota.
+#[cfg(test)]
+#[path = "diagnostic_retention_tests.rs"]
+mod diagnostic_retention_tests;
 use crate::{
     connection_refresh::{RefreshMode, RefreshSettings},
     daemon::RuntimeChoice,
@@ -13,6 +16,25 @@ use std::{
     sync::{Arc, mpsc},
     time::{SystemTime, UNIX_EPOCH},
 };
+
+pub(crate) const MAX_DIAGNOSTIC_BODY_BYTES: usize = 262_144;
+
+/// A bounded read can still contain a catalog larger than one retained record.
+/// Persist an explicit failed terminal using its reservation, never lose the
+/// admitted round or silently treat a truncated catalog as successful evidence.
+fn bound_terminal_evidence(d: &mut ConnectionDiagnostic) {
+    if serde_json::to_vec(d).is_ok_and(|bytes| bytes.len() <= MAX_DIAGNOSTIC_BODY_BYTES) {
+        return;
+    }
+    d.state = "failed".into();
+    d.error_code = Some("metadata-evidence-size-limit".into());
+    d.descriptor = None;
+    d.catalog_labels.clear();
+    d.control_observations.clear();
+    d.structured_result_support = None;
+    d.complete = false;
+    d.cached = false;
+}
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(
@@ -76,11 +98,28 @@ pub enum ConnectionRequest {
         #[serde(default)]
         diagnostic_id: Option<String>,
     },
+    /// Local evidence only; never schedules a runtime read.
+    DiagnosticHistory {
+        id: String,
+        #[serde(default)]
+        cursor: Option<String>,
+        #[serde(default = "history_page_size")]
+        limit: u32,
+    },
+    DiagnosticObservation {
+        id: String,
+        diagnostic_id: String,
+        #[serde(default)]
+        ordinal: Option<u32>,
+    },
     /// Native-host-only response: never forward this operation to the renderer.
     Resolve {
         id: String,
         expected_revision: u64,
     },
+}
+fn history_page_size() -> u32 {
+    20
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(
@@ -588,6 +627,9 @@ impl ConnectionService {
             let remaining = store
                 .connection_diagnostic_remaining(&link.id)
                 .map_err(|_| "connection-store")?;
+            let storage = store
+                .connection_diagnostic_storage(&link.id)
+                .map_err(|_| "connection-store")?;
             let eligible = config.as_ref().is_some_and(|c| c.authorized_for(&link))
                 && self.refresh_revisions.contains_key(&link.id);
             let schedule = self.coordinator.registration_status(&link.id);
@@ -599,7 +641,7 @@ impl ConnectionService {
             } else if !link.enabled || !link.linked {
                 "connection-disabled"
             } else if remaining < 2 {
-                "history-capacity-exhausted"
+                "diagnostic-history-storage-budget-exhausted"
             } else if !eligible {
                 "reconfirmation-required"
             } else if schedule.is_some_and(|s| s.1) {
@@ -627,6 +669,7 @@ impl ConnectionService {
                 "sourceTtlMs":self.metadata.source_ttl_ms(),"policyValidityMs":policy,
                 "activeDiagnosticId":active.map(|f|&f.diagnostic.id),"activeSource":active.map(|f|if f.periodic.is_some(){"periodic"}else{"foreground"}),
                 "limits":{"globalConcurrentReads":1,"perConnectionConcurrentReads":1,"minimumIntervalMs":60_000,"maximumIntervalMs":86_400_000,"metadataDeadlineMs":15_000,"maximumBackoffMs":300_000,"retainedDiagnosticRows":512,"remainingDiagnosticRows":remaining},
+                "storage":storage,
                 "workerAdmissionsSuspendedByRefresh":false,"quotaPredictionAvailable":false,"consentScope":"registration-directory-binding-runtime","consentPortable":false}));
         }
         if id.is_some() && values.is_empty() {
@@ -740,6 +783,7 @@ impl ConnectionService {
                     }
                 }
             }
+            bound_terminal_evidence(&mut d);
             store
                 .connection_record_diagnostic(&d)
                 .map_err(|_| "connection-diagnostic-store")?;
@@ -795,6 +839,20 @@ impl ConnectionService {
                         self.clock.now_ms(),
                     )
                     .map_err(|_| "connection-store".into());
+            }
+            ConnectionRequest::DiagnosticHistory { id, cursor, limit } => {
+                return store
+                    .connection_diagnostic_history(id, cursor.as_deref(), *limit)
+                    .map_err(|e| format!("diagnostic-history-{e}"));
+            }
+            ConnectionRequest::DiagnosticObservation {
+                id,
+                diagnostic_id,
+                ordinal,
+            } => {
+                return store
+                    .connection_diagnostic_observation(id, diagnostic_id, *ordinal)
+                    .map_err(|e| format!("diagnostic-history-{e}"));
             }
             ConnectionRequest::Resolve {
                 id,
@@ -1111,6 +1169,13 @@ impl ConnectionService {
         }
         if !self.flights.is_empty() {
             return Err("metadata-service-busy".into());
+        }
+        if store
+            .connection_diagnostic_storage(&l.id)
+            .map_err(|_| "connection-store")?["storageBlocked"]
+            == true
+        {
+            return Err("diagnostic-history-storage-budget-exhausted".into());
         }
         let d = ConnectionDiagnostic {
             schema_version: 1,

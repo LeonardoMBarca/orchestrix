@@ -4,6 +4,7 @@ mod commands;
 mod connections;
 mod daemon;
 mod desktop;
+mod diagnostic_history;
 mod git;
 mod integration;
 mod integration_projection;

@@ -1,3 +1,4 @@
+use super::diagnostic_history as history;
 use super::{Store, StoreError, StoreResult};
 use crate::connection_refresh::{
     ObservationValidity, RefreshConfiguration, RefreshSettings, binding_scope,
@@ -99,8 +100,23 @@ fn diagnostic_validity_cap(
     } else {
         (0, 0)
     };
+    apply_validity_history(
+        c,
+        &d.connection_id,
+        result,
+        refresh_revision,
+        policy_version,
+    )
+}
+fn apply_validity_history(
+    c: &Connection,
+    id: &str,
+    mut result: ObservationValidity,
+    refresh_revision: i64,
+    policy_version: i64,
+) -> StoreResult<ObservationValidity> {
     let mut refreshes=c.prepare("SELECT body,digest FROM connection_refresh_configurations WHERE connection_id=?1 AND revision>=?2 ORDER BY revision")?;
-    for row in refreshes.query_map(params![d.connection_id, refresh_revision], |r| {
+    for row in refreshes.query_map(params![id, refresh_revision], |r| {
         Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?))
     })? {
         let (body, hash) = row?;
@@ -132,22 +148,45 @@ fn diagnostic_validity_cap(
     }
     Ok(result)
 }
+struct CohortMinimum {
+    refresh: Option<i64>,
+    policy: Option<i64>,
+    identity: Option<i64>,
+    availability: Option<i64>,
+    configuration: Option<i64>,
+    models: Option<i64>,
+}
 pub(super) fn diagnostic_effective_validity(
     c: &Connection,
     d: &ConnectionDiagnostic,
 ) -> StoreResult<ObservationValidity> {
     let mut result = diagnostic_validity_cap(c, d)?;
     if d.cached && d.observed_at_ms.is_some() {
-        for prior in diagnostics(c, &d.connection_id)?.iter().filter(|prior| {
-            prior.id != d.id
-                && prior.observed_at_ms == d.observed_at_ms
-                && prior.scope_key == d.scope_key
-                && prior.connection_revision == d.connection_revision
-                && matches!(prior.state.as_str(), "complete" | "partial")
-        }) {
-            result = minimum_validity(result, &diagnostic_validity_cap(c, prior)?);
+        // Immutable envelopes are hash/shape-validated on startup and captured in the
+        // same transaction as the start. The indexed narrow aggregate preserves the
+        // oldest restrictions of the original lease without decoding old catalogs.
+        let caps=c.query_row(
+            "SELECT min(coalesce(v.refresh_revision,0)),min(coalesce(v.policy_version,0)),min(json_extract(v.body,'$.identity')),min(json_extract(v.body,'$.availability')),min(json_extract(v.body,'$.configuration')),min(json_extract(v.body,'$.models')) FROM connection_diagnostic_history h LEFT JOIN connection_diagnostic_validity v ON v.id=h.id WHERE h.connection_id=?1 AND h.observed=?2 AND h.scope=?3 AND h.binding_revision=?4 AND h.state IN('complete','partial')",
+            params![d.connection_id,d.observed_at_ms.map(|v|v as i64),d.scope_key,d.connection_revision as i64],|r|Ok(CohortMinimum {refresh:r.get(0)?,policy:r.get(1)?,identity:r.get(2)?,availability:r.get(3)?,configuration:r.get(4)?,models:r.get(5)?}))?;
+        for (value, target) in [
+            (caps.identity, &mut result.identity),
+            (caps.availability, &mut result.availability),
+            (caps.configuration, &mut result.configuration),
+            (caps.models, &mut result.models),
+        ] {
+            if let Some(value) = value {
+                let value = u64::try_from(value).map_err(|_| StoreError::InvalidState)?;
+                if value == 0 {
+                    return Err(StoreError::InvalidState);
+                }
+                *target = (*target).min(value);
+            }
+        }
+        if let (Some(refresh), Some(policy)) = (caps.refresh, caps.policy) {
+            result = apply_validity_history(c, &d.connection_id, result, refresh, policy)?;
         }
     }
+
     Ok(result)
 }
 fn encode<T: serde::Serialize>(v: &T) -> StoreResult<String> {
@@ -178,13 +217,7 @@ pub(super) fn current(c: &Connection, id: &str) -> StoreResult<Option<Connection
     let mut link = row.map(|(r, b, h)| decode_link(b, h, id, r)).transpose()?;
     if let Some(l) = &mut link
         && l.baseline_observation.is_none()
-        && let Some(d) = diagnostics(c, id)?
-            .into_iter()
-            .filter(|d| {
-                d.connection_revision == l.binding_revision
-                    && matches!(d.state.as_str(), "complete" | "partial")
-            })
-            .min_by_key(|d| d.observed_at_ms)
+        && let Some(d) = history::query(c,"WHERE h.connection_id=?1 AND h.binding_revision=?2 AND h.state IN('complete','partial') ORDER BY h.observed,h.id,h.ordinal LIMIT 1",params![id,l.binding_revision as i64])?.into_iter().next().map(|e|e.diagnostic)
     {
         l.baseline_observation = d.observation_fingerprint;
         l.identity_assurance = d.identity_assurance;
@@ -268,67 +301,40 @@ fn save_command(c: &Connection, id: &str, fingerprint: &str, result: &Value) -> 
     )?;
     Ok(())
 }
+#[cfg(test)]
 pub(super) fn diagnostics(c: &Connection, id: &str) -> StoreResult<Vec<ConnectionDiagnostic>> {
-    crate::domain::ConnectionId::new(id)?;
-    let mut q=c.prepare("SELECT id,ordinal,connection_revision,registration_revision,body,digest FROM connection_diagnostic_runs WHERE connection_id=?1 ORDER BY id,ordinal")?;
-    let mut rows: Vec<ConnectionDiagnostic> = Vec::new();
-    let mut previous: Option<(String, i64)> = None;
-    for row in q.query_map([id], |r| {
-        Ok((
-            r.get::<_, String>(0)?,
-            r.get::<_, i64>(1)?,
-            r.get::<_, i64>(2)?,
-            r.get::<_, i64>(3)?,
-            r.get::<_, String>(4)?,
-            r.get::<_, String>(5)?,
-        ))
-    })? {
-        let (run, ordinal, revision, registration, body, hash) = row?;
-        if rows.len() >= 512
-            || body.len() > 262144
-            || digest(&body) != hash
-            || ordinal
-                != previous
-                    .as_ref()
-                    .filter(|(p, _)| p == &run)
-                    .map_or(1, |(_, o)| o + 1)
-        {
-            return Err(StoreError::InvalidState);
-        }
-        let v: ConnectionDiagnostic =
-            serde_json::from_str(&body).map_err(|_| StoreError::InvalidState)?;
-        v.validate().map_err(|_| StoreError::InvalidState)?;
-        if v.id != run
-            || v.connection_id != id
-            || v.connection_revision != revision as u64
-            || v.registration_revision != registration as u64
-        {
-            return Err(StoreError::InvalidState);
-        }
-        if ordinal == 1 {
-            if v.state != "running" || v.finished_at_ms.is_some() {
-                return Err(StoreError::InvalidState);
-            }
-        } else {
-            let p = rows.last().ok_or(StoreError::InvalidState)?;
-            if p.state != "running"
-                || v.state == "running"
-                || v.started_at_ms != p.started_at_ms
-                || v.connection_revision != p.connection_revision
-                || v.registration_revision != p.registration_revision
-                || v.synthetic != p.synthetic
-                || v.daemon_generation != p.daemon_generation
-                || v.purpose != p.purpose
-                || v.finished_at_ms.is_none()
-            {
-                return Err(StoreError::InvalidState);
-            }
-        }
-        previous = Some((run, ordinal));
-        rows.push(v);
-    }
-    Ok(rows)
+    history::validate(c, id)?;
+    Ok(
+        history::query(c, "WHERE h.connection_id=?1 ORDER BY h.id,h.ordinal", [id])?
+            .into_iter()
+            .map(|e| e.diagnostic)
+            .collect(),
+    )
 }
+pub(super) fn identity_changed(c: &Connection, id: &str, revision: u64) -> StoreResult<bool> {
+    let candidate:Option<String>=c.query_row("SELECT id FROM connection_diagnostic_history WHERE connection_id=?1 AND binding_revision=?2 AND identity_changed=1 LIMIT 1",params![id,revision as i64],|r|r.get(0)).optional()?;
+    if let Some(run) = candidate {
+        let e = history::exact(c, id, &run, None)?.ok_or(StoreError::InvalidState)?;
+        if !e.diagnostic.identity_changed {
+            return Err(StoreError::InvalidState);
+        }
+        return Ok(true);
+    }
+    Ok(false)
+}
+pub(super) fn latest_registration_success(
+    c: &Connection,
+    id: &str,
+    binding: u64,
+    generation: u64,
+    now: u64,
+) -> StoreResult<Option<ConnectionDiagnostic>> {
+    Ok(history::query(c,"WHERE h.connection_id=?1 AND h.binding_revision=?2 AND h.generation=?3 AND h.purpose='registration' AND h.state IN('complete','partial') AND h.observed<=?4 AND h.source_until>?4 ORDER BY h.observed DESC,h.id DESC LIMIT 1",params![id,binding as i64,generation as i64,now as i64])?.into_iter().next().map(|e|e.diagnostic))
+}
+fn last_success(c: &Connection, id: &str) -> StoreResult<Option<ConnectionDiagnostic>> {
+    Ok(history::query(c,"WHERE h.connection_id=?1 AND h.state IN('complete','partial') ORDER BY h.observed DESC,h.id DESC,h.ordinal DESC LIMIT 1",[id])?.into_iter().next().map(|e|e.diagnostic))
+}
+
 fn summary(
     d: &ConnectionDiagnostic,
     now: u64,
@@ -369,20 +375,17 @@ fn report(c: &Connection, id: &str, detailed: bool, now: u64) -> StoreResult<Val
         [],
         |r| r.get::<_, i64>(0),
     )? as u64;
-    let rows = diagnostics(c, id)?;
-    let latest = rows
+    let latest = history::query(c,"WHERE h.connection_id=?1 ORDER BY h.started DESC,h.finished DESC,h.id DESC,h.ordinal DESC LIMIT 1",[id])?.into_iter().next().map(|e|e.diagnostic);
+    let successful = last_success(c, id)?;
+    let recent = history::query(
+        c,
+        "WHERE h.connection_id=?1 AND h.finished IS NOT NULL ORDER BY h.sequence DESC LIMIT ?2",
+        params![id, if detailed { 16 } else { 0 }],
+    )?;
+    let history = recent
         .iter()
-        .max_by_key(|d| (d.started_at_ms, d.finished_at_ms));
-    let successful = rows
-        .iter()
-        .filter(|d| matches!(d.state.as_str(), "complete" | "partial"))
-        .max_by_key(|d| d.observed_at_ms);
-    let history = rows
-        .iter()
-        .filter(|d| d.finished_at_ms.is_some())
-        .rev()
-        .take(if detailed { 16 } else { 0 })
-        .map(|d| {
+        .map(|e| {
+            let d = &e.diagnostic;
             Ok(summary(
                 d,
                 now,
@@ -393,6 +396,7 @@ fn report(c: &Connection, id: &str, detailed: bool, now: u64) -> StoreResult<Val
         })
         .collect::<StoreResult<Vec<_>>>()?;
     let latest_summary = latest
+        .as_ref()
         .map(|d| -> StoreResult<Value> {
             Ok(summary(
                 d,
@@ -404,6 +408,7 @@ fn report(c: &Connection, id: &str, detailed: bool, now: u64) -> StoreResult<Val
         })
         .transpose()?;
     let successful_summary = successful
+        .as_ref()
         .map(|d| -> StoreResult<Value> {
             Ok(summary(
                 d,
@@ -414,22 +419,37 @@ fn report(c: &Connection, id: &str, detailed: bool, now: u64) -> StoreResult<Val
             ))
         })
         .transpose()?;
-    let mut value = json!({"latest":latest_summary,"lastSuccessful":successful_summary,"lastSuccessfulAtMs":successful.and_then(|d|d.observed_at_ms),"identityChanged":rows.iter().any(|d|d.identity_changed&&current_revision==Some(d.connection_revision)),"history":history,"historyLimit":if detailed{16}else{0},"historyHasMore":rows.iter().filter(|d|d.finished_at_ms.is_some()).count()>if detailed{16}else{0},"observationRenewedOnRead":false});
+    let storage = history::storage(c, id)?;
+    let mut value = json!({"latest":latest_summary,"lastSuccessful":successful_summary,"lastSuccessfulAtMs":successful.as_ref().and_then(|d|d.observed_at_ms),"identityChanged":current_revision.map(|r|identity_changed(c,id,r)).transpose()?.unwrap_or(false),"history":history,"historyLimit":if detailed{16}else{0},"historyHasMore":storage["completedRounds"].as_u64().unwrap_or(0)>if detailed{16}else{0},"storage":storage,"observationRenewedOnRead":false});
     if detailed {
         value["catalog"] = successful
+            .as_ref()
             .and_then(|d| d.descriptor.clone())
             .unwrap_or(Value::Null);
-        value["catalogLabels"] = json!(successful.map(|d| &d.catalog_labels));
-        value["controlObservations"] = json!(successful.map(|d| &d.control_observations));
-        value["structuredResultSupport"] =
-            json!(successful.and_then(|d| d.structured_result_support));
+        value["catalogLabels"] = json!(successful.as_ref().map(|d| &d.catalog_labels));
+        value["controlObservations"] = json!(successful.as_ref().map(|d| &d.control_observations));
+        value["structuredResultSupport"] = json!(
+            successful
+                .as_ref()
+                .and_then(|d| d.structured_result_support)
+        );
         value["controlEvidence"] = json!({"source":"configuration-backed-pinned-profile","effectiveTurnSettingsConfirmed":false});
-        value["catalogDiagnosticId"] = json!(successful.map(|d| &d.id));
-        value["catalogObservedAtMs"] = json!(successful.and_then(|d| d.observed_at_ms));
+        value["catalogDiagnosticId"] = json!(successful.as_ref().map(|d| &d.id));
+        value["catalogObservedAtMs"] = json!(successful.as_ref().and_then(|d| d.observed_at_ms));
     }
     Ok(value)
 }
 impl Store {
+    #[cfg(test)]
+    pub(crate) fn connection_diagnostic_exact_raw(
+        &self,
+        id: &str,
+        run: &str,
+    ) -> StoreResult<ConnectionDiagnostic> {
+        history::exact(&self.connection, id, run, None)?
+            .map(|e| e.diagnostic)
+            .ok_or(StoreError::InvalidState)
+    }
     pub fn connection_refresh_configuration(
         &self,
         id: &str,
@@ -444,10 +464,7 @@ impl Store {
     }
     pub(crate) fn connection_read_maximum_age(&self, id: &str) -> StoreResult<u64> {
         let current = effective_validity(&self.connection, id)?.minimum();
-        let previous = diagnostics(&self.connection, id)?
-            .into_iter()
-            .filter(|d| matches!(d.state.as_str(), "complete" | "partial"))
-            .max_by_key(|d| d.observed_at_ms);
+        let previous = last_success(&self.connection, id)?;
         Ok(if let Some(previous) = previous {
             current.min(diagnostic_effective_validity(&self.connection, &previous)?.minimum())
         } else {
@@ -458,12 +475,7 @@ impl Store {
         policy_validity(&self.connection)
     }
     pub(crate) fn connection_diagnostic_remaining(&self, id: &str) -> StoreResult<u64> {
-        let used: i64 = self.connection.query_row(
-            "SELECT count(*) FROM connection_diagnostic_runs WHERE connection_id=?1",
-            [id],
-            |r| r.get(0),
-        )?;
-        Ok(512_u64.saturating_sub(used as u64))
+        history::remaining(&self.connection, id)
     }
     pub(crate) fn connection_links_current(&self) -> StoreResult<Vec<ConnectionLink>> {
         let mut q = self
@@ -510,9 +522,7 @@ impl Store {
             link.guard(expected_connection)
                 .map_err(|_| StoreError::InvalidState)?;
             if link.baseline_observation.is_none()
-                || diagnostics(&tx, id)?
-                    .iter()
-                    .any(|d| d.connection_revision == link.binding_revision && d.identity_changed)
+                || identity_changed(&tx, id, link.binding_revision)?
             {
                 return Err(StoreError::InvalidState);
             }
@@ -602,9 +612,7 @@ impl Store {
         result
     }
     pub(crate) fn connection_identity_changed(&self, id: &str, revision: u64) -> StoreResult<bool> {
-        Ok(diagnostics(&self.connection, id)?
-            .iter()
-            .any(|d| d.connection_revision == revision && d.identity_changed))
+        identity_changed(&self.connection, id, revision)
     }
     pub fn connection_diagnostics(&self, id: &str) -> StoreResult<Value> {
         self.connection_diagnostics_run(id, None)
@@ -620,12 +628,9 @@ impl Store {
     ) -> StoreResult<Value> {
         if let Some(run) = run {
             crate::domain::LocalRef::new(run)?;
-            let rows = diagnostics(&self.connection, id)?;
-            let d = rows
-                .iter()
-                .rev()
-                .find(|d| d.id == run)
-                .ok_or(StoreError::InvalidState)?;
+            let evidence =
+                history::exact(&self.connection, id, run, None)?.ok_or(StoreError::InvalidState)?;
+            let d = &evidence.diagnostic;
             let current_revision = current(&self.connection, id)?.map(|l| l.binding_revision);
             let mut v = report(&self.connection, id, false, now)?;
             v["latest"] = summary(
@@ -743,16 +748,14 @@ impl Store {
                     l.linked = false;
                 }
                 ConnectionChange::Reconfirm { diagnostic_id } => {
-                    let all = diagnostics(&tx, id)?;
-                    let d = all
-                        .iter()
-                        .rev()
-                        .find(|d| {
-                            d.id == *diagnostic_id
-                                && matches!(d.state.as_str(), "complete" | "partial")
-                                && d.connection_revision == l.binding_revision
-                        })
+                    let evidence = history::exact(&tx, id, diagnostic_id, None)?
                         .ok_or(StoreError::InvalidState)?;
+                    let d = &evidence.diagnostic;
+                    if !matches!(d.state.as_str(), "complete" | "partial")
+                        || d.connection_revision != l.binding_revision
+                    {
+                        return Err(StoreError::InvalidState);
+                    }
                     let generation = tx.query_row(
                         "SELECT generation FROM daemon_meta WHERE singleton=1",
                         [],
@@ -866,7 +869,7 @@ impl Store {
                 return Err(StoreError::InvalidState);
             }
             if previous.as_ref().is_none_or(|(p, _)| p != &id) {
-                diagnostics(&self.connection, &id)?;
+                history::validate(&self.connection, &id)?;
             }
             previous = Some((id, rev));
         }
@@ -954,64 +957,43 @@ fn append_diagnostic(
             return Err(StoreError::StaleRevision);
         }
     }
-    let previous: Option<String> = c
-        .query_row(
-            "SELECT body FROM connection_diagnostic_runs WHERE id=?1 ORDER BY ordinal DESC LIMIT 1",
-            [&d.id],
-            |r| r.get(0),
-        )
-        .optional()?;
-    let ordinal = if let Some(p) = previous {
-        let p: ConnectionDiagnostic =
-            serde_json::from_str(&p).map_err(|_| StoreError::InvalidState)?;
-        if p.state != "running"
-            || d.state == "running"
-            || p.connection_id != d.connection_id
-            || p.connection_revision != d.connection_revision
-            || p.registration_revision != d.registration_revision
-            || p.started_at_ms != d.started_at_ms
-            || p.synthetic != d.synthetic
-            || p.daemon_generation != d.daemon_generation
-            || p.purpose != d.purpose
-            || d.finished_at_ms.is_none()
-        {
-            return Err(StoreError::InvalidState);
-        }
-        2i64
-    } else {
-        if d.state != "running" || d.finished_at_ms.is_some() || d.observed_at_ms.is_some() {
-            return Err(StoreError::InvalidState);
-        }
-        1
-    };
-    let count: i64 = c.query_row(
-        "SELECT count(*) FROM connection_diagnostic_runs WHERE connection_id=?1",
-        [&d.connection_id],
-        |r| r.get(0),
-    )?;
-    if count >= 512 {
-        return Err(StoreError::Configuration);
-    }
+    let previous = history::exact(c, &d.connection_id, &d.id, None)?;
+    let ordinal = if previous.is_some() { 2 } else { 1 };
+    history::validate_transition(previous.as_ref().map(|e| &e.diagnostic), d, ordinal)?;
     let b = encode(d)?;
-    if b.len() > 262144 {
+    if b.len() > history::MAX_BODY_BYTES {
         return Err(StoreError::Configuration);
     }
-    c.execute("INSERT INTO connection_diagnostic_runs(id,ordinal,connection_id,connection_revision,registration_revision,body,digest) VALUES(?1,?2,?3,?4,?5,?6,?7)",params![d.id,ordinal,d.connection_id,d.connection_revision as i64,d.registration_revision as i64,b,digest(&b)])?;
+    let hash = digest(&b);
+    c.execute("INSERT INTO connection_diagnostic_runs(id,ordinal,connection_id,connection_revision,registration_revision,body,digest) VALUES(?1,?2,?3,?4,?5,?6,?7)",params![d.id,ordinal,d.connection_id,d.connection_revision as i64,d.registration_revision as i64,b,hash])?;
+    history::insert(c, d, ordinal, &b, &hash)?;
     c.execute("INSERT INTO daemon_events(kind,body) VALUES('connection-diagnostic',?1)",[json!({"connectionId":d.connection_id,"connectionRevision":d.connection_revision,"diagnosticId":d.id,"state":d.state}).to_string()])?;
     Ok(())
 }
 fn interrupt_pending(c: &Connection, id: Option<&str>, state: &str) -> StoreResult<()> {
-    let mut q=c.prepare("SELECT d.body FROM connection_diagnostic_runs d WHERE (?1 IS NULL OR d.connection_id=?1) AND d.ordinal=(SELECT max(p.ordinal) FROM connection_diagnostic_runs p WHERE p.id=d.id) AND json_extract(d.body,'$.state')='running' LIMIT 65")?;
-    let bodies = q
-        .query_map([id], |r| r.get::<_, String>(0))?
-        .collect::<Result<Vec<_>, _>>()?;
-    if bodies.len() > 64 {
+    // Only outstanding, durably reserved rounds need interruption. Completed and
+    // archived catalogs are never scanned by local cancel/disable/recovery controls.
+    let mut q=c.prepare(if id.is_some(){"SELECT connection_id,id FROM connection_diagnostic_reservations WHERE connection_id=?1 ORDER BY id LIMIT 65"}else{"SELECT connection_id,id FROM connection_diagnostic_reservations ORDER BY id LIMIT 65"})?;
+    let pending = if let Some(id) = id {
+        q.query_map([id], |r| {
+            Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?))
+        })?
+        .collect::<Result<Vec<_>, _>>()?
+    } else {
+        q.query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)))?
+            .collect::<Result<Vec<_>, _>>()?
+    };
+    if pending.len() > 64 {
         return Err(StoreError::Configuration);
     }
     drop(q);
-    for b in bodies {
-        let mut d: ConnectionDiagnostic =
-            serde_json::from_str(&b).map_err(|_| StoreError::InvalidState)?;
+    for (connection, run) in pending {
+        let evidence =
+            history::exact(c, &connection, &run, None)?.ok_or(StoreError::InvalidState)?;
+        if evidence.ordinal != 1 || evidence.diagnostic.state != "running" {
+            return Err(StoreError::InvalidState);
+        }
+        let mut d = evidence.diagnostic;
         d.state = state.into();
         d.finished_at_ms = Some(now_ms());
         d.error_code = Some(
@@ -1842,5 +1824,725 @@ mod tests {
             .unwrap();
         assert_eq!(exact["latest"]["observedAtMs"], 1_300);
         assert_eq!(exact["latest"]["validUntilMs"], 61_300);
+    }
+    fn retention_succeed(d: &mut ConnectionDiagnostic) {
+        static BASE: std::sync::OnceLock<Value> = std::sync::OnceLock::new();
+        let mut descriptor = BASE
+            .get_or_init(|| {
+                let fixture: Value = serde_json::from_str(include_str!(
+                    "../../tests/fixtures/runtime-conformance-v1.json"
+                ))
+                .unwrap();
+                fixture["descriptors"]["base"].clone()
+            })
+            .clone();
+        descriptor["connection"]["id"] = json!("registered");
+        descriptor["connection"]["revision"] = json!(1);
+        d.state = "complete".into();
+        d.finished_at_ms = Some(120);
+        d.observed_at_ms = Some(100);
+        d.valid_until_ms = Some(60100);
+        d.identity_assurance = "synthetic".into();
+        d.observation_fingerprint = Some("b".repeat(64));
+        d.scope_key = Some("c".repeat(64));
+        d.descriptor = Some(descriptor);
+        d.complete = true;
+    }
+    fn retention_round(s: &mut Store, index: u32) -> ConnectionDiagnostic {
+        let mut d = diagnostic(&format!("retention-{index:06}"));
+        d.started_at_ms = 100 + u64::from(index) * 100;
+        s.connection_begin_diagnostic(&d, None).unwrap();
+        retention_succeed(&mut d);
+        d.observed_at_ms = Some(d.started_at_ms);
+        d.finished_at_ms = Some(d.started_at_ms + 20);
+        d.valid_until_ms = Some(d.started_at_ms + 60_000);
+        s.connection_record_diagnostic(&d).unwrap();
+        d
+    }
+    fn retention_store() -> Store {
+        let mut s = store();
+        s.connection_register("link", &"1".repeat(64), &link(&s), None, None)
+            .unwrap();
+        s
+    }
+    #[test]
+    fn retention_rotates_beyond_old_cap_and_keeps_exact_oldest_bytes_and_authority() {
+        let mut s = retention_store();
+        let started = std::time::Instant::now();
+        let first = retention_round(&mut s, 0);
+        let original: (String, String) = s
+            .connection
+            .query_row(
+                "SELECT body,digest FROM connection_diagnostic_runs WHERE id=?1 AND ordinal=2",
+                [&first.id],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .unwrap();
+        for i in 1..400 {
+            retention_round(&mut s, i);
+            let stats = s.connection_diagnostic_storage("registered").unwrap();
+            assert!(stats["operationalRows"].as_u64().unwrap() <= 512);
+            assert_eq!(stats["reservedBytes"], 0);
+        }
+        let stats = s.connection_diagnostic_storage("registered").unwrap();
+        assert_eq!(stats["totalRows"], 800);
+        assert!(stats["archivedRows"].as_u64().unwrap() > 0);
+        let old = s
+            .connection_diagnostic_observation("registered", &first.id, Some(2))
+            .unwrap();
+        assert_eq!(old["archived"], true);
+        assert_eq!(old["digest"], original.1);
+        assert_eq!(old["diagnostic"]["observedAtMs"], 100);
+        assert_eq!(old["diagnostic"]["current"], false);
+        assert_eq!(old["grantsCurrentAuthority"], false);
+        let unchanged: (String, String) = s
+            .connection
+            .query_row(
+                "SELECT body,digest FROM connection_diagnostic_runs WHERE id=?1 AND ordinal=2",
+                [&first.id],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .unwrap();
+        assert_eq!(original, unchanged);
+        assert_eq!(
+            s.connection_link("registered")
+                .unwrap()
+                .unwrap()
+                .baseline_observation,
+            first.observation_fingerprint
+        );
+        let path = s.path().to_owned();
+        drop(s);
+        let reopened = Store::open(path).unwrap();
+        reopened.connection_validate_history().unwrap();
+        assert_eq!(
+            reopened
+                .connection_diagnostic_storage("registered")
+                .unwrap(),
+            stats
+        );
+        assert_eq!(
+            reopened
+                .connection_diagnostic_observation("registered", &first.id, Some(2))
+                .unwrap(),
+            old
+        );
+        eprintln!(
+            "retention mass+oldest+reopen elapsed {:?}",
+            started.elapsed()
+        );
+    }
+    #[test]
+    fn retention_pagination_high_water_survives_other_window_arrivals_and_rejects_foreign_cursor() {
+        let mut s = retention_store();
+        for i in 0..25 {
+            retention_round(&mut s, i);
+        }
+        let first = s
+            .connection_diagnostic_history("registered", None, 7)
+            .unwrap();
+        let watermark = first["highWaterSequence"].as_u64().unwrap();
+        let mut other = Store::open(s.path()).unwrap();
+        retention_round(&mut other, 25);
+        let mut seen = Vec::new();
+        let mut page = first;
+        loop {
+            assert!(serde_json::to_vec(&page).unwrap().len() <= 65536);
+            assert!(page["items"].as_array().unwrap().len() <= 7);
+            for item in page["items"].as_array().unwrap() {
+                let sequence = item["sequence"].as_u64().unwrap();
+                assert!(sequence <= watermark);
+                seen.push(sequence);
+            }
+            let Some(cursor) = page["nextCursor"].as_str() else {
+                break;
+            };
+            page = s
+                .connection_diagnostic_history("registered", Some(cursor), 7)
+                .unwrap();
+        }
+        assert_eq!(seen.len(), 50);
+        assert!(seen.windows(2).all(|v| v[0] > v[1]));
+        let latest = s
+            .connection_diagnostic_history("registered", None, 7)
+            .unwrap();
+        assert!(latest["highWaterSequence"].as_u64().unwrap() > watermark);
+        let mut cursor: Value =
+            serde_json::from_str(latest["nextCursor"].as_str().unwrap()).unwrap();
+        cursor["highWater"] = json!(u64::MAX);
+        assert!(
+            s.connection_diagnostic_history("registered", Some(&cursor.to_string()), 7)
+                .is_err()
+        );
+        let foreign = retention_store();
+        assert!(
+            foreign
+                .connection_diagnostic_history("registered", latest["nextCursor"].as_str(), 7)
+                .is_err()
+        );
+        assert!(
+            s.connection_diagnostic_history("other", latest["nextCursor"].as_str(), 7)
+                .is_err()
+        );
+        assert!(
+            s.connection_diagnostic_history("registered", None, 21)
+                .is_err()
+        );
+    }
+    #[test]
+    fn retention_archive_never_consumes_active_terminal_reservation_and_rollback_is_atomic() {
+        let mut s = retention_store();
+        for i in 0..191 {
+            retention_round(&mut s, i);
+        }
+        let mut active = diagnostic("active-retention");
+        s.connection_begin_diagnostic(&active, None).unwrap();
+        let stats = s.connection_diagnostic_storage("registered").unwrap();
+        assert_eq!(stats["reservedTerminalRows"], 1);
+        assert_eq!(stats["operationalRows"], 383);
+        retention_round(&mut s, 191);
+        s.connection.execute_batch("BEGIN IMMEDIATE").unwrap();
+        let before = s.connection_diagnostic_storage("registered").unwrap();
+        history::maintain(&s.connection, "registered").unwrap();
+        s.connection.execute_batch("ROLLBACK").unwrap();
+        assert_eq!(
+            s.connection_diagnostic_storage("registered").unwrap(),
+            before
+        );
+        s.connection.execute_batch("BEGIN IMMEDIATE").unwrap();
+        assert_eq!(history::maintain(&s.connection, "registered").unwrap(), 128);
+        s.connection.execute_batch("COMMIT").unwrap();
+        assert_eq!(
+            s.connection_diagnostic_observation("registered", &active.id, None)
+                .unwrap()["archived"],
+            false
+        );
+        active.state = "cancelled".into();
+        active.finished_at_ms = Some(130);
+        active.error_code = Some("cancelled-by-user".into());
+        s.connection_record_diagnostic(&active).unwrap();
+        assert_eq!(
+            s.connection_diagnostic_storage("registered").unwrap()["reservedTerminalRows"],
+            0
+        );
+        s.connection_validate_history().unwrap();
+        let another = diagnostic("crash-retention");
+        s.connection_begin_diagnostic(&another, None).unwrap();
+        let path = s.path().to_owned();
+        drop(s);
+        let mut reopened = Store::open(path).unwrap();
+        reopened.connection_validate_history().unwrap();
+        reopened.connection_interrupt_pending().unwrap();
+        reopened.connection_interrupt_pending().unwrap();
+        assert_eq!(
+            reopened
+                .connection_diagnostic_storage("registered")
+                .unwrap()["reservedTerminalRows"],
+            0
+        );
+        assert_eq!(
+            reopened
+                .connection_diagnostic_observation("registered", &another.id, None)
+                .unwrap()["diagnostic"]["state"],
+            "interrupted"
+        );
+    }
+    #[test]
+    fn retention_legacy_empty_near_and_at_old_limit_migrate_without_rewriting_evidence() {
+        for rounds in [0, 255, 256] {
+            let mut s = retention_store();
+            for i in 0..rounds {
+                retention_round(&mut s, i);
+            }
+            let before: Vec<(String, String)> = s
+                .connection
+                .prepare("SELECT body,digest FROM connection_diagnostic_runs ORDER BY rowid")
+                .unwrap()
+                .query_map([], |r| Ok((r.get(0)?, r.get(1)?)))
+                .unwrap()
+                .collect::<Result<_, _>>()
+                .unwrap();
+            let path = s.path().to_owned();
+            drop(s);
+            let c = Connection::open(&path).unwrap();
+            c.execute_batch("DROP TABLE connection_diagnostic_reservations;DROP TABLE connection_diagnostic_history;DROP TABLE connection_diagnostic_storage;PRAGMA user_version=9;").unwrap();
+            drop(c);
+            let mut migrated = Store::open(path).unwrap();
+            migrated.connection_validate_history().unwrap();
+            assert_eq!(
+                migrated
+                    .connection_diagnostic_storage("registered")
+                    .unwrap()["operationalRows"],
+                rounds * 2
+            );
+            assert!(
+                migrated
+                    .connection_diagnostic_remaining("registered")
+                    .unwrap()
+                    >= 2
+            );
+            retention_round(&mut migrated, rounds);
+            let after: Vec<(String, String)> = migrated
+                .connection
+                .prepare(
+                    "SELECT body,digest FROM connection_diagnostic_runs ORDER BY rowid LIMIT ?1",
+                )
+                .unwrap()
+                .query_map([rounds * 2], |r| Ok((r.get(0)?, r.get(1)?)))
+                .unwrap()
+                .collect::<Result<_, _>>()
+                .unwrap();
+            assert_eq!(before, after);
+            assert!(
+                migrated
+                    .connection_diagnostic_storage("registered")
+                    .unwrap()["operationalRows"]
+                    .as_u64()
+                    .unwrap()
+                    <= 512
+            );
+            migrated.connection_validate_history().unwrap();
+        }
+    }
+    #[test]
+    fn retention_total_budget_blocks_new_read_but_terminal_and_local_history_remain_available() {
+        for (connection_budget, global_budget) in [(1_048_576, 4_194_304), (4_194_304, 1_048_576)] {
+            history::with_budget(connection_budget, global_budget, || {
+                let mut s = retention_store();
+                let mut count = 0;
+                while s.connection_diagnostic_remaining("registered").unwrap() >= 2 {
+                    retention_round(&mut s, count);
+                    count += 1;
+                    assert!(count < 200);
+                }
+                assert!(count > 1);
+                let before = s.connection_diagnostic_storage("registered").unwrap();
+                assert_eq!(before["storageBlocked"], true);
+                assert_eq!(
+                    before["blockedReason"],
+                    "diagnostic-history-storage-budget-exhausted"
+                );
+                let failed = diagnostic("budget-blocked");
+                assert_eq!(
+                    s.connection_begin_diagnostic(&failed, None).unwrap_err(),
+                    StoreError::Configuration
+                );
+                assert_eq!(
+                    s.connection_diagnostic_storage("registered").unwrap(),
+                    before
+                );
+                assert!(
+                    s.connection_diagnostic_history("registered", None, 20)
+                        .is_ok()
+                );
+                assert!(
+                    s.connection_diagnostic_observation("registered", "retention-000000", Some(2))
+                        .is_ok()
+                );
+                s.connection_interrupt_pending().unwrap();
+                s.connection_validate_history().unwrap();
+                let path = s.path().to_owned();
+                drop(s);
+                let reopened = Store::open(path).unwrap();
+                reopened.connection_validate_history().unwrap();
+                assert_eq!(
+                    reopened
+                        .connection_diagnostic_storage("registered")
+                        .unwrap(),
+                    before
+                );
+            });
+        }
+        let mut s = retention_store();
+        let mut d = diagnostic("reserved-before-budget");
+        s.connection_begin_diagnostic(&d, None).unwrap();
+        history::with_budget(1, 1, || {
+            d.state = "failed".into();
+            d.finished_at_ms = Some(120);
+            d.error_code = Some("metadata-unavailable".into());
+            s.connection_record_diagnostic(&d).unwrap();
+            assert_eq!(
+                s.connection_diagnostic_storage("registered").unwrap()["reservedTerminalRows"],
+                0
+            );
+            s.connection_interrupt_pending().unwrap();
+            assert!(
+                s.connection_diagnostic_observation("registered", &d.id, None)
+                    .is_ok()
+            );
+        });
+    }
+    #[test]
+    fn retention_pending_identity_and_last_success_survive_archived_failures_and_reopen() {
+        let mut s = retention_store();
+        let first = retention_round(&mut s, 0);
+        let mut changed = diagnostic("identity-change-retained");
+        s.connection_begin_diagnostic(&changed, None).unwrap();
+        retention_succeed(&mut changed);
+        changed.identity_changed = true;
+        changed.observed_at_ms = Some(110);
+        changed.valid_until_ms = Some(60110);
+        changed.observation_fingerprint = Some("d".repeat(64));
+        s.connection_record_diagnostic(&changed).unwrap();
+        for i in 1_u32..300 {
+            let mut failed = diagnostic(&format!("failure-retention-{i:06}"));
+            failed.started_at_ms = 100 + u64::from(i) * 100;
+            s.connection_begin_diagnostic(&failed, None).unwrap();
+            failed.state = "failed".into();
+            failed.finished_at_ms = Some(failed.started_at_ms + 20);
+            failed.error_code = Some("metadata-unavailable".into());
+            s.connection_record_diagnostic(&failed).unwrap();
+        }
+        assert_eq!(
+            s.connection_diagnostic_observation("registered", &changed.id, None)
+                .unwrap()["archived"],
+            true
+        );
+        assert!(s.connection_identity_changed("registered", 1).unwrap());
+        assert_eq!(
+            s.connection_link("registered")
+                .unwrap()
+                .unwrap()
+                .baseline_observation,
+            first.observation_fingerprint
+        );
+        let report = s.connection_diagnostics("registered").unwrap();
+        assert_eq!(report["latest"]["state"], "failed");
+        assert_eq!(report["lastSuccessfulAtMs"], 110);
+        assert_eq!(report["identityChanged"], true);
+        let path = s.path().to_owned();
+        drop(s);
+        let reopened = Store::open(path).unwrap();
+        reopened.connection_validate_history().unwrap();
+        assert_eq!(
+            reopened.connection_diagnostics("registered").unwrap()["identityChanged"],
+            true
+        );
+    }
+    #[test]
+    fn retention_projection_corruption_is_rejected_on_exact_read_and_startup_without_repair() {
+        let mut s = retention_store();
+        let d = retention_round(&mut s, 0);
+        s.connection.execute_batch("DROP TRIGGER diagnostic_projection_immutable;UPDATE connection_diagnostic_history SET registration_revision=2 WHERE ordinal=2").unwrap();
+        assert_eq!(
+            s.connection_diagnostic_observation("registered", &d.id, Some(2))
+                .unwrap_err(),
+            StoreError::InvalidState
+        );
+        assert_eq!(
+            s.connection_validate_history().unwrap_err(),
+            StoreError::InvalidState
+        );
+    }
+    #[test]
+    fn retention_start_terminal_and_archive_rollback_leave_no_half_visible_round() {
+        let mut s = retention_store();
+        for i in 0..192 {
+            retention_round(&mut s, i);
+        }
+        let before = s.connection_diagnostic_storage("registered").unwrap();
+        let d = diagnostic("rollback-retention");
+        s.connection.execute_batch("BEGIN IMMEDIATE").unwrap();
+        append_diagnostic(&s.connection, &d, true).unwrap();
+        let in_transaction = s.connection_diagnostic_storage("registered").unwrap();
+        assert!(
+            in_transaction["archivedRows"].as_u64().unwrap()
+                > before["archivedRows"].as_u64().unwrap()
+        );
+        s.connection.execute_batch("ROLLBACK").unwrap();
+        assert_eq!(
+            s.connection_diagnostic_storage("registered").unwrap(),
+            before
+        );
+        assert!(
+            s.connection_diagnostic_observation("registered", &d.id, None)
+                .is_err()
+        );
+        s.connection_validate_history().unwrap();
+    }
+    #[test]
+    fn retention_archived_cache_cohort_keeps_short_original_lease_after_preferences_expand() {
+        let mut s = retention_store();
+        let mut settings = RefreshSettings::default();
+        settings.validity_ms.models = 1000;
+        s.connection_configure_refresh(
+            "shorten-retained",
+            &"2".repeat(64),
+            "registered",
+            1,
+            0,
+            &settings,
+            90,
+        )
+        .unwrap();
+        let original = retention_round(&mut s, 0);
+        s.connection_configure_refresh(
+            "expand-retained",
+            &"3".repeat(64),
+            "registered",
+            1,
+            1,
+            &RefreshSettings::default(),
+            110,
+        )
+        .unwrap();
+        for i in 1..250 {
+            retention_round(&mut s, i);
+        }
+        let mut cached = diagnostic("cached-old-retained");
+        cached.started_at_ms = 130;
+        s.connection_begin_diagnostic(&cached, None).unwrap();
+        retention_succeed(&mut cached);
+        cached.finished_at_ms = Some(140);
+        cached.cached = true;
+        s.connection_record_diagnostic(&cached).unwrap();
+        let old = s
+            .connection_diagnostic_observation("registered", &original.id, Some(2))
+            .unwrap();
+        assert_eq!(old["archived"], true);
+        assert_eq!(old["validity"]["captured"]["models"], 1000);
+        let actual = s
+            .connection_diagnostic_observation("registered", &cached.id, Some(2))
+            .unwrap();
+        assert_eq!(actual["validity"]["captured"]["models"], 60000);
+        assert_eq!(actual["diagnostic"]["effectiveValidityMs"]["models"], 1000);
+        assert_eq!(actual["diagnostic"]["effectiveValidUntilMs"], 1100);
+        assert_eq!(actual["diagnostic"]["observedAtMs"], 100);
+        assert_eq!(actual["diagnostic"]["validUntilMs"], 60100);
+        assert_eq!(actual["diagnostic"]["cached"], true);
+        assert_eq!(actual["diagnostic"]["provenance"], "synthetic");
+        let path = s.path().to_owned();
+        drop(s);
+        let reopened = Store::open(path).unwrap();
+        reopened.connection_validate_history().unwrap();
+        assert_eq!(
+            reopened
+                .connection_diagnostic_observation("registered", &cached.id, Some(2))
+                .unwrap(),
+            actual
+        );
+    }
+    #[test]
+    fn retention_operational_queries_seek_indexes_without_sorting_or_decoding_history() {
+        let mut s = retention_store();
+        for i in 0..5 {
+            retention_round(&mut s, i);
+        }
+        for sql in [
+            "WHERE h.connection_id='registered' AND h.binding_revision=1 AND h.state IN('complete','partial') ORDER BY h.observed,h.id,h.ordinal LIMIT 1",
+            "WHERE h.connection_id='registered' AND h.state IN('complete','partial') ORDER BY h.observed DESC,h.id DESC,h.ordinal DESC LIMIT 1",
+            "WHERE h.connection_id='registered' AND h.binding_revision=1 AND h.generation=0 AND h.purpose='registration' AND h.state IN('complete','partial') AND h.observed<=1000 AND source_until>1000 ORDER BY h.observed DESC,h.id DESC LIMIT 1",
+            "WHERE h.connection_id='registered' ORDER BY h.started DESC,h.finished DESC,h.id DESC,h.ordinal DESC LIMIT 1",
+            "WHERE h.connection_id='registered' AND h.sequence<=100 AND h.sequence<90 ORDER BY h.sequence DESC LIMIT 21",
+        ] {
+            let plan: Vec<String> = s
+                .connection
+                .prepare(&format!("EXPLAIN QUERY PLAN {} {sql}", history::SELECT))
+                .unwrap()
+                .query_map([], |r| r.get(3))
+                .unwrap()
+                .collect::<Result<_, _>>()
+                .unwrap();
+            assert!(
+                plan.iter()
+                    .any(|line| line.contains("SEARCH") && line.contains("INDEX")),
+                "{plan:?}"
+            );
+            assert!(
+                plan.iter().all(|line| !line.contains("TEMP B-TREE")
+                    && !line.contains("SCAN connection_diagnostic_history")),
+                "{plan:?}"
+            );
+        }
+    }
+    #[test]
+    fn retention_stable_sequence_and_cursor_survive_sqlite_vacuum() {
+        let mut s = retention_store();
+        for i in 0..5 {
+            retention_round(&mut s, i);
+        }
+        let first = s
+            .connection_diagnostic_history("registered", None, 3)
+            .unwrap();
+        let cursor = first["nextCursor"].as_str().unwrap().to_owned();
+        let expected = s
+            .connection_diagnostic_history("registered", Some(&cursor), 3)
+            .unwrap();
+        s.connection.execute_batch("VACUUM").unwrap();
+        assert_eq!(
+            s.connection_diagnostic_history("registered", Some(&cursor), 3)
+                .unwrap(),
+            expected
+        );
+        retention_round(&mut s, 5);
+        s.connection_validate_history().unwrap();
+        assert_eq!(
+            s.connection_diagnostic_history("registered", Some(&cursor), 3)
+                .unwrap()["items"],
+            expected["items"]
+        );
+    }
+    #[test]
+    fn retention_large_catalog_stays_bounded_in_pages_and_exact_details() {
+        let mut s = retention_store();
+        let mut d = diagnostic("large-retention");
+        s.connection_begin_diagnostic(&d, None).unwrap();
+        retention_succeed(&mut d);
+        let descriptor = d.descriptor.as_mut().unwrap();
+        let cap = json!({"support":"supported","availability":"available","configuration":"enabled","evidence":{"source":"synthetic","scope":"model","reference":"r".repeat(80),"observedAt":"2026-10-13T00:00:00.000Z"}});
+        let mut caps = serde_json::Map::new();
+        for key in crate::runtime_contract::CAPABILITIES {
+            caps.insert(key.into(), cap.clone());
+        }
+        descriptor["models"]=Value::Array((0..50).map(|i|json!({"id":format!("model-{i:02}-{}", "m".repeat(71)),"availability":"available","reasoningLevels":["low","medium","high"],"capabilities":caps.clone()})).collect());
+        d.catalog_labels = (0..50)
+            .map(|i| crate::runtime::RuntimeModelPresentation {
+                id: format!("model-{i:02}-{}", "m".repeat(71)),
+                label: "L".repeat(512),
+                native_efforts: vec!["high".into()],
+            })
+            .collect();
+        let body = encode(&d).unwrap();
+        assert!(body.len() > 100_000);
+        assert!(body.len() < history::MAX_BODY_BYTES);
+        s.connection_record_diagnostic(&d).unwrap();
+        let page = s
+            .connection_diagnostic_history("registered", None, 20)
+            .unwrap();
+        assert!(serde_json::to_vec(&page).unwrap().len() < 65_536);
+        assert!(page["items"][0]["diagnostic"]["descriptor"].is_null());
+        let detail = s
+            .connection_diagnostic_observation("registered", &d.id, Some(2))
+            .unwrap();
+        assert!(serde_json::to_vec(&detail).unwrap().len() < 524_288);
+        assert_eq!(
+            detail["diagnostic"]["descriptor"]["models"]
+                .as_array()
+                .unwrap()
+                .len(),
+            50
+        );
+        assert_eq!(detail["bodyBytes"], body.len());
+        let mut oversized = diagnostic("oversized-retention");
+        s.connection_begin_diagnostic(&oversized, None).unwrap();
+        retention_succeed(&mut oversized);
+        oversized.descriptor = d.descriptor.clone();
+        oversized.catalog_labels = d.catalog_labels.clone();
+        oversized.descriptor.as_mut().unwrap()["models"]=Value::Array((0..64).map(|i|json!({"id":format!("model-{i:02}-{}", "m".repeat(71)),"availability":"available","reasoningLevels":["low","medium","high"],"capabilities":caps.clone()})).collect());
+        oversized.catalog_labels = (0..64)
+            .map(|i| crate::runtime::RuntimeModelPresentation {
+                id: format!("model-{i:02}-{}", "m".repeat(71)),
+                label: "L".repeat(512),
+                native_efforts: vec!["h".repeat(40); 8],
+            })
+            .collect();
+        assert!(oversized.validate().is_ok());
+        assert!(encode(&oversized).unwrap().len() > history::MAX_BODY_BYTES);
+        assert_eq!(
+            s.connection_record_diagnostic(&oversized).unwrap_err(),
+            StoreError::Configuration
+        );
+        assert_eq!(
+            s.connection_diagnostic_storage("registered").unwrap()["reservedTerminalRows"],
+            1
+        );
+        oversized.state = "failed".into();
+        oversized.complete = false;
+        oversized.descriptor = None;
+        oversized.catalog_labels.clear();
+        oversized.observed_at_ms = None;
+        oversized.valid_until_ms = None;
+        oversized.error_code = Some("metadata-output-budget".into());
+        s.connection_record_diagnostic(&oversized).unwrap();
+        assert_eq!(
+            s.connection_diagnostic_storage("registered").unwrap()["reservedTerminalRows"],
+            0
+        );
+    }
+    #[test]
+    fn retention_archived_original_digest_corruption_is_explicit_and_not_repaired() {
+        let mut s = retention_store();
+        let d = retention_round(&mut s, 0);
+        for i in 1..193 {
+            retention_round(&mut s, i);
+        }
+        assert_eq!(
+            s.connection_diagnostic_observation("registered", &d.id, Some(2))
+                .unwrap()["archived"],
+            true
+        );
+        s.connection.execute_batch("DROP TRIGGER connection_diagnostic_no_update;UPDATE connection_diagnostic_runs SET digest='bad' WHERE id='retention-000000' AND ordinal=2").unwrap();
+        assert_eq!(
+            s.connection_diagnostic_observation("registered", &d.id, Some(2))
+                .unwrap_err(),
+            StoreError::InvalidState
+        );
+        let path = s.path().to_owned();
+        drop(s);
+        assert!(matches!(Store::open(path), Err(StoreError::InvalidState)));
+    }
+    #[test]
+    fn retention_legacy_full_with_multiple_pending_rounds_rotates_before_recovery_terminals() {
+        let mut s = retention_store();
+        for i in 0..255 {
+            retention_round(&mut s, i);
+        }
+        for id in ["legacy-active-a", "legacy-active-b"] {
+            s.connection_begin_diagnostic(&diagnostic(id), None)
+                .unwrap();
+        }
+        let original: Vec<(String, String)> = s
+            .connection
+            .prepare("SELECT body,digest FROM connection_diagnostic_runs ORDER BY id,ordinal")
+            .unwrap()
+            .query_map([], |r| Ok((r.get(0)?, r.get(1)?)))
+            .unwrap()
+            .collect::<Result<_, _>>()
+            .unwrap();
+        assert_eq!(original.len(), 512);
+        let path = s.path().to_owned();
+        drop(s);
+        let c = Connection::open(&path).unwrap();
+        c.execute_batch("DROP TABLE connection_diagnostic_reservations;DROP TABLE connection_diagnostic_history;DROP TABLE connection_diagnostic_storage;PRAGMA user_version=9;").unwrap();
+        drop(c);
+        let mut migrated = Store::open(&path).unwrap();
+        assert_eq!(
+            migrated
+                .connection_diagnostic_storage("registered")
+                .unwrap()["operationalRows"],
+            512
+        );
+        assert_eq!(
+            migrated
+                .connection_diagnostic_storage("registered")
+                .unwrap()["reservedTerminalRows"],
+            2
+        );
+        migrated.connection_interrupt_pending().unwrap();
+        let stats = migrated
+            .connection_diagnostic_storage("registered")
+            .unwrap();
+        assert_eq!(stats["totalRows"], 514);
+        assert!(stats["operationalRows"].as_u64().unwrap() <= 512);
+        assert_eq!(stats["reservedTerminalRows"], 0);
+        assert_eq!(stats["archivedRows"], 128);
+        for id in ["legacy-active-a", "legacy-active-b"] {
+            assert_eq!(
+                migrated
+                    .connection_diagnostic_observation("registered", id, None)
+                    .unwrap()["diagnostic"]["state"],
+                "interrupted"
+            );
+        }
+        let unchanged:Vec<(String,String)>=migrated.connection.prepare("SELECT body,digest FROM connection_diagnostic_runs WHERE NOT(id IN('legacy-active-a','legacy-active-b') AND ordinal=2) ORDER BY id,ordinal").unwrap().query_map([],|r|Ok((r.get(0)?,r.get(1)?))).unwrap().collect::<Result<_,_>>().unwrap();
+        assert_eq!(unchanged, original);
+        drop(migrated);
+        let reopened = Store::open(path).unwrap();
+        assert_eq!(
+            reopened
+                .connection_diagnostic_storage("registered")
+                .unwrap(),
+            stats
+        );
     }
 }

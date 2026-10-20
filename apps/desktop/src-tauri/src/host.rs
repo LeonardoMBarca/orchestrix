@@ -358,6 +358,16 @@ pub enum HostRequest {
     ConnectionDiagnostics {
         id: String,
     },
+    ConnectionDiagnosticHistory {
+        id: String,
+        cursor: Option<String>,
+        limit: Option<u32>,
+    },
+    ConnectionDiagnosticObservation {
+        id: String,
+        diagnostic_id: String,
+        ordinal: Option<u32>,
+    },
     Control {
         action: String,
         command_id: String,
@@ -1380,6 +1390,22 @@ impl Host {
                     diagnostic_id: None,
                 })
             }
+            HostRequest::ConnectionDiagnosticHistory { id, cursor, limit } => {
+                self.connections(ConnectionRequest::DiagnosticHistory {
+                    id,
+                    cursor,
+                    limit: limit.unwrap_or(20),
+                })
+            }
+            HostRequest::ConnectionDiagnosticObservation {
+                id,
+                diagnostic_id,
+                ordinal,
+            } => self.connections(ConnectionRequest::DiagnosticObservation {
+                id,
+                diagnostic_id,
+                ordinal,
+            }),
             HostRequest::SaveConnection { .. } => Err("connection-onboarding-required".into()),
             HostRequest::SubmitTask {
                 command_id,
@@ -2257,6 +2283,7 @@ fn compatible(snapshot: Value) -> Result<Value, String> {
         || !features.iter().any(|f| f == "connections-v1")
         || !features.iter().any(|f| f == "control-settings-v1")
         || !features.iter().any(|f| f == "configuration-v1")
+        || !features.iter().any(|f| f == "diagnostic-history-v1")
     {
         return Err(err("daemon-version-incompatible"));
     }
@@ -2277,6 +2304,54 @@ fn validate_runtime_pin(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn diagnostic_history_bridge_only_forwards_exact_local_queries() {
+        let mut host = Host::new(directory()).unwrap();
+        let calls = Arc::new(Mutex::new(Vec::new()));
+        let observed = calls.clone();
+        host.test_transport = Some(Arc::new(move |operation| {
+            if let Operation::Connections { request } = operation {
+                match *request {
+                    ConnectionRequest::DiagnosticHistory { id, cursor, limit } => {
+                        assert_eq!(id, "connection-one");
+                        assert_eq!(cursor.as_deref(), Some("scoped-cursor"));
+                        assert_eq!(limit, 7);
+                        observed.lock().unwrap().push("page");
+                        return Ok(json!({"items":[],"nextCursor":null}));
+                    }
+                    ConnectionRequest::DiagnosticObservation {
+                        id,
+                        diagnostic_id,
+                        ordinal,
+                    } => {
+                        assert_eq!(id, "connection-one");
+                        assert_eq!(diagnostic_id, "exact-observation");
+                        assert_eq!(ordinal, Some(2));
+                        observed.lock().unwrap().push("exact");
+                        return Ok(json!({"historical":true,"grantsCurrentAuthority":false}));
+                    }
+                    _ => {}
+                }
+            }
+            Err("history-must-not-create-metadata-or-work".into())
+        }));
+        host.handle(HostRequest::ConnectionDiagnosticHistory {
+            id: "connection-one".into(),
+            cursor: Some("scoped-cursor".into()),
+            limit: Some(7),
+        })
+        .unwrap();
+        let exact = host
+            .handle(HostRequest::ConnectionDiagnosticObservation {
+                id: "connection-one".into(),
+                diagnostic_id: "exact-observation".into(),
+                ordinal: Some(2),
+            })
+            .unwrap();
+        assert_eq!(exact["grantsCurrentAuthority"], false);
+        assert_eq!(*calls.lock().unwrap(), vec!["page", "exact"]);
+        assert!(serde_json::from_value::<HostRequest>(json!({"type":"connection-diagnostic-history","id":"connection-one","allowMetadataRead":true})).is_err());
+    }
     #[cfg(feature = "test-fixtures")]
     #[test]
     fn controlled_worker_scenario_is_explicit_and_scoped_to_implementation() {

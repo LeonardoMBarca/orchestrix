@@ -630,7 +630,8 @@ fn handle_inner(
                 "integration-v1",
                 "connections-v1",
                 "control-settings-v1",
-                "configuration-v1"
+                "configuration-v1",
+                "diagnostic-history-v1"
             ]);
             return Ok(snapshot);
         }
