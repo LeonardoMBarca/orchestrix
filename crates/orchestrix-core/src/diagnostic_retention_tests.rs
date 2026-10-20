@@ -184,3 +184,159 @@ fn prepare_native_retention_fixture() {
     .unwrap();
     println!("{}", serde_json::to_string(&evidence).unwrap());
 }
+
+#[test]
+fn old_task_preparation_scope_reference_and_read_receipt_resolve_after_archiving_and_reopen() {
+    // This exercises the durable evidence contract used by Host.scopeEvidence.
+    // Host's volatile prepared-task HashMap is deliberately not represented as persisted.
+    let root = std::env::temp_dir().join(format!(
+        "orchestrix-prepared-diagnostic-reference-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    ));
+    fs::create_dir(&root).unwrap();
+    let root = root.canonicalize().unwrap();
+    let database = root.join("state.sqlite");
+    let mut store = Store::open(&database).unwrap();
+    let link = ConnectionLink {
+        schema_version: 1,
+        id: "prepared-connection".into(),
+        revision: 1,
+        binding_revision: 1,
+        name: "Synthetic preparation reference".into(),
+        enabled: true,
+        linked: true,
+        runtime: RuntimeChoice::Synthetic {
+            executable: std::env::current_exe().unwrap(),
+            home: root.clone(),
+            scenario: "connection-metadata".into(),
+        },
+        metadata_directory: root,
+        executable_sha256: "a".repeat(64),
+        baseline_observation: None,
+        identity_assurance: "unknown".into(),
+    };
+    store
+        .connection_register("prepared-link", &"1".repeat(64), &link, None, None)
+        .unwrap();
+    let mut source:ConnectionDiagnostic=serde_json::from_value(json!({"schemaVersion":1,"id":"prepared-source-read","connectionId":link.id,"connectionRevision":1,"registrationRevision":1,"daemonGeneration":0,"synthetic":true,"state":"running","startedAtMs":1000,"finishedAtMs":null,"observedAtMs":null,"validUntilMs":null,"nextAllowedAtMs":null,"errorCode":null,"identityAssurance":"unknown","observationFingerprint":null,"identityChanged":false,"descriptor":null,"catalogLabels":[],"controlObservations":[],"structuredResultSupport":null,"complete":false,"cached":false,"purpose":"task-preparation","scopeKey":null})).unwrap();
+    let fingerprint = "2".repeat(64);
+    let receipt = json!({"state":"accepted","diagnosticId":source.id,"connectionId":link.id,"connectionRevision":1,"registrationRevision":1});
+    store
+        .connection_begin_diagnostic(
+            &source,
+            Some(("prepare-scope-read", &fingerprint, &receipt)),
+        )
+        .unwrap();
+    let fixture: Value = serde_json::from_str(include_str!(
+        "../tests/fixtures/runtime-conformance-v1.json"
+    ))
+    .unwrap();
+    let mut descriptor = fixture["descriptors"]["base"].clone();
+    descriptor["connection"]["id"] = json!(link.id);
+    descriptor["connection"]["revision"] = json!(1);
+    source.state = "complete".into();
+    source.finished_at_ms = Some(1020);
+    source.observed_at_ms = Some(1000);
+    source.valid_until_ms = Some(61000);
+    source.identity_assurance = "synthetic".into();
+    source.observation_fingerprint = Some("b".repeat(64));
+    source.descriptor = Some(descriptor);
+    source.complete = true;
+    source.scope_key = Some("c".repeat(64));
+    store.connection_record_diagnostic(&source).unwrap();
+    let report = store
+        .connection_diagnostics_run_at(&link.id, Some(&source.id), 1100)
+        .unwrap();
+    let d = &report["latest"];
+    assert_eq!(d["current"], true);
+    assert_eq!(d["purpose"], "task-preparation");
+    let prepared_reference = json!({"diagnosticId":d["id"],"registrationRevision":d["registrationRevision"],"connectionRevision":d["connectionRevision"],"scopeKey":d["scopeKey"],"observedAtMs":d["observedAtMs"],"validUntilMs":d["validUntilMs"],"effectiveValidUntilMs":d["effectiveValidUntilMs"],"effectiveRuntimeConfirmed":false});
+    let original_reference = serde_json::to_vec(&prepared_reference).unwrap();
+    let original = store
+        .connection_diagnostic_observation(&link.id, &source.id, Some(2))
+        .unwrap();
+    let expected_hash = crate::git_records::content_hash(&serde_json::to_vec(&source).unwrap());
+    assert_eq!(original["digest"], expected_hash);
+    for i in 0..270 {
+        let mut running = source.clone();
+        running.id = format!("rotation-{i:04}");
+        running.state = "running".into();
+        running.finished_at_ms = None;
+        running.observed_at_ms = None;
+        running.valid_until_ms = None;
+        running.identity_assurance = "unknown".into();
+        running.observation_fingerprint = None;
+        running.descriptor = None;
+        running.complete = false;
+        running.scope_key = None;
+        store.connection_begin_diagnostic(&running, None).unwrap();
+        let mut terminal = source.clone();
+        terminal.id = running.id;
+        terminal.cached = true;
+        store.connection_record_diagnostic(&terminal).unwrap();
+    }
+    assert_eq!(
+        store.connection_diagnostic_storage(&link.id).unwrap()["totalRows"],
+        542
+    );
+    let historical = store
+        .connection_diagnostic_observation(
+            &link.id,
+            prepared_reference["diagnosticId"].as_str().unwrap(),
+            Some(2),
+        )
+        .unwrap();
+    assert_eq!(historical["archived"], true);
+    assert_eq!(historical["digest"], expected_hash);
+    assert_eq!(historical["diagnostic"], original["diagnostic"]);
+    assert_eq!(historical["validity"], original["validity"]);
+    assert_eq!(
+        store
+            .connection_command("prepare-scope-read", &fingerprint)
+            .unwrap(),
+        Some(receipt.clone())
+    );
+    assert_eq!(
+        serde_json::to_vec(&prepared_reference).unwrap(),
+        original_reference
+    );
+    drop(store);
+    let reopened = Store::open(database).unwrap();
+    assert_eq!(
+        reopened
+            .connection_diagnostic_observation(
+                &link.id,
+                prepared_reference["diagnosticId"].as_str().unwrap(),
+                Some(2)
+            )
+            .unwrap(),
+        historical
+    );
+    assert_eq!(
+        reopened
+            .connection_command("prepare-scope-read", &fingerprint)
+            .unwrap(),
+        Some(receipt)
+    );
+    let expired = reopened
+        .connection_diagnostics_run_at(
+            &link.id,
+            Some(prepared_reference["diagnosticId"].as_str().unwrap()),
+            61000,
+        )
+        .unwrap();
+    assert_eq!(expired["latest"]["id"], prepared_reference["diagnosticId"]);
+    assert_eq!(expired["latest"]["current"], false);
+    assert_eq!(
+        expired["latest"]["observedAtMs"],
+        prepared_reference["observedAtMs"]
+    );
+    assert_eq!(
+        expired["latest"]["effectiveValidUntilMs"],
+        prepared_reference["effectiveValidUntilMs"]
+    );
+}
