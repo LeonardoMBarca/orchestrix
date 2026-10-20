@@ -111,7 +111,7 @@ Continuity reconstructs a bounded basic Context Pack from durable objective/crit
 
 ## Capacity and remaining boundaries
 
-Local controls, snapshots, recovery and continuity require no model. Missing subscription quota stays unknown; API credits are unused in Subscription Only. Rate-limit/auth/provider failure does not manufacture a remaining percentage or enable fallback. [CAP-01/02/03 and CONT-01/02/03](../design/capacity-and-continuity.md) distinguish current local controls from future provider telemetry, reserves, contextual scheduling and orchestrator transfer.
+Local controls, snapshots, recovery and continuity require no model. Missing subscription quota stays unknown; API credits are unused in Subscription Only. Rate-limit/auth/provider failure does not manufacture a remaining percentage or enable fallback. [CAP-01/02/03 and CONT-01/02/03](../design/capacity-and-continuity.md) distinguish current local controls and exposed capacity observations from remaining telemetry gaps, future reserves, contextual scheduling and orchestrator transfer.
 
 Windows only; other OS transports explicitly return Unsupported. The scope is a canonical authorized database path, not a cross-user/network service or a sandbox against the same user/administrator. Physical database aliases/hard-link deployments and hostile filesystem writers are outside the initial profile. Git retains its regular bounded UTF-8 profile; compatible fixtures do not establish full-repository dogfooding, OX-014 integration/application or M0 completion.
 
