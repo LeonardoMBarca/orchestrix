@@ -1,5 +1,7 @@
 //! Host/IPC acceptance; these tests do not drive a native dialog or certify its UI.
 #![cfg(all(windows, feature = "test-fixtures"))]
+#[path = "repository_inspection_tests.rs"]
+mod repository_inspection_tests;
 use super::*;
 use orchestrix_core::{
     connection_refresh::{RefreshMode, RefreshSettings},

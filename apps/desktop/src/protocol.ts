@@ -11,6 +11,9 @@ export type Conversation={id:string,title:string,projectId?:string|null,messageC
 export type ConversationWork={runId:string,taskId?:string,attemptId?:string,workerId?:string,revision?:string};
 export type ConversationDetail={id:string,projectId?:string|null,messages:Message[],draft?:string|null,nextOrdinal:number,more:boolean,work:ConversationWork[]};
 export type Project={id:string,name:string,directory?:string};
+export type RepositoryPreflight={schemaVersion:1,profile:'regular-utf8-v1',baseOid:string,headOid:string,compatible:boolean,applicationEligible:boolean,complete:boolean,inventory:{files:number,bytes:number,largestFileBytes:number,regular:number,executables:number,links:number,submodules:number,oversized:number,binary:number,nonUtf8:number,secretPattern:number,excluded:number,contentInspected:number,contentSkipped:number},checkout:{clean:boolean,status:string,truncated:boolean,ignored:number,untracked:number},blockers:{code:string,count:number,examples:string[]}[],limits:{files:number,fileBytes:number,readBytes:number},modelCalled:false,authority:'inspection-only-revalidate-before-effects'};
+export type RepositoryInspectionResult={directoryGrant:string,report:RepositoryPreflight};
+export type GitStatusResult={route:'deterministic',output:string,truncated:boolean,modelCalled:false};
 export type DiagnosticStage={stage:string,state:string,source?:string,reason?:string,observedAtMs?:number};
 export type CapacityField<T>={state:'reported',value:T}|{state:'missing'|'null'|'invalid'};
 export type CapacityWindow={slot:'primary'|'secondary',state:'reported'|'missing'|'null'|'invalid',unit:'percent-of-window',usedPercent:CapacityField<number>,remainingPercent?:{value:number,origin:'derived',basis:'100-minus-used-percent'}|null,durationMinutes:CapacityField<number>,resetsAtSeconds:CapacityField<number>};
@@ -54,6 +57,8 @@ export type DesktopRequest=
  |{type:'approve-integration',commandId:string,expectedRevision:number,integrationId:string,candidateRevision:string,authorize:boolean}
  |{type:'apply-integration',commandId:string,expectedRevision:number,integrationId:string,candidateRevision:string,authorize:boolean}
  |{type:'artifact-text',artifactId:string,revision:string,path:null|string,offset:number,limit:number}
+ |{type:'inspect-repository',directoryGrant:string}
+ |{type:'git-status',directoryGrant:string}
  |{type:'prepare-task',draft:TaskDraft}
  |{type:'submit-task',commandId:string,preparationId:string,authorizeRuntime:boolean,authorizeChecks:boolean}
  |{type:'save-connection',commandId:string,label:string,version:string,executableGrant:string,homeGrant:string}

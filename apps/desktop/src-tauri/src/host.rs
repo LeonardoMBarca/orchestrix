@@ -10,7 +10,6 @@ use orchestrix_core::{
     daemon::{API_VERSION, Client, Operation, Request, RuntimeChoice},
     desktop::{DesktopRequest, Settings},
     evaluator::CheckSpec,
-    git::GitExecutor,
     integration_records::{ApplicationRequest, ApprovalRequest, IntegrationRequest},
     policy::{TaskClassification, TaskKind},
     review_records::{CorrectionRequest, ReviewBudget, ReviewRequest},
@@ -194,6 +193,12 @@ pub struct CheckDraft {
     deny_unknown_fields
 )]
 pub enum HostRequest {
+    InspectRepository {
+        directory_grant: String,
+    },
+    GitStatus {
+        directory_grant: String,
+    },
     Configurations {
         request: Box<orchestrix_core::configuration::ConfigurationRequest>,
     },
@@ -1259,6 +1264,29 @@ impl Host {
                 offset,
                 limit,
             }),
+            HostRequest::InspectRepository { directory_grant } => {
+                let root = self
+                    .editor
+                    .lock()
+                    .map_err(|_| "editor-lock")?
+                    .directory(&directory_grant)?;
+                self.repository_read(
+                    orchestrix_core::mechanical::QueryKind::RepositoryPreflight {
+                        repository: root,
+                        base_commit: None,
+                    },
+                )
+            }
+            HostRequest::GitStatus { directory_grant } => {
+                let root = self
+                    .editor
+                    .lock()
+                    .map_err(|_| "editor-lock")?
+                    .directory(&directory_grant)?;
+                self.repository_read(orchestrix_core::mechanical::QueryKind::GitStatus {
+                    repository: root,
+                })
+            }
             HostRequest::PrepareTask { draft } => self.prepare(*draft),
             HostRequest::DetectCodexCandidates => {
                 #[cfg(feature = "test-fixtures")]
@@ -1861,6 +1889,51 @@ impl Host {
         let revision = revision.ok_or("connection-binding-revision-required")?;
         self.linked_binding(connection_id, Some(revision))
     }
+    fn repository_read(
+        &self,
+        query: orchestrix_core::mechanical::QueryKind,
+    ) -> Result<Value, String> {
+        use orchestrix_core::repository_inspection::InspectionRequest;
+        let read_id = id("repository-read");
+        let started = std::time::Instant::now();
+        let mut result = self.call(Operation::RepositoryInspection {
+            request: InspectionRequest::Start {
+                id: read_id.clone(),
+                query: orchestrix_core::mechanical::Query {
+                    authorization_ref: id("directory-read-consent"),
+                    authorized: true,
+                    query,
+                },
+            },
+        })?;
+        loop {
+            match result["state"].as_str() {
+                Some("finished") => return Ok(result["result"].clone()),
+                Some("failed") => {
+                    return Err(result["error"]
+                        .as_str()
+                        .unwrap_or("repository-read-failed")
+                        .into());
+                }
+                Some("pending") => {}
+                _ => return Err("repository-read-response".into()),
+            }
+            if started.elapsed() > Duration::from_secs(110) {
+                let _ = self.call(Operation::RepositoryInspection {
+                    request: InspectionRequest::Cancel {
+                        id: read_id.clone(),
+                    },
+                });
+                return Err("repository-read-deadline".into());
+            }
+            std::thread::sleep(Duration::from_millis(100));
+            result = self.call(Operation::RepositoryInspection {
+                request: InspectionRequest::Inspect {
+                    id: read_id.clone(),
+                },
+            })?;
+        }
+    }
     fn prepare(&self, draft: TaskDraft) -> Result<Value, String> {
         if draft.correction_budget > 3 || draft.context_files.len() > 32 || draft.checks.len() > 16
         {
@@ -1911,9 +1984,28 @@ impl Host {
         {
             return Err(err("repository-worktree-database-separation"));
         }
-        let base = GitExecutor::new()
-            .and_then(|g| g.inspect_head(&repository))
-            .map_err(|_| "git-head-inspection")?;
+        // UI inspection grants no authority. Reinspect the complete snapshot
+        // before any authenticated metadata and pin the observed base exactly.
+        let report: orchestrix_core::git::RepositoryPreflight =
+            serde_json::from_value(self.repository_read(
+                orchestrix_core::mechanical::QueryKind::RepositoryPreflight {
+                    repository: repository.clone(),
+                    base_commit: None,
+                },
+            )?)
+            .map_err(|_| "repository-preflight-schema")?;
+        if !report.complete || !report.compatible {
+            return Err(format!(
+                "repository-preflight-blocked: {}",
+                report
+                    .blockers
+                    .iter()
+                    .map(|b| format!("{}({})", b.code, b.count))
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            ));
+        }
+        let base = report.base_oid;
         let mut policy = settings.policy;
         if let Some(mode) = draft.mode {
             policy.mode = mode;
@@ -2294,6 +2386,7 @@ fn compatible(snapshot: Value) -> Result<Value, String> {
         || !features.iter().any(|f| f == "configuration-v1")
         || !features.iter().any(|f| f == "diagnostic-history-v1")
         || !features.iter().any(|f| f == "connection-capacity-v1")
+        || !features.iter().any(|f| f == "repository-inspection-v1")
     {
         return Err(err("daemon-version-incompatible"));
     }

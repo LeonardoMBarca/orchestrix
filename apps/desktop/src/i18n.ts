@@ -10,6 +10,7 @@ import controls from '../../../prototypes/desktop/locales/chat-controls.json';
 import {connectionTranslations} from './connection-locales';
 import {diagnosticHistoryTranslations} from './diagnostic-history-locales';
 import {capacityTranslations} from './capacity-locales';
+import {repositoryTranslations} from './repository-locales';
 import {controlTranslations} from './ox016-locales';
 import {configurationTranslations} from './configuration-locales';
 export type Language = 'en'|'pt'|'es';
@@ -305,4 +306,4 @@ const extra: Record<string,[string,string]> = {
   'I authorize one runtime turn using my subscription.':['Autorizo um turno do runtime pela minha assinatura.','Autorizo un turno del runtime con mi suscripción.'],
   'A lost reply remains pending with the original command identity.':['Uma resposta perdida continua pendente com a identidade original.','Una respuesta perdida sigue pendiente con la identidad original.'],
 };
-export function translate(language:Language,text:string) { if(language==='en')return text;const revised=(capacityTranslations[text]??diagnosticHistoryTranslations[text]??configurationTranslations[text]??controlTranslations[text]??connectionTranslations[text]??extra[text])?.[language==='pt'?0:1];if(revised)return revised;for(const [pt,value] of Object.entries(catalog)){if(value.en===text)return language==='pt'?pt:value.es;}return text; }
+export function translate(language:Language,text:string) { if(language==='en')return text;const revised=(repositoryTranslations[text]??capacityTranslations[text]??diagnosticHistoryTranslations[text]??configurationTranslations[text]??controlTranslations[text]??connectionTranslations[text]??extra[text])?.[language==='pt'?0:1];if(revised)return revised;for(const [pt,value] of Object.entries(catalog)){if(value.en===text)return language==='pt'?pt:value.es;}return text; }
