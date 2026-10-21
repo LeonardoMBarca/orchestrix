@@ -311,6 +311,8 @@ Preservar a galeria de oito temas e a escolha persistente de idioma como configu
 
 ### OX-017 Alpha de uso real
 
+**Preflight do próprio projeto — 20/10:** operação tipada/Core e preparação Desktop inspecionam a base completa antes de metadata, com status Git determinístico e elegibilidade separada de aplicação. Snapshot `3502676`: 573 arquivos/54.332.380 bytes; 26 maiores que 1 MiB, 29 binários entre os 547 conteúdos lidos e 129 correspondências do sanitizador conservador. Não são contagens disjuntas nem prova de credenciais reais; os 26 conteúdos grandes não foram classificados. O layout existente de split commit-graphs recebeu suporte restrito, mantendo links/profundidade/budget. A execução real permanece bloqueada pelo perfil textual, sem consumir metadata/inferência. Próximo incremento necessário: base opaca exata e versionada para conteúdo intocado, com os mesmos guards de alteração autorizada, captura/revisão/correção/recuperação/aplicação; não apenas afrouxar o validador ou copiar um recorte. As provas efetivamente concluídas ficam no [status](DEVELOPMENT_STATUS.md).
+
 **Parcial — 17/10:** pacote normal e ciclo local current-user instalar/abrir/reabrir/reinstalar a mesma versão/desinstalar preservando dados foram validados nesta máquina Windows. Limpeza do resíduo redirecionado, máquina limpa, upgrade entre versões e distribuição assinada não foram certificados. Isso não substitui dogfooding no próprio Orchestrix, fluxos representativos por modo, avaliação ampliada ou os demais aceites do alpha.
 
 Usar o Desktop para uma alteração pequena no próprio Orchestrix, documentar o fluxo e produzir instruções de instalação local. Manter CI com fake/fixtures e testes live opt-in.

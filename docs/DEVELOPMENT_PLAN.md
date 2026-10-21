@@ -290,6 +290,8 @@ O Desktop controla um daemon separado. M2 oferece a suspensão mínima de novas 
 
 **Demonstração:** executar uma alteração real no próprio Orchestrix sem transportar prompts manualmente, com inspeção e correção no workspace. Comparar a implementação ao protótipo e registrar avaliação de uso. Este é o primeiro alpha de uso pessoal, com a modalidade de autenticação validada em M0.
 
+O primeiro dogfooding usa o snapshot completo em destino isolado, após [preflight tipado](contracts/git-worktrees.md#complete-repository-preflight) e ensaio offline. O preflight do snapshot `3502676` encontrou conteúdo fora do perfil textual; isso bloqueia a prova real, não autoriza remover arquivos ou aumentar limites. Próximo recorte técnico: preservação opaca de base intocada (binários, textos grandes e padrões conservadores), com contrato/artefato versionado coerente em captura, revisão, correção, recuperação e aplicação. Somente depois de comprovar esse perfil cabe pedir opt-in específico para o fluxo Codex; OX-017 continua parcial.
+
 ### M3 Pool de execução
 
 Adicionar scheduler de DAG, múltiplas Connections, concorrência por projeto/conexão/grupo, locks semânticos com nomes exatos, retries com orçamento, cooldown e integração serial. Ampliar a suspensão mínima de M2 para políticas de admissão e controle global do scheduler, com os escopos de projeto, conexão e grupo de capacidade explícitos. Implementar o segundo adapter validado; completar Antigravity conforme seu spike.
