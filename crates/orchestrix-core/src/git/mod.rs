@@ -3,13 +3,17 @@ mod capture;
 mod executor;
 pub(crate) mod integration;
 pub(crate) mod paths;
+mod preflight;
 mod worktrees;
 
 use crate::persistence::StoreError;
 pub use capture::*;
 pub use executor::GitExecutor;
+pub use preflight::{RepositoryPreflight, inspect_repository};
 use std::fmt;
 pub use worktrees::{CreateWorktree, GitFaultPoint, WorktreeService};
+const SOURCE_FILES: usize = 4096;
+const SOURCE_BYTES: usize = 64 * crate::git_records::MAX_FILE_BYTES;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum GitError {

@@ -25,6 +25,9 @@ pub struct Request {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "kebab-case", deny_unknown_fields)]
 pub enum Operation {
+    RepositoryInspection {
+        request: crate::repository_inspection::InspectionRequest,
+    },
     Connections {
         request: Box<crate::connections::ConnectionRequest>,
     },
@@ -298,6 +301,7 @@ impl ControlDiagnostics {
 }
 fn operation_tag(operation: &Operation) -> &'static str {
     match operation {
+        Operation::RepositoryInspection { .. } => "repository-inspection",
         Operation::Connections { .. } => "connections",
         Operation::PrepareIntegration { .. } => "integration-prepare",
         Operation::RevalidateIntegration { .. } => "integration-revalidate",
@@ -424,6 +428,7 @@ pub fn serve_with_startup_observer(
         .connection_interrupt_pending()
         .map_err(|_| "connection-read-recovery")?;
     let mut connections = crate::connections::ConnectionService::new();
+    let mut repository_reads = crate::repository_inspection::RepositoryInspectionService::default();
     let mut active: Option<Active> = None;
     let mut shutdown: Option<Shutdown> = None;
     let mut diagnostics = ControlDiagnostics {
@@ -432,6 +437,10 @@ pub fn serve_with_startup_observer(
         ..ControlDiagnostics::default()
     };
     loop {
+        repository_reads.drain();
+        if shutdown.is_some() {
+            repository_reads.cancel_all();
+        }
         connections.drain(&mut store)?;
         if shutdown.is_none() {
             connections.tick(&mut store)?;
@@ -480,6 +489,7 @@ pub fn serve_with_startup_observer(
         if let Some(shutdown) = &shutdown
             && active.is_none()
             && connections.is_idle()
+            && repository_reads.is_idle()
         {
             store
                 .daemon_finish(
@@ -510,14 +520,21 @@ pub fn serve_with_startup_observer(
             Ok(bytes) => match serde_json::from_slice::<Request>(&bytes) {
                 Ok(request) if request.api_version == API_VERSION => {
                     operation = operation_tag(&request.operation);
-                    handle(
-                        &mut store,
-                        database,
-                        request.operation,
-                        &mut active,
-                        &mut shutdown,
-                        &mut connections,
-                    )
+                    if let Operation::RepositoryInspection { request } = &request.operation {
+                        match repository_reads.handle(request, shutdown.is_some()) {
+                            Ok(value) => Response::value(value),
+                            Err(code) => Response::error(&code),
+                        }
+                    } else {
+                        handle(
+                            &mut store,
+                            database,
+                            request.operation,
+                            &mut active,
+                            &mut shutdown,
+                            &mut connections,
+                        )
+                    }
                 }
                 Ok(_) => Response::error("api-version"),
                 Err(_) => Response::error("request-schema"),
@@ -632,7 +649,8 @@ fn handle_inner(
                 "control-settings-v1",
                 "configuration-v1",
                 "diagnostic-history-v1",
-                "connection-capacity-v1"
+                "connection-capacity-v1",
+                "repository-inspection-v1"
             ]);
             return Ok(snapshot);
         }
@@ -654,7 +672,7 @@ fn handle_inner(
                 return Err("query-not-authorized".into());
             }
             match &query.query {
-                crate::mechanical::QueryKind::GitStatus{..}|crate::mechanical::QueryKind::GitDiff{..}|crate::mechanical::QueryKind::FileExists{..}=>return Err("filesystem-query-not-supported-by-control-loop".into()),
+                crate::mechanical::QueryKind::RepositoryPreflight{..}|crate::mechanical::QueryKind::GitStatus{..}|crate::mechanical::QueryKind::GitDiff{..}|crate::mechanical::QueryKind::FileExists{..}=>return Err("filesystem-query-not-supported-by-control-loop".into()),
                 crate::mechanical::QueryKind::CheckResults{worker_id}|crate::mechanical::QueryKind::ProcessStatus{worker_id}=>return store.load().map_err(|_|"database")?.workers().get(worker_id).map(|w|json!({"route":"deterministic","result":w.summary(),"historical":true,"currentVerification":"not-revalidated","modelCalled":false})).ok_or_else(||"worker-not-found".into()),
             }
         }

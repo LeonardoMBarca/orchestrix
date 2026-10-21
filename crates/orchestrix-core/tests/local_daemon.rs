@@ -802,6 +802,150 @@ impl Drop for Daemon {
         }
     }
 }
+
+#[test]
+fn repository_reads_are_shared_nonblocking_bounded_and_never_dispatch_a_runtime() {
+    use orchestrix_core::{
+        mechanical::{Query, QueryKind},
+        repository_inspection::InspectionRequest,
+    };
+    let f = Fixture::new();
+    let daemon = f.start();
+    let other = Client::new(&f.database).unwrap();
+    let query = Query {
+        authorized: true,
+        authorization_ref: "local-read-consent".into(),
+        query: QueryKind::RepositoryPreflight {
+            repository: f.repository.clone(),
+            base_commit: Some(f.base.clone()),
+        },
+    };
+    let start = Operation::RepositoryInspection {
+        request: InspectionRequest::Start {
+            id: "inspect-one".into(),
+            query: query.clone(),
+        },
+    };
+    let mut denied = query.clone();
+    denied.authorized = false;
+    assert!(
+        !daemon
+            .send(Operation::RepositoryInspection {
+                request: InspectionRequest::Start {
+                    id: "not-authorized".into(),
+                    query: denied
+                }
+            })
+            .ok
+    );
+    assert_eq!(daemon.ok(start.clone())["state"], "pending");
+    let snapshot = daemon.ok(Operation::Snapshot);
+    assert!(snapshot["activeWorkerId"].is_null());
+    assert!(
+        snapshot["features"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|v| v == "repository-inspection-v1")
+    );
+    let mut conflicting = query.clone();
+    conflicting.authorization_ref = "another-consent".into();
+    assert_eq!(
+        daemon
+            .send(Operation::RepositoryInspection {
+                request: InspectionRequest::Start {
+                    id: "inspect-one".into(),
+                    query: conflicting
+                }
+            })
+            .error
+            .as_deref(),
+        Some("repository-read-id-conflict")
+    );
+    let deadline = Instant::now() + Duration::from_secs(110);
+    let result = loop {
+        let response = other
+            .request(&Request {
+                api_version: API_VERSION,
+                operation: Operation::RepositoryInspection {
+                    request: InspectionRequest::Inspect {
+                        id: "inspect-one".into(),
+                    },
+                },
+            })
+            .unwrap();
+        assert!(response.ok, "{:?}", response.error);
+        if response.result["state"] != "pending" {
+            break response.result;
+        }
+        // Inspection does not monopolize control, suspend worker admissions,
+        // reserve an attempt, or trigger metadata/model execution.
+        assert!(daemon.ok(Operation::Snapshot)["activeWorkerId"].is_null());
+        assert!(Instant::now() < deadline);
+        std::thread::sleep(Duration::from_millis(50));
+    };
+    assert_eq!(result["state"], "finished", "{result}");
+    assert_eq!(result["result"]["baseOid"], f.base);
+    assert_eq!(result["result"]["compatible"], true);
+    assert_eq!(result["result"]["applicationEligible"], true);
+    assert_eq!(result["modelCalled"], false);
+    assert_eq!(
+        daemon.ok(start),
+        result,
+        "same read ID does not execute another inspection"
+    );
+    let status = daemon.ok(Operation::RepositoryInspection {
+        request: InspectionRequest::Start {
+            id: "git-status".into(),
+            query: Query {
+                query: QueryKind::GitStatus {
+                    repository: f.repository.clone(),
+                },
+                ..query
+            },
+        },
+    });
+    assert_eq!(status["state"], "pending");
+    let deadline = Instant::now() + Duration::from_secs(110);
+    loop {
+        let result = daemon.ok(Operation::RepositoryInspection {
+            request: InspectionRequest::Inspect {
+                id: "git-status".into(),
+            },
+        });
+        if result["state"] != "pending" {
+            assert_eq!(result["state"], "finished", "{result}");
+            assert_eq!(result["result"]["output"], "");
+            assert_eq!(result["result"]["modelCalled"], false);
+            break;
+        }
+        assert!(Instant::now() < deadline);
+        std::thread::sleep(Duration::from_millis(50));
+    }
+    assert_eq!(f.dispatches(), 0);
+    assert_eq!(f.native_threads(), 0);
+    assert!(
+        daemon.ok(Operation::Snapshot)["workers"]
+            .as_array()
+            .unwrap()
+            .is_empty()
+    );
+    daemon.stop();
+    let reopened = f.start();
+    assert_eq!(
+        reopened
+            .send(Operation::RepositoryInspection {
+                request: InspectionRequest::Inspect {
+                    id: "inspect-one".into()
+                }
+            })
+            .error
+            .as_deref(),
+        Some("repository-read-not-found-reinspect-explicitly")
+    );
+    assert_eq!(f.dispatches(), 0);
+    reopened.stop();
+}
 fn binary() -> PathBuf {
     PathBuf::from(env!("CARGO_BIN_EXE_orchestrix-runtime-fixture"))
 }

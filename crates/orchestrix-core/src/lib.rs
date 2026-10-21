@@ -22,6 +22,7 @@ pub mod policy;
 pub mod policy_portability;
 pub mod recovery;
 pub mod recovery_guardian;
+pub mod repository_inspection;
 pub mod review;
 pub mod review_records;
 pub mod runtime;

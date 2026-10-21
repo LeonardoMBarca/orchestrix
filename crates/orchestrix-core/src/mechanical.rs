@@ -13,6 +13,10 @@ use std::path::PathBuf;
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case", tag = "kind", deny_unknown_fields)]
 pub enum QueryKind {
+    RepositoryPreflight {
+        repository: PathBuf,
+        base_commit: Option<String>,
+    },
     GitStatus {
         repository: PathBuf,
     },
@@ -42,6 +46,31 @@ pub fn execute(store: Option<&mut Store>, input: &Query) -> Result<Value, Worker
         return Err(WorkerError("query-not-authorized"));
     }
     match &input.query {
+        QueryKind::RepositoryPreflight {
+            repository,
+            base_commit,
+        } => {
+            let report = git::inspect_repository(
+                repository,
+                base_commit.as_deref(),
+                &crate::runtime::CancellationToken::new(),
+            )
+            .map_err(|error| {
+                WorkerError(match error {
+                    git::GitError::Deadline => "repository-inspection-deadline",
+                    git::GitError::Limit => "repository-inspection-limit",
+                    git::GitError::OutputLimit => "repository-inspection-output-limit",
+                    git::GitError::Unsupported => "repository-inspection-unsupported",
+                    git::GitError::InconsistentCapture => "repository-inspection-inconsistent",
+                    git::GitError::Process => "repository-inspection-process",
+                    git::GitError::Base => "repository-inspection-base",
+                    git::GitError::Path => "repository-inspection-path",
+                    git::GitError::Pending => "repository-inspection-cancelled",
+                    _ => "repository-inspection-rejected",
+                })
+            })?;
+            serde_json::to_value(report).map_err(|_| WorkerError("query-output"))
+        }
         QueryKind::GitStatus { repository } | QueryKind::GitDiff { repository } => {
             let root = git::paths::canonical_directory(repository)?;
             let executor = GitExecutor::new()?;

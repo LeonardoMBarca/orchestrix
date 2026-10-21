@@ -29,8 +29,8 @@ pub struct CaptureLimits {
 impl Default for CaptureLimits {
     fn default() -> Self {
         Self {
-            inventory_files: 4096,
-            read_bytes: 64 * MAX_FILE_BYTES,
+            inventory_files: super::SOURCE_FILES,
+            read_bytes: super::SOURCE_BYTES,
             file_bytes: MAX_FILE_BYTES,
             captured_files: MAX_CAPTURE_FILES,
             artifact_bytes: MAX_CAPTURE_BYTES,
@@ -258,7 +258,7 @@ fn read_working(root: &Path, relative: &str, maximum: usize) -> GitResult<Option
         stamp: before,
     }))
 }
-fn exclusion(path: &str) -> Option<(String, &'static str)> {
+pub(super) fn exclusion(path: &str) -> Option<(String, &'static str)> {
     let parts: Vec<_> = path.split('/').collect();
     for (position, part) in parts.iter().enumerate() {
         let lower = part.to_ascii_lowercase();
@@ -341,6 +341,71 @@ fn inspect(
     limits: CaptureLimits,
 ) -> GitResult<Snapshot> {
     inspect_at(executor, root, base, base, limits)
+}
+// Read-only admission inspection uses the capture validator itself, including
+// index flags, attributes, links and coherent repeated observations.
+pub(super) fn inspect_preparation(
+    executor: &GitExecutor,
+    root: &Path,
+    base: &str,
+    base_hashes: &BTreeMap<String, String>,
+) -> GitResult<(bool, bool)> {
+    let limits = CaptureLimits::default();
+    let first = inspect(executor, root, base, limits)?;
+    for file in first.files.values().flatten() {
+        text_content(file.bytes.clone(), "100644")?;
+    }
+    if inspect(executor, root, base, limits)? != first
+        || inspect(executor, root, base, limits)? != first
+    {
+        return Err(GitError::InconsistentCapture);
+    }
+    let clean = first.base == first.index
+        && first.untracked.is_empty()
+        && first.exclusions.is_empty()
+        && first.files.len() == base_hashes.len()
+        && first.files.iter().all(|(path, file)| {
+            file.as_ref().is_some_and(|file| {
+                base_hashes
+                    .get(path)
+                    .is_some_and(|hash| *hash == content_hash(&file.bytes))
+            })
+        });
+    Ok((first.exclusions.is_empty(), clean))
+}
+pub(super) fn profile_attributes(
+    executor: &GitExecutor,
+    root: &Path,
+    included: &[String],
+    source: Option<&str>,
+) -> GitResult<Vec<u8>> {
+    let mut attributes = Vec::new();
+    for batch in included.chunks(16) {
+        let mut command = args(&["check-attr", "-z", "--all"]);
+        if let Some(source) = source {
+            if !super::worktrees::valid_oid(source) {
+                return Err(GitError::Base);
+            }
+            command.push(format!("--source={source}").into());
+        }
+        command.push("--".into());
+        command.extend(batch.iter().map(OsString::from));
+        let observed = executor.run(root, &command)?.checked()?;
+        let fields = nul_entries(&observed)?;
+        if fields.len() % 3 != 0 {
+            return Err(GitError::Process);
+        }
+        for triple in fields.chunks(3) {
+            if matches!(triple[1], b"filter" | b"working-tree-encoding" | b"ident") {
+                return Err(GitError::Unsupported);
+            }
+        }
+        if attributes.len().saturating_add(observed.len()) > 8 * MAX_FILE_BYTES {
+            return Err(GitError::Limit);
+        }
+        attributes.extend(observed);
+    }
+    Ok(attributes)
 }
 fn inspect_at(
     executor: &GitExecutor,
@@ -425,23 +490,7 @@ fn inspect_at(
     if exclusions.len() > MAX_CAPTURE_FILES {
         return Err(GitError::Limit);
     }
-    let mut attributes = Vec::new();
-    // Small batches keep Windows command lines bounded, including long paths.
-    for batch in included.chunks(16) {
-        let mut command = args(&["check-attr", "-z", "--all", "--"]);
-        command.extend(batch.iter().map(OsString::from));
-        let observed = executor.run(root, &command)?.checked()?;
-        let fields = nul_entries(&observed)?;
-        if fields.len() % 3 != 0 {
-            return Err(GitError::Process);
-        }
-        for triple in fields.chunks(3) {
-            if matches!(triple[1], b"filter" | b"working-tree-encoding" | b"ident") {
-                return Err(GitError::Unsupported);
-            }
-        }
-        attributes.extend(observed);
-    }
+    let attributes = profile_attributes(executor, root, &included, None)?;
     let mut files = BTreeMap::new();
     let mut read_bytes = 0usize;
     for path in included {

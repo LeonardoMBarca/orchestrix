@@ -122,6 +122,7 @@ pub struct GitExecutor {
     binary: PathBuf,
     private: PathBuf,
     scope: Option<orchestrix_process::named_job::JobScope>,
+    read_budget: Option<(Instant, Duration, crate::runtime::CancellationToken)>,
 }
 
 pub(super) struct CaptureHead {
@@ -195,6 +196,7 @@ impl GitExecutor {
             binary,
             private: private.ok_or(GitError::Collision)?,
             scope,
+            read_budget: None,
         };
         let version = executor.run(&parent, &strings(&["--version"]))?.checked()?;
         let version = std::str::from_utf8(&version).map_err(|_| GitError::Unsupported)?;
@@ -223,6 +225,15 @@ impl GitExecutor {
     pub(crate) fn run(&self, cwd: &Path, args: &[OsString]) -> GitResult<GitOutput> {
         self.run_bounded(cwd, args, None, DEADLINE, OUTPUT_LIMIT)
     }
+    pub(super) fn with_read_budget(
+        mut self,
+        start: Instant,
+        lifetime: Duration,
+        cancel: crate::runtime::CancellationToken,
+    ) -> Self {
+        self.read_budget = Some((start, lifetime, cancel));
+        self
+    }
 
     pub(crate) fn run_with_input(
         &self,
@@ -244,6 +255,18 @@ impl GitExecutor {
         deadline: Duration,
         limit: usize,
     ) -> GitResult<GitOutput> {
+        let deadline = if let Some((started, lifetime, cancel)) = &self.read_budget {
+            if cancel.is_cancelled() {
+                return Err(GitError::Pending);
+            }
+            let remaining = lifetime
+                .checked_sub(started.elapsed())
+                .filter(|d| !d.is_zero())
+                .ok_or(GitError::Deadline)?;
+            deadline.min(remaining)
+        } else {
+            deadline
+        };
         #[cfg(all(test, windows))]
         let _diagnostic_timing = test_timing::Call::start(args);
         let cwd = canonical_directory(cwd)?;
@@ -1039,8 +1062,9 @@ pub(crate) mod test_timing {
 
 /// Inspect the supported loose/pack/info object layout without following links.
 /// The common store may be absent in a linked worktree's administrative folder.
-/// Deeper layouts (such as split commit-graph directories) are outside this
-/// bounded profile; the caller must preserve them and report Unsupported.
+/// The sole deeper layout admitted is Git's split commit-graph directory under
+/// objects/info. Its children must be regular files and share the same total
+/// entry budget; arbitrary/deeper directories and links remain unsupported.
 fn inspect_object_store(root: &Path) -> GitResult<()> {
     reject_links(root)?;
     match fs::symlink_metadata(root) {
@@ -1056,7 +1080,15 @@ fn inspect_object_store(root: &Path) -> GitResult<()> {
         if metadata.is_dir() {
             for entry in fs::read_dir(&path).map_err(|_| GitError::Io)? {
                 let path = entry.map_err(|_| GitError::Io)?.path();
-                if !object_entry(&path, &mut count)?.is_file() {
+                let metadata = object_entry(&path, &mut count)?;
+                if metadata.is_dir() && path == root.join("info/commit-graphs") {
+                    for entry in fs::read_dir(&path).map_err(|_| GitError::Io)? {
+                        let path = entry.map_err(|_| GitError::Io)?.path();
+                        if !object_entry(&path, &mut count)?.is_file() {
+                            return Err(GitError::Unsupported);
+                        }
+                    }
+                } else if !metadata.is_file() {
                     return Err(GitError::Unsupported);
                 }
             }

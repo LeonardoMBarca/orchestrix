@@ -3,10 +3,9 @@ use super::{CaptureLimits, GitError, GitExecutor, GitResult, capture, paths};
 use crate::domain::*;
 use crate::git_records::{
     CapturedArtifact, GitCommand, MAX_FILE_BYTES, WorktreeIntent, WorktreeObservation,
-    WorktreeRecord, WorktreeState, content_hash, relative_file_path,
+    WorktreeRecord, WorktreeState, content_hash,
 };
 use crate::persistence::{Command, Disposition, FaultPoint, Request, Store};
-use crate::persistence_privacy::sanitize_text;
 use serde_json::json;
 use std::{
     collections::{BTreeMap, BTreeSet},
@@ -1177,7 +1176,7 @@ fn path_output(bytes: Vec<u8>) -> GitResult<PathBuf> {
 fn path_string(path: &Path) -> GitResult<String> {
     path.to_str().map(str::to_owned).ok_or(GitError::Path)
 }
-fn valid_oid(value: &str) -> bool {
+pub(super) fn valid_oid(value: &str) -> bool {
     matches!(value.len(), 40 | 64)
         && value
             .bytes()
@@ -1279,11 +1278,7 @@ pub(super) fn read_base(
             || metadata[0] != "100644"
             || metadata[1] != "blob"
             || !valid_oid(metadata[2])
-            || !relative_file_path(path)
-            || path
-                .chars()
-                .any(|c| c.is_control() || "<>\"|?*".contains(c))
-            || !aliases.insert(path.to_lowercase())
+            || !super::preflight::source_path(path, &mut aliases)
         {
             return Err(GitError::Unsupported);
         }
@@ -1291,15 +1286,18 @@ pub(super) fn read_base(
             .run(root, &args_of(&["cat-file", "blob", metadata[2]]))?
             .checked()?;
         total = total.checked_add(bytes.len()).ok_or(GitError::Limit)?;
-        if bytes.len() > MAX_FILE_BYTES || total > 64 * MAX_FILE_BYTES || files.len() >= 4096 {
+        if bytes.len() > MAX_FILE_BYTES
+            || total > super::SOURCE_BYTES
+            || files.len() >= super::SOURCE_FILES
+        {
             return Err(GitError::Limit);
         }
-        let text = std::str::from_utf8(&bytes).map_err(|_| GitError::Unsupported)?;
-        if text.contains('\0') {
-            return Err(GitError::Unsupported);
-        }
-        if sanitize_text(text).map_err(|_| GitError::Limit)? != text {
-            return Err(GitError::SecretContent);
+        if let Some(issue) = super::preflight::content_issue(&bytes)? {
+            return Err(if issue == "secret-pattern" {
+                GitError::SecretContent
+            } else {
+                GitError::Unsupported
+            });
         }
         if files.insert(path.into(), bytes).is_some() {
             return Err(GitError::Unsupported);

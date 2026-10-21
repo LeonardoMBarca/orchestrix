@@ -8,6 +8,14 @@ One dedicated daemon per canonical database/user scope owns operational access a
 
 API v1 uses bounded JSON request/reply frames over a user-restricted local named pipe. `Request { api_version: 1, operation: { type, ... } }` and `Response { api_version, ok, error, result }` are shared Rust application types. Provider frames, credentials, arbitrary shell commands and client-supplied supervisor assertions are not API commands.
 
+### Bounded repository inspection
+
+`repository-inspection-v1` adds `RepositoryInspection { request: Start | Inspect | Cancel }`. Start carries a stable local read ID and an explicitly authorized mechanical `RepositoryPreflight` or `GitStatus` query. Other filesystem/shell queries are not accepted by this service. Native callers resolve a real folder grant on the host; a renderer path string is insufficient.
+
+One ephemeral read thread runs independently of the serial worker slot and SQLite writers. The control loop acknowledges/polls bounded results; Snapshot, cancellation and recovery remain available during Git. At most four completed/pending results are retained (one active); a conflicting ID is refused, another active read reports busy, and the same ID/query returns its retained result. Read IDs are not execution receipts or durable authority: restart/eviction requires a new explicit inspection, without replay. Shutdown cancels reads and observes closure under the daemon's existing final deadline. The preflight's 90-second total/per-command bounds are defined in the [Git contract](git-worktrees.md#complete-repository-preflight).
+
+Standalone `query` can execute the same local preflight without opening a database. Direct synchronous filesystem `Operation::Query` remains refused in the daemon control loop. Desktop `inspect-repository`/`git-status` wait on the native background bridge, not the renderer. Preparing a task freshly repeats preflight before authenticated metadata, pins its base and refuses incompatible/incomplete evidence; the displayed prior report cannot bypass this check. Neither inspection nor status creates a conversation, attempt, metadata round or model turn.
+
 ### Capacity observation extension
 
 The additive `connection-capacity-v1` feature is required by this Desktop. Existing authorized Connections diagnostics carry optional typed capacity observations in schema-2 results; legacy schema-1 results remain valid without invented telemetry. Full reports and exact observation queries expose facts on demand, compact polling/pages omit bucket bodies. No new read timer or RPC command is added. Permission false can be a successful metadata observation while execution stays unavailable; transport/authentication failures remain separate. Preparation carries the exact selected binding/project-scope evidence, and Core revalidates at admission. See the [pinned mapping and limits](../design/capacity-and-continuity.md#codex-cap-01-mapping--pinned-alpha172).
