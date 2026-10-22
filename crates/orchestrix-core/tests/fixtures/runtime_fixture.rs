@@ -20,6 +20,22 @@ fn main() {
         ));
         return;
     }
+    const OPAQUE_DOC_APPEND: &str = "
+## Workspace access and explicit context
+
+A Context Pack selects the content supplied by Orchestrix. It is not a read sandbox: runtime tools may read other materialized workspace files. Preserving a file locally does not authorize adding its content to a prompt or editing it.
+";
+    if args.first().map(String::as_str) == Some("--check-opaque-document") {
+        let text = std::fs::read("docs/CONTEXT_OWNERSHIP.md").unwrap();
+        let valid = text
+            .strip_suffix(OPAQUE_DOC_APPEND.as_bytes())
+            .is_some_and(|base| {
+                args.get(1).is_some_and(|expected| {
+                    *expected == orchestrix_core::git_records::content_hash(base)
+                })
+            });
+        std::process::exit(if valid { 0 } else { 1 });
+    }
     if args.first().map(String::as_str) == Some("--check-fixture") {
         let expected = args.get(1).expect("explicit expected fixture bytes");
         std::process::exit(
@@ -469,6 +485,13 @@ fn main() {
                         )
                         .unwrap();
                     }
+                }
+                if scenario == "opaque-document" && prompt.contains("opaque-document:") {
+                    let path = cwd.join("docs/CONTEXT_OWNERSHIP.md");
+                    let mut bytes = std::fs::read(&path).unwrap();
+                    assert!(!bytes.ends_with(OPAQUE_DOC_APPEND.as_bytes()));
+                    bytes.extend_from_slice(OPAQUE_DOC_APPEND.as_bytes());
+                    std::fs::write(path, bytes).unwrap();
                 }
                 if scenario == "review-implementation" {
                     std::fs::write(

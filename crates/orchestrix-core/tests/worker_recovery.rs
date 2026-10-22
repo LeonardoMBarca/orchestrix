@@ -71,6 +71,7 @@ impl Fixture {
         let mut policy = PolicyDocument::default();
         policy.mode_defaults.fallback = Some(Fallback::Compatible);
         ManualTaskRequest {
+            editable_paths: None,
             schema_version: 1,
             id: "recovery-worker".into(),
             project_id: "recovery-project".into(),

@@ -84,6 +84,14 @@ impl ReviewPipeline {
             ))
             .ok_or(WorkerError("artifact"))?
             .clone();
+        // V2 presents the exact base-to-working patch, not another staged
+        // result. The initial integration profile also refuses staged edits.
+        // Refuse before metadata rather than approving unseen index content.
+        if artifact.preservation.is_some()
+            && artifact.files.iter().any(|file| file.base != file.index)
+        {
+            return Err(WorkerError("review-staged-source-outside-profile"));
+        }
         let first = state
             .reviews()
             .values()
@@ -192,7 +200,20 @@ impl ReviewPipeline {
             return Err(WorkerError("unsupported-review-control"));
         }
         let context_id = format!("review-context-{suffix}");
-        let source_text=json!({"artifact_revision":artifact.revision,"artifact":artifact,"checks":checks,"implementation_instructions":source.intent.context["sources"],"implementation_constraints":source.intent.context["constraints"]}).to_string();
+        let mut review_artifact = json!(artifact);
+        if let Some(preservation) = &artifact.preservation {
+            review_artifact["preservation"] = json!({"schema_version":2,"base_oid":preservation.base_oid,"tree_oid":preservation.tree_oid,"inventory_sha256":content_hash(&serde_json::to_vec(preservation).map_err(|_|WorkerError("review-preservation"))?),"files":preservation.entries.len(),"bytes":preservation.entries.iter().map(|e|e.size).sum::<u64>(),"editable_paths":preservation.editable_paths,"verified":true,"runtime_read_confinement":false});
+            // The exact full-file patch already carries the authorized textual
+            // evidence. Do not spend the review budget repeating three bodies.
+            // This is explicitly a projection; its revision still references
+            // the original immutable artifact, not a hash of this JSON view.
+            review_artifact["evidence_projection"] = json!("exact-patch-and-version-identities-v2");
+            review_artifact["files"] = json!(artifact.files.iter().map(|file| {
+                let version = |value: &Option<crate::git_records::FileContent>| value.as_ref().map(|content| json!({"sha256":content.sha256,"bytes":content.content.len(),"mode":content.mode}));
+                json!({"path":file.path,"base":version(&file.base),"index":version(&file.index),"worktree":version(&file.worktree),"untracked":file.untracked})
+            }).collect::<Vec<_>>());
+        }
+        let source_text=json!({"artifact_revision":artifact.revision,"artifact":review_artifact,"checks":checks,"implementation_instructions":source.intent.context["sources"],"implementation_constraints":source.intent.context["constraints"]}).to_string();
         let mut sources = vec![ContextSource {
             identity: ContextSourceIdentity {
                 reference: format!("artifact-{}", &artifact.revision[..24]),
@@ -533,7 +554,12 @@ impl ReviewPipeline {
             review_id: review_id.into(),
             authorization_ref: authorization_ref.into(),
             task: crate::worker::ManualTaskRequest {
-                schema_version: 1,
+                editable_paths: worker.intent.editable_paths.clone(),
+                schema_version: if worker.intent.editable_paths.is_some() {
+                    2
+                } else {
+                    1
+                },
                 id: new_id.into(),
                 project_id: worker.intent.project_id.clone(),
                 repository_id: worker.intent.repository_id.clone(),
@@ -619,6 +645,7 @@ impl ReviewPipeline {
         if input.task.project_id != source.intent.project_id
             || input.task.repository_id != source.intent.repository_id
             || input.task.base_commit != source.intent.base_oid
+            || input.task.editable_paths != source.intent.editable_paths
             || input.task.repository_directory != Path::new(&worktree.intent.main_repository)
             || input.task.authorized_worktree_directory
                 != Path::new(&worktree.intent.authorized_root)
@@ -737,6 +764,7 @@ pub(crate) fn materialize_correction(
         .ok_or(WorkerError("correction-artifact"))?;
     if !artifact.validate()
         || artifact.base_oid != worktree.intent.base_oid
+        || artifact.preservation != worktree.intent.preservation
         || artifact.run_id != worktree.intent.run_id
         || artifact.task_id != worktree.intent.task_id
     {

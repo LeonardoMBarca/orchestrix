@@ -335,6 +335,7 @@ mod tests {
         let before = FileContent::new("before\n".into(), "100644".into()).unwrap();
         let after = FileContent::new("after\n".into(), "100644".into()).unwrap();
         let mut artifact = CapturedArtifact {
+            preservation: None,
             id: "artifact".into(),
             revision: "0".repeat(64),
             operation_id: "operation".into(),

@@ -425,6 +425,11 @@ fn validate_authorization(reference: &Option<String>) -> PolicyResult<()> {
     }
     Ok(())
 }
+/// Eligibility only; the host still grants and verifies filesystem access.
+pub fn context_path_eligible(path: &str) -> bool {
+    valid_path(path) && !excluded_path(path)
+}
+
 fn valid_path(path: &str) -> bool {
     !path.is_empty()
         && path.len() <= 512

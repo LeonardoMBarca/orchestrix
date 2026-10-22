@@ -25,7 +25,15 @@ fn bindings(state: &SavedState, intent: &WorktreeIntent) -> StoreResult<()> {
         .iter()
         .find(|a| a.id().as_str() == intent.attempt_id)
         .ok_or(DomainError::UnknownEntity)?;
-    if project.repository().id().as_str() != intent.repository_id
+    if state
+        .workers
+        .values()
+        .find(|w| w.intent.attempt_id == intent.attempt_id)
+        .is_some_and(|w| {
+            w.intent.editable_paths.as_ref()
+                != intent.preservation.as_ref().map(|p| &p.editable_paths)
+        })
+        || project.repository().id().as_str() != intent.repository_id
         || run.project() != Some(project.id())
         || run.repository() != Some(project.repository().id())
         || attempt.inputs().project.as_ref() != Some(project.id())
@@ -51,6 +59,7 @@ fn artifact_bindings(state: &SavedState, artifact: &CapturedArtifact) -> StoreRe
         || artifact.attempt_id != i.attempt_id
         || artifact.base_oid != i.base_oid
         || artifact.origin != i.path
+        || artifact.preservation != i.preservation
     {
         return Err(DomainError::Ownership.into());
     }
@@ -205,7 +214,10 @@ pub(super) fn load(connection: &Connection, state: &mut SavedState) -> StoreResu
     })?;
     for row in rows {
         let row = row?;
-        let intent: WorktreeIntent = decode(&row[10], 65_536)?;
+        let intent: WorktreeIntent = decode(
+            &row[10],
+            65_536 + crate::git_records::MAX_PRESERVATION_BYTES,
+        )?;
         let expected = [
             &intent.operation_id,
             &intent.project_id,

@@ -59,6 +59,7 @@ impl Fixture {
         let main = fs::canonicalize(main).unwrap();
         let work = fs::canonicalize(work).unwrap();
         let intent = WorktreeIntent {
+            preservation: None,
             operation_id: "capture_operation".into(),
             project_id: "project".into(),
             repository_id: "repository".into(),

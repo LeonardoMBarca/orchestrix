@@ -122,6 +122,7 @@ impl Fixture {
     }
     fn task(&self, id: &str, policy: PolicyDocument) -> ManualTaskRequest {
         ManualTaskRequest {
+            editable_paths: None,
             schema_version: 1,
             id: id.into(),
             project_id: "configuration-project".into(),

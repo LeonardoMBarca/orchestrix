@@ -106,11 +106,21 @@ impl RepositoryInspectionService {
                             QueryKind::RepositoryPreflight {
                                 repository,
                                 base_commit,
-                            } => crate::git::inspect_repository(
-                                repository,
-                                base_commit.as_deref(),
-                                &token,
-                            )
+                                editable_paths,
+                            } => (if let Some(editable) = editable_paths {
+                                crate::git::inspect_repository_with_editable(
+                                    repository,
+                                    base_commit.as_deref(),
+                                    editable,
+                                    &token,
+                                )
+                            } else {
+                                crate::git::inspect_repository(
+                                    repository,
+                                    base_commit.as_deref(),
+                                    &token,
+                                )
+                            })
                             .map_err(|e| e.to_string())
                             .and_then(|r| {
                                 serde_json::to_value(r).map_err(|_| "repository-read-schema".into())

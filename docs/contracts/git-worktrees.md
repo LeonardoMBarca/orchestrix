@@ -34,15 +34,146 @@ Direct local configuration is inspected without following includes. Includes, fi
 
 ### Complete-repository preflight
 
+#### Exact opaque-base preservation — profile v2
+
+Decision for the OX-017 increment: retain native Git objects and the existing
+owned base/owner/completion anchors. Do not create another content store or turn
+every baseline file into textual artifact content. `WorktreeIntent` and
+`CapturedArtifact` opt into `preservation.schema_version = 2`; absence retains
+the original textual representation, validation and revision hash. Explicit null
+is rejected. Historical bodies/hashes are not migrated or recomputed as v2.
+
+The immutable manifest binds the original commit/tree and a sorted inventory of
+path, regular mode, size, Git object ID and SHA-256, plus a sorted explicit
+editable allowlist. The complete base, editable set, authorized Context Pack and
+textual review evidence are separate sets. A changed/new/deleted path outside
+the editable set blocks capture, including an opaque same-size modification;
+unsupported content is not silently omitted or restored. Correction inherits
+the exact allowlist and original manifest, materializing the preceding textual
+result over that original base. Artifact revisions are not commit IDs.
+
+The v2 reader verifies each raw blob against its native Git ID, including the
+`blob <length>\0` header, before pinning or accepting its SHA-256. It similarly
+verifies the bounded pinned commit body and reconstructs the tree ID from the
+complete inventory with Git's directory ordering. A valid compressed object
+stored under another object's ID is inconsistent evidence, not a replacement
+base. This uses RustCrypto SHA-1 for native SHA-1 repositories and the existing
+SHA-256 implementation for native SHA-256 IDs; retained SHA-256 content hashes
+remain independent. Tree projection permits at most 32 directory levels and
+1 MiB of encoded entries. Only the pinned commit/tree and bounded blob batches
+are checked; no history-wide fsck, network recovery or HEAD substitution occurs.
+
+Independent ceilings: 4,096 base files, 64 MiB base bytes, 6 MiB per preserved
+blob, 1 MiB serialized preservation metadata, 128 editable paths. Editable files
+remain at 1 MiB each, patch at 1 MiB, total captured text/patch/manifest at 4 MiB;
+the Context Pack retains its existing independent limits. The measured original
+Orchestrix base (54,332,380 bytes, largest 4,685,242) motivates these preservation
+limits without increasing `MAX_FILE_BYTES`. Blob batches stay below 7 MiB and
+the executor's existing 8 MiB/15 s bounds. Materialization writes exclusive files
+from bounded batches; opaque snapshot checks stream SHA-256 rather than keeping
+multiple copies of the full tree in memory.
+
+Scoped local Git reads use the supervisor's explicit backpressured delivery
+mode for bulk blob output: the existing 128-event/8 KiB-chunk queue and process
+byte/lifetime limits do not grow. A reader waits for queue space while retaining
+only its pending chunk; termination/Drop/the independent watchdog release it.
+Runtime protocol callers retain the original fail-fast delivery. Git drains
+bounded bursts before Job queries and preserves I/O errors during terminal
+draining; process exit, stream closure, complete output and tree termination
+remain separate observations. A single bounded input-write ticket is polled
+while draining output, rather than waiting for all input before reading output:
+`cat-file --batch` may emit a large object before reading its next request. This
+keeps both pipe directions progressing without increasing their budgets or
+repeating writes.
+
+The complete serialized ownership intent must also fit the existing 1 MiB
+Git-input envelope, checked before `Planned` is persisted. The manifest ceiling
+does not grant additional space for paths/IDs in that envelope. Typed manifests
+validate every path/mode/size/OID/hash and their own byte/item bounds before a
+small privacy-validation projection substitutes the manifest digest. V2 command
+fingerprints hash the full original typed body; v1 fingerprints stay unchanged.
+The original immutable bodies remain in SQLite. Integration snapshots use the
+same narrowly typed projection, retaining the existing 1 MiB intent/4 MiB
+observation envelopes and privacy checks on every other field. This does not
+increase the generic JSON-node budget or redact stored evidence.
+
+Only regular mode 100644 is supported here. Path aliases, links/junctions,
+submodules, executable modes, unsupported attributes/configuration, external
+filters/hooks/network and excluded sensitive/generated paths retain their
+guards. Preserving a privacy-pattern match locally is neither confirmation of
+a credential nor permission to disclose or edit it. Selected editable/context
+files still undergo textual/privacy checks before provider metadata.
+
+Review receives the exact authorized full-file textual patch, checks and
+base/profile/inventory digest/allowlist summary, not binary or oversized
+baseline bodies. The v2 evidence projection identifies the original artifact
+revision and version presence/hash/size/mode, without repeating base, index and
+working bodies already represented in the patch. It never recalculates the
+original artifact revision from that reduced view. Runtime
+tools **can read materialized workspace files** under the actual runtime
+permissions. The manifest and Context Pack are not an OS read sandbox. A policy
+requiring unproven read confinement must block rather than treating omission
+from the prompt as enforcement.
+
+The initial integration profile refuses staged/index changes. V2 review refuses
+them before metadata as well, preserving their captured content rather than
+accepting index-only code absent from the base-to-working patch. It never resets
+the index automatically; a new explicit compatible attempt is required.
+
+For v2 integration materialization, the completion operation returns a fresh
+verification only when that same call has checked the complete initial base and
+written its completion anchor. This replaces the immediately repeated empty
+artifact capture only for that fresh result. Existing/replayed completed work
+retains the original empty-artifact inspection. Every edited file is still
+compared with its exact base before writing, and the mandatory final complete
+capture must match the source, including protected files. Unexpected changes
+are preserved and block the result.
+
+Approval and explicit inspection retain their full read-only verification. V2
+application performs commit, candidate-tree and complete artifact verification
+inside the owned Job, followed by both target fences around index-stat refresh
+and the clock/cancellation check at the byte-write edge. It does not duplicate
+that same verification outside the Job first. The legacy profile, approval TTL,
+Job lifetime, checks and post-effect reconciliation are unchanged.
+
+Capture, checks, review, correction, integration, target approval/application
+and recovery use the same profile. Protected content is revalidated, including
+after checks and before authority-bearing effects. Combined trees reuse exact
+opaque Git object IDs and write only authorized textual changes. The source
+artifact revision binds the profile/allowlist; candidate and approval bind that
+revision and the exact target/base/result. A changed protected file invalidates
+the applicable evidence. Objects must resolve through the original repository
+and owned anchors; missing, corrupt or mismatched objects block. There is no
+fallback to current HEAD, destructive restoration or automatic replay.
+
+`repository-inspection-v1` accepts an explicit editable selection and returns
+schema-2 `opaque-base-v2`, preservation counts/bytes and selection-required
+state. Queries without that selection keep schema-1 textual behavior. Both are
+observations only; preparation and final operations revalidate. The normal
+single-CodeTask/clean-target integration restriction is unchanged. Git/SQLite
+still use intent → effect → confirmation and never share an atomic transaction.
+
+#### Textual preflight compatibility
+
 `inspect_repository()` returns the advisory schema-1 `regular-utf8-v1` report over a full pinned commit, with HEAD, file/mode/size totals, bounded blocker examples, checkout state, skipped content and separate worker/application eligibility. No repository, ref, index, worktree, database or provider effect is requested. An explicit standalone mechanical query or the daemon's `repository-inspection-v1` read surface uses this same implementation. It never grants execution or application authority.
 
 The inventory comes from bounded `ls-tree`; raw `cat-file --batch` reads stay below 7 MiB per batch and 64 MiB total. File/path/content rules and limits are shared with worktree creation and capture. Oversized content is not read or classified; `complete` means the bounded inventory/classification pass finished, not that skipped bytes were decoded. Content counters therefore describe only inspected files. A conservative privacy-pattern match is a profile blocker, not a finding of actual credentials. Responses contain no file content and are limited to 64 KiB, with three sanitized examples per blocker and 8,192 status characters.
 
 Attributes are inspected both at the pinned base and in the working checkout. [`check-attr --source`](https://git-scm.com/docs/git-check-attr/2.43.0) supplies the read-only base observation; if unavailable, preflight blocks explicitly rather than trusting modified local attributes. Existing executor admission still refuses Git below 2.36; this preflight additionally needs the source-attribute operation documented in Git 2.43. A compatible inventory undergoes capture's repeated coherent checks of working content, index/flags, links and attributes. Base content hashes, final status/untracked/ignored observations and HEAD fence the advisory clean/application claim. Dirty/ignored data may prevent application without prohibiting otherwise supported worker preparation. Final application still invokes its full existing validation.
 
-Preflight has a 90-second total Git budget, the existing 15-second/8-MiB per-command bounds and cancellation between commands. It does not enlarge worker/runtime/check budgets. Unsupported metadata can reject before inventory; no empty report is presented as a successful scan. Files/bytes limits remain unchanged and no artifact format or historical hash is reinterpreted.
+Preflight has a 90-second total Git budget, the existing 15-second/8-MiB per-command bounds and cancellation between commands. It does not enlarge worker/runtime/check budgets. Unsupported metadata can reject before inventory; no empty report is presented as a successful scan. The schema-1 textual limits and historical hashes remain unchanged; the opt-in v2 limits above apply only to that separate profile.
 
 Equivalent metadata queries may share a bounded Git process: the two administrative directory paths from [rev-parse](https://git-scm.com/docs/git-rev-parse), stage/flag records from [ls-files](https://git-scm.com/docs/git-ls-files), and exact generated refs from [for-each-ref](https://git-scm.com/docs/git-for-each-ref). Each parser rejects malformed, duplicate or unexpected fields; only default `H`/stage-zero index entries are accepted. Ref observations are repeated around the exact ownership blob. Because enumeration can omit broken refs, an optional missing ref still requires the direct resolver and absence of a loose entry; dangling symbolic or corrupt refs are not authority to treat a resource as absent. Grouping does not cache support/ownership across operations, remove coherent snapshots or increase command/keeper budgets.
+
+Attribute reads use documented [`check-attr --stdin -z --all`](https://git-scm.com/docs/git-check-attr): at most 256 paths/64 KiB input per process, with the existing 8 MiB output ceiling. Path/attribute framing, requested-path membership and duplicate pairs are checked; forbidden attributes remain forbidden. Source and working observations remain separate and are repeated at their original fences. This avoids Windows argv limits and the process multiplication of 16-path batches; it does not cache mutable attributes or increase deadlines.
+
+Within each fresh repository-support observation, administrative and common
+metadata roles are both canonicalized and path-checked. If they resolve to the
+same directory, that current object store is walked once after those checks;
+distinct linked-worktree directories are still inspected separately. No layout
+observation survives the call. A subsequent call walks again and rejects a newly
+unsupported entry. This groups aliased roles within one observation rather than
+caching mutable object-store state across captures or authority decisions.
 
 Capture combines the administrative directories, absolute index path and verified HEAD in one exact typed frame; the symbolic branch still comes from native `symbolic-ref`, preserving its recursive and detached/unborn behavior. At the final edge the index path is resolved again and both path and raw bytes must match. Index path identity also participates in equality of the three snapshots; it is not a new field in historical artifact revisions. Accepting a 64-character OID in the frame grammar does not enable repositories with an unsupported object-format extension.
 

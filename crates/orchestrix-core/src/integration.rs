@@ -2,7 +2,10 @@
 use crate::{
     domain::*,
     evaluator::{EvaluationResult, evaluate_in_scope},
-    git::{self, GitExecutor, integration::IntegrationGit},
+    git::{
+        self, GitExecutor,
+        integration::{ApplyFilesError, IntegrationGit},
+    },
     git_records::{WorktreeIntent, content_hash},
     integration_records::*,
     persistence::{Command, Store},
@@ -42,6 +45,7 @@ impl Default for IntegrationService {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum IntegrationCheckpoint {
     Reserved,
+    BaseVerified,
     Materialized,
     Checked,
     ResultRef,
@@ -147,11 +151,12 @@ impl IntegrationService {
         {
             return Err(WorkerError("integration-directory-scope"));
         }
-        let target_state = git::integration::initial_target(
+        let target_state = git::integration::initial_target_with_preservation(
             &GitExecutor::new()?,
             &target,
             &common,
             &source.base_oid,
+            source.preservation.as_ref(),
         )?;
         let hash = content_hash(input.id.as_bytes());
         let path = root.join(format!("run-integration-{}", &hash[..40]));
@@ -173,6 +178,7 @@ impl IntegrationService {
             input_base: source.base_oid.clone(),
             target: target_state,
             worktree: WorktreeIntent {
+                preservation: source.preservation.clone(),
                 operation_id: format!("run-integration-{hash}"),
                 project_id: source_worker.intent.project_id.clone(),
                 repository_id: source_worker.intent.repository_id.clone(),
@@ -212,6 +218,7 @@ impl IntegrationService {
             }))),
         )?;
         checkpoint(IntegrationCheckpoint::Reserved);
+        let mut git_diagnostic = None;
         let outcome = (|| {
             cancelled(cancel)?;
             let record = load_record(store, &input.id)?;
@@ -233,11 +240,28 @@ impl IntegrationService {
                 &record.intent,
                 &record.intent.input_base,
                 &record.intent.input_base,
-            )? != record.intent.target
+            ).map_err(|error| {
+                if record.intent.worktree.preservation.is_some() {
+                    git_diagnostic = Some(json!({"phase":"target-before-materialization","classification":error.to_string()}));
+                }
+                WorkerError::from(error)
+            })? != record.intent.target
             {
                 return Err(WorkerError("target-changed-before-integration"));
             }
-            let snapshot = git.materialize(&record.intent, &source)?;
+            let snapshot = git
+                .materialize(&record.intent, &source, || {
+                    checkpoint(IntegrationCheckpoint::BaseVerified);
+                    Ok(())
+                })
+                .map_err(|error| {
+                    if record.intent.worktree.preservation.is_some() {
+                        git_diagnostic = Some(
+                            json!({"phase":"materialization","classification":error.to_string()}),
+                        );
+                    }
+                    WorkerError::from(error)
+                })?;
             observe(
                 store,
                 &input.id,
@@ -334,6 +358,10 @@ impl IntegrationService {
         if let Err(error) = outcome {
             let current = load_record(store, &input.id)?;
             if current.status().blocks_admission() {
+                let mut details = json!({"reason":error.0,"automaticRetry":false,"inspectionRequired":current.status()!=IntegrationStatus::Reserved,"effectsNotEntered":current.status()==IntegrationStatus::Reserved});
+                if let Some(diagnostic) = git_diagnostic {
+                    details["gitDiagnostic"] = diagnostic;
+                }
                 observe(
                     store,
                     &input.id,
@@ -342,7 +370,7 @@ impl IntegrationService {
                     } else {
                         IntegrationStatus::Uncertain
                     },
-                    json!({"reason":error.0,"automaticRetry":false,"inspectionRequired":current.status()!=IntegrationStatus::Reserved,"effectsNotEntered":current.status()==IntegrationStatus::Reserved}),
+                    details,
                 )?;
             }
         }
@@ -413,10 +441,12 @@ impl IntegrationService {
         let git =
             diagnostics.measure(PreparedValidationPhase::ReadOnly, IntegrationGit::read_only)?;
         let snapshot = record.snapshot().ok_or(WorkerError("combined-snapshot"))?;
+        let validation_error = |error| validation_git_error(record, error);
         if diagnostics
             .measure(PreparedValidationPhase::Inspect, || {
                 git.inspect(&record.intent)
-            })?
+            })
+            .map_err(validation_error)?
             .revision
             != snapshot.revision
         {
@@ -431,13 +461,16 @@ impl IntegrationService {
         diagnostics.measure(PreparedValidationPhase::VerifySnapshotTree, || {
             git.verify_snapshot_tree(&record.intent, tree, &snapshot)
         })?;
-        if diagnostics.measure(PreparedValidationPhase::Target, || {
-            git.target(
-                &record.intent,
-                &record.intent.input_base,
-                &record.intent.input_base,
-            )
-        })? != record.intent.target
+        if diagnostics
+            .measure(PreparedValidationPhase::Target, || {
+                git.target(
+                    &record.intent,
+                    &record.intent.input_base,
+                    &record.intent.input_base,
+                )
+            })
+            .map_err(validation_error)?
+            != record.intent.target
         {
             return Err(WorkerError("target-changed-revalidation-required"));
         }
@@ -504,7 +537,14 @@ impl IntegrationService {
             )?;
             return load_record(store, &input.integration_id);
         }
-        if let Err(error) = self.validate_prepared(&record) {
+        // V2 performs the same exact commit/tree/artifact reads inside the Job
+        // below; apply_files also validates the target twice before writing.
+        // Do not repeat the full read-only pass before those authoritative
+        // scoped checks. Approval/explicit inspection retain their full pass,
+        // and the legacy application profile is unchanged.
+        if record.intent.worktree.preservation.is_none()
+            && let Err(error) = self.validate_prepared(&record)
+        {
             observe(
                 store,
                 &input.integration_id,
@@ -558,7 +598,10 @@ impl IntegrationService {
                 value_text(&record, "treeRevision")?,
                 &record.snapshot().ok_or(WorkerError("snapshot"))?,
             )?;
-            if git.inspect(&record.intent)?.revision
+            if git
+                .inspect(&record.intent)
+                .map_err(|error| validation_git_error(&record, error))?
+                .revision
                 != record.snapshot().ok_or(WorkerError("snapshot"))?.revision
             {
                 return Err(WorkerError("combined-artifact-changed"));
@@ -573,7 +616,6 @@ impl IntegrationService {
             {
                 return Err(WorkerError("approval-expired-before-effect"));
             }
-            effect_started = true;
             git.apply_files(&record.intent, result, || {
                 cancelled(cancel)?;
                 let before_write = self.clock.now_ms();
@@ -585,7 +627,15 @@ impl IntegrationService {
                 {
                     return Err(WorkerError("approval-expired-before-file-update"));
                 }
+                // Target checks and the stat-only refresh above have not
+                // started application. Mark uncertainty only at the actual
+                // byte-write boundary, after authorization still holds.
+                effect_started = true;
                 Ok::<_, WorkerError>(())
+            })
+            .map_err(|error| match error {
+                ApplyFilesError::Git(error) => validation_git_error(&record, error),
+                ApplyFilesError::BeforeWrite(error) => error,
             })?;
             checkpoint(IntegrationCheckpoint::FilesApplied);
             // Once files changed, cancellation cannot claim a rollback. Finish
@@ -771,6 +821,13 @@ impl IntegrationService {
             }
         }
         Ok(store.load()?.integrations().values().cloned().collect())
+    }
+}
+fn validation_git_error(record: &IntegrationRecord, error: git::GitError) -> WorkerError {
+    if record.intent.worktree.preservation.is_some() && error == git::GitError::UnpreservedWork {
+        WorkerError("protected-or-unlisted-content-changed")
+    } else {
+        WorkerError::from(error)
     }
 }
 fn path_text(path: &Path) -> Result<String> {

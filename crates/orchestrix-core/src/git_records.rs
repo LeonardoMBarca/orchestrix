@@ -13,6 +13,126 @@ use std::{
 pub const MAX_CAPTURE_BYTES: usize = 4 * 1_048_576;
 pub const MAX_FILE_BYTES: usize = 1_048_576;
 pub const MAX_CAPTURE_FILES: usize = 128;
+// Base preservation budgets are independent of textual edits and Context Packs.
+pub const MAX_BASE_FILES: usize = 4096;
+pub const MAX_BASE_BYTES: u64 = 64 * 1_048_576;
+pub const MAX_OPAQUE_FILE_BYTES: u64 = 6 * 1_048_576;
+pub const MAX_PRESERVATION_BYTES: usize = 1_048_576;
+pub const MAX_WORKTREE_INTENT_BYTES: usize = 1_048_576;
+pub const MAX_EDITABLE_FILES: usize = 128;
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct PreservedBaseEntry {
+    pub path: String,
+    pub mode: String,
+    pub size: u64,
+    pub git_oid: String,
+    pub sha256: String,
+}
+
+/// V2 contains identities and integrity, never the opaque file bodies. Absence
+/// on historical records means the original textual profile, with no new defaults.
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct BasePreservation {
+    pub schema_version: u32,
+    pub base_oid: String,
+    pub tree_oid: String,
+    pub entries: Vec<PreservedBaseEntry>,
+    pub editable_paths: Vec<String>,
+}
+impl BasePreservation {
+    pub(crate) fn privacy_identity(&self) -> serde_json::Value {
+        serde_json::json!({"schema_version":2,"manifest_sha256":content_hash(&serde_json::to_vec(self).expect("typed preservation serialization"))})
+    }
+    pub fn input_bounded(&self) -> bool {
+        self.entries.len() <= MAX_BASE_FILES
+            && self.editable_paths.len() <= MAX_EDITABLE_FILES
+            && self
+                .entries
+                .iter()
+                .map(|e| e.path.len().saturating_add(256))
+                .sum::<usize>()
+                <= MAX_PRESERVATION_BYTES
+            && self.editable_paths.iter().all(|p| p.len() <= 4096)
+            && self.base_oid.len() <= 64
+            && self.tree_oid.len() <= 64
+            && self.entries.iter().all(|e| {
+                e.path.len() <= 4096
+                    && e.mode.len() <= 6
+                    && e.git_oid.len() <= 64
+                    && e.sha256.len() <= 64
+            })
+    }
+    pub fn validate(&self) -> bool {
+        if !self.input_bounded()
+            || self.schema_version != 2
+            || !oid(&self.base_oid)
+            || !oid(&self.tree_oid)
+            || self.entries.len() > MAX_BASE_FILES
+            || !editable_paths_valid(&self.editable_paths)
+        {
+            return false;
+        }
+        let mut previous = None;
+        let mut aliases = BTreeSet::new();
+        let mut bytes = 0u64;
+        let mut editable_bytes = 0u64;
+        for entry in &self.entries {
+            if !relative_file_path(&entry.path)
+                || entry
+                    .path
+                    .chars()
+                    .any(|c| c.is_control() || "<>\"|?*".contains(c))
+                || previous.is_some_and(|p: &String| p >= &entry.path)
+                || !aliases.insert(entry.path.to_lowercase())
+                || entry.mode != "100644"
+                || entry.size > MAX_OPAQUE_FILE_BYTES
+                || (self.editable_paths.binary_search(&entry.path).is_ok()
+                    && entry.size > MAX_FILE_BYTES as u64)
+                || !oid(&entry.git_oid)
+                || !is_hash(&entry.sha256)
+            {
+                return false;
+            }
+            previous = Some(&entry.path);
+            bytes = bytes.saturating_add(entry.size);
+            if self.editable_paths.binary_search(&entry.path).is_ok() {
+                editable_bytes = editable_bytes.saturating_add(entry.size);
+            }
+        }
+        bytes <= MAX_BASE_BYTES
+            && serde_json::to_vec(self).is_ok_and(|v| {
+                v.len() <= MAX_PRESERVATION_BYTES
+                    && (v.len() as u64).saturating_add(editable_bytes) <= MAX_CAPTURE_BYTES as u64
+            })
+    }
+}
+pub fn editable_paths_valid(paths: &[String]) -> bool {
+    !paths.is_empty()
+        && paths.len() <= MAX_EDITABLE_FILES
+        && paths.windows(2).all(|p| p[0] < p[1])
+        && paths.iter().all(|path| {
+            relative_file_path(path)
+                && !path
+                    .chars()
+                    .any(|c| c.is_control() || "<>\"|?*".contains(c))
+        })
+        && paths
+            .iter()
+            .map(|p| p.to_lowercase())
+            .collect::<BTreeSet<_>>()
+            .len()
+            == paths.len()
+}
+
+// Missing is legacy; explicit null is not a version discriminator.
+fn present_preservation<'de, D: serde::Deserializer<'de>>(
+    d: D,
+) -> Result<Option<BasePreservation>, D::Error> {
+    BasePreservation::deserialize(d).map(Some)
+}
 
 pub fn content_hash(bytes: &[u8]) -> String {
     format!("{:x}", Sha256::digest(bytes))
@@ -56,6 +176,12 @@ pub fn relative_file_path(value: &str) -> bool {
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 pub struct WorktreeIntent {
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "present_preservation"
+    )]
+    pub preservation: Option<BasePreservation>,
     pub operation_id: String,
     pub project_id: String,
     pub repository_id: String,
@@ -74,7 +200,10 @@ pub struct WorktreeIntent {
 }
 impl WorktreeIntent {
     pub fn validate(&self) -> bool {
-        LocalRef::new(&self.operation_id).is_ok()
+        self.preservation
+            .as_ref()
+            .is_none_or(|p| p.validate() && p.base_oid == self.base_oid)
+            && LocalRef::new(&self.operation_id).is_ok()
             && ProjectId::new(&self.project_id).is_ok()
             && RepositoryId::new(&self.repository_id).is_ok()
             && RunId::new(&self.run_id).is_ok()
@@ -116,6 +245,19 @@ impl WorktreeIntent {
             ]
             .into_iter()
             .all(|v| safe(v))
+            && (self.preservation.is_none()
+                || serde_json::to_vec(self)
+                    .is_ok_and(|body| body.len() <= MAX_WORKTREE_INTENT_BYTES))
+    }
+
+    /// Only for privacy validation of an already validated typed record. The
+    /// complete immutable manifest remains stored and hashed, never redacted.
+    pub(crate) fn privacy_projection(&self) -> serde_json::Value {
+        let mut body = serde_json::json!(self);
+        if let Some(preservation) = &self.preservation {
+            body["preservation"] = preservation.privacy_identity();
+        }
+        body
     }
 }
 
@@ -232,6 +374,12 @@ pub struct CaptureExclusion {
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 pub struct CapturedArtifact {
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "present_preservation"
+    )]
+    pub preservation: Option<BasePreservation>,
     pub id: String,
     pub revision: String,
     pub operation_id: String,
@@ -257,7 +405,15 @@ impl CapturedArtifact {
         content_hash(value.to_string().as_bytes())
     }
     pub fn validate(&self) -> bool {
-        if ArtifactId::new(&self.id).is_err()
+        if self.preservation.as_ref().is_some_and(|p| {
+            !p.validate()
+                || p.base_oid != self.base_oid
+                || !self.exclusions.is_empty()
+                || self
+                    .files
+                    .iter()
+                    .any(|f| p.editable_paths.binary_search(&f.path).is_err())
+        }) || ArtifactId::new(&self.id).is_err()
             || !is_hash(&self.revision)
             || LocalRef::new(&self.operation_id).is_err()
             || RepositoryId::new(&self.repository_id).is_err()
@@ -276,8 +432,29 @@ impl CapturedArtifact {
             return false;
         }
         let mut seen = BTreeSet::new();
-        let mut bytes = self.patch.len();
+        let mut bytes = self.patch.len()
+            + self.preservation.as_ref().map_or(0, |p| {
+                serde_json::to_vec(p).map_or(MAX_CAPTURE_BYTES + 1, |v| v.len())
+            });
         for file in &self.files {
+            if let Some(profile) = &self.preservation {
+                let entry = profile
+                    .entries
+                    .binary_search_by(|e| e.path.cmp(&file.path))
+                    .ok()
+                    .map(|i| &profile.entries[i]);
+                if match (entry, &file.base) {
+                    (Some(entry), Some(base)) => {
+                        base.sha256 != entry.sha256
+                            || base.content.len() as u64 != entry.size
+                            || base.mode != entry.mode
+                    }
+                    (None, None) => false,
+                    _ => true,
+                } {
+                    return false;
+                }
+            }
             if !relative_file_path(&file.path)
                 || !seen.insert(&file.path)
                 || (file.base.is_none() && file.index.is_none() && file.worktree.is_none())
@@ -345,27 +522,36 @@ impl GitCommand {
     /// Cheap bounds before canonical serialization or hashing of public DTO input.
     pub fn input_bounded(&self) -> bool {
         match self {
-            Self::Plan(i) => [
-                &i.operation_id,
-                &i.project_id,
-                &i.repository_id,
-                &i.run_id,
-                &i.task_id,
-                &i.attempt_id,
-                &i.base_oid,
-                &i.domain_base,
-                &i.worktree_ref,
-                &i.authorized_root,
-                &i.path,
-                &i.main_repository,
-                &i.branch,
-                &i.common_git_dir,
-                &i.ownership_token,
-            ]
-            .into_iter()
-            .all(|v| v.len() <= 4096),
+            Self::Plan(i) => {
+                [
+                    &i.operation_id,
+                    &i.project_id,
+                    &i.repository_id,
+                    &i.run_id,
+                    &i.task_id,
+                    &i.attempt_id,
+                    &i.base_oid,
+                    &i.domain_base,
+                    &i.worktree_ref,
+                    &i.authorized_root,
+                    &i.path,
+                    &i.main_repository,
+                    &i.branch,
+                    &i.common_git_dir,
+                    &i.ownership_token,
+                ]
+                .into_iter()
+                .all(|v| v.len() <= 4096)
+                    && i.preservation
+                        .as_ref()
+                        .is_none_or(BasePreservation::input_bounded)
+                    && (i.preservation.is_none()
+                        || serde_json::to_vec(i)
+                            .is_ok_and(|body| body.len() <= MAX_WORKTREE_INTENT_BYTES))
+            }
             Self::RecordArtifact(a) => {
-                if a.files.len() > MAX_CAPTURE_FILES
+                if a.preservation.as_ref().is_some_and(|p| !p.input_bounded())
+                    || a.files.len() > MAX_CAPTURE_FILES
                     || a.exclusions.len() > MAX_CAPTURE_FILES
                     || a.patch.len() > MAX_FILE_BYTES
                     || [
@@ -385,7 +571,10 @@ impl GitCommand {
                 {
                     return false;
                 }
-                let mut total = a.patch.len();
+                let mut total = a.patch.len()
+                    + a.preservation.as_ref().map_or(0, |p| {
+                        serde_json::to_vec(p).map_or(MAX_CAPTURE_BYTES + 1, |v| v.len())
+                    });
                 for file in &a.files {
                     if file.path.len() > 4096 {
                         return false;
@@ -454,6 +643,11 @@ impl GitCommand {
     pub fn fingerprint_body(&self) -> serde_json::Value {
         use serde_json::json;
         match self {
+            Self::Plan(i) if i.preservation.is_some() => json!([
+                self.name(),
+                "opaque-base-v2",
+                content_hash(&serde_json::to_vec(i).expect("typed worktree serialization"))
+            ]),
             Self::Plan(i) => json!([self.name(), i]),
             Self::RecordArtifact(a) => json!([self.name(), a.id, a.revision, a.content_revision()]),
             Self::ConfirmCreated {

@@ -673,6 +673,7 @@ fn legitimate_pending_history_is_reconciled_before_readiness_without_dispatch() 
     let mut policy = PolicyDocument::default();
     policy.mode_defaults.fallback = Some(Fallback::Compatible);
     let task = ManualTaskRequest {
+        editable_paths: None,
         schema_version: 1,
         id: "startup-pending".into(),
         project_id: "startup-project".into(),
@@ -773,6 +774,7 @@ fn seed_history(scope: &Scope, scenario: &str, checked: bool) -> WorkerRecord {
     policy.mode_defaults.fallback = Some(Fallback::Compatible);
     let binary = PathBuf::from(env!("CARGO_BIN_EXE_orchestrix-runtime-fixture"));
     let request = ManualTaskRequest {
+        editable_paths: None,
         schema_version: 1,
         id: "startup-history".into(),
         project_id: "startup-project".into(),

@@ -423,7 +423,7 @@ fn codex_worker_resume_context_and_cancellation_live_opt_in() {
     );
     let mut policy = PolicyDocument::default();
     policy.mode_defaults.fallback = Some(Fallback::Compatible);
-    let input = ManualTaskRequest { schema_version:1,id:"live-arithmetic-worker".into(),project_id:"live-fixture".into(),
+    let input = ManualTaskRequest { editable_paths:None,schema_version:1,id:"live-arithmetic-worker".into(),project_id:"live-fixture".into(),
         repository_id:"live-repository".into(),repository_directory:fixture.repository.clone(),authorized_worktree_directory:fixture.authorized.clone(),
         base_commit:fixture.base.clone(),connection_id:"live-codex-subscription".into(),connection_revision:1,
         objective:"Correct add(a,b) in sum.cjs so it adds numbers. Make the smallest change, then stop.".into(),

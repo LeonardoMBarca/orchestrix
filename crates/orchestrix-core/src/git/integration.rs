@@ -15,11 +15,60 @@ use std::{
     sync::Arc,
 };
 
+#[cfg(all(test, windows))]
+mod diagnostic_tests {
+    use super::*;
+    use crate::{
+        persistence::Store,
+        recovery_guardian::{Guardian, GuardianBinding},
+    };
+
+    #[test]
+    #[ignore = "Explicit owned failed-fixture database and helper; read-only Git target diagnosis"]
+    fn measured_owned_preserved_target() {
+        let database = std::path::PathBuf::from(
+            std::env::var_os("ORCHESTRIX_OPAQUE_TARGET_DATABASE").expect("explicit own fixture"),
+        );
+        let helper = std::path::PathBuf::from(
+            std::env::var_os("ORCHESTRIX_OPAQUE_TARGET_HELPER").expect("explicit built helper"),
+        );
+        let state = Store::open(&database).unwrap().load().unwrap();
+        let intent = state.integrations()["opaque-integration"].intent.clone();
+        assert!(intent.validate());
+        let binding =
+            GuardianBinding::prepare(&database, "owned-read-only-diagnostic", &helper).unwrap();
+        let mut guardian = Guardian::start(binding, &helper).unwrap();
+        super::super::executor::test_timing::begin();
+        let started = std::time::Instant::now();
+        let git = IntegrationGit::new(guardian.job().unwrap()).unwrap();
+        let result = git.target(&intent, &intent.input_base, &intent.input_base);
+        let samples = super::super::executor::test_timing::finish();
+        println!(
+            "OPAQUE_SCOPED_TARGET_TIMING={}",
+            serde_json::json!({"elapsedMs":started.elapsed().as_millis(),"result":format!("{result:?}"),"samples":samples})
+        );
+        assert_eq!(result.unwrap(), intent.target);
+    }
+}
+
 pub(crate) struct IntegrationGit {
     pub executor: Arc<GitExecutor>,
     service: WorktreeService,
     scope: Option<JobScope>,
 }
+
+/// Keep infrastructure failures typed until the service classifies their
+/// authority/provenance; a caller's authorization error is a separate result.
+pub(crate) enum ApplyFilesError<E> {
+    Git(GitError),
+    BeforeWrite(E),
+}
+impl<E> From<GitError> for ApplyFilesError<E> {
+    fn from(error: GitError) -> Self {
+        Self::Git(error)
+    }
+}
+
 impl IntegrationGit {
     pub fn new(scope: JobScope) -> GitResult<Self> {
         let executor = Arc::new(GitExecutor::scoped(scope.clone())?);
@@ -52,13 +101,14 @@ impl IntegrationGit {
         tree: &str,
         head: &str,
     ) -> GitResult<TargetState> {
-        super::capture::clean_target(
+        super::capture::clean_target_with_preservation(
             &self.executor,
             Path::new(&intent.target.directory),
             Path::new(&intent.target.common_git_dir),
             tree,
             head,
             &intent.target.symbolic_ref,
+            intent.worktree.preservation.as_ref(),
         )
     }
     pub fn inspect(&self, intent: &IntegrationIntent) -> GitResult<CapturedArtifact> {
@@ -74,19 +124,29 @@ impl IntegrationGit {
         &self,
         intent: &IntegrationIntent,
         source: &CapturedArtifact,
+        after_base_verified: impl FnOnce() -> GitResult<()>,
     ) -> GitResult<CapturedArtifact> {
         self.require_scope()?;
         if source.base_oid != intent.input_base
+            || source.preservation != intent.worktree.preservation
             || !source.exclusions.is_empty()
             || source.files.iter().any(|file| file.base != file.index)
         {
             return Err(GitError::Unsupported);
         }
-        self.service().create_integration_owned(&intent.worktree)?;
-        let initial = self.inspect(intent)?;
-        if !initial.files.is_empty() || !initial.exclusions.is_empty() {
-            return Err(GitError::UnpreservedWork);
+        let just_verified_base = self.service().create_integration_owned(&intent.worktree)?;
+        // A fresh v2 completion already follows the full coherent base check.
+        // Replayed/existing work still requires the original empty-artifact
+        // inspection. Every edited file is checked against its base below, and
+        // the final full capture must match the exact source, including all
+        // protected files; a concurrent change is preserved and refused.
+        if intent.worktree.preservation.is_none() || !just_verified_base {
+            let initial = self.inspect(intent)?;
+            if !initial.files.is_empty() || !initial.exclusions.is_empty() {
+                return Err(GitError::UnpreservedWork);
+            }
         }
+        after_base_verified()?;
         let root = Path::new(&intent.worktree.path);
         for file in &source.files {
             let path = root.join(&file.path);
@@ -154,6 +214,17 @@ impl IntegrationGit {
     ) -> GitResult<(String, String)> {
         self.require_scope()?;
         let root = Path::new(&intent.worktree.path);
+        if intent.worktree.preservation.is_some() {
+            let tree = self.preserved_tree(intent, snapshot, true)?;
+            let result = object(
+                &self.executor,
+                root,
+                "commit",
+                &commit_body(intent, &tree),
+                false,
+            )?;
+            return Ok((tree, result));
+        }
         let mut files = super::worktrees::read_base(&self.executor, root, &intent.input_base)?;
         for file in &snapshot.files {
             match &file.worktree {
@@ -176,6 +247,13 @@ impl IntegrationGit {
         tree: &str,
         snapshot: &CapturedArtifact,
     ) -> GitResult<()> {
+        if intent.worktree.preservation.is_some() {
+            return if self.preserved_tree(intent, snapshot, false)? == tree {
+                Ok(())
+            } else {
+                Err(GitError::Ownership)
+            };
+        }
         let root = Path::new(&intent.worktree.path);
         let mut files = super::worktrees::read_base(&self.executor, root, &intent.input_base)?;
         for file in &snapshot.files {
@@ -192,6 +270,65 @@ impl IntegrationGit {
             return Err(GitError::Ownership);
         }
         Ok(())
+    }
+    fn preserved_tree(
+        &self,
+        intent: &IntegrationIntent,
+        snapshot: &CapturedArtifact,
+        write: bool,
+    ) -> GitResult<String> {
+        let manifest = intent
+            .worktree
+            .preservation
+            .as_ref()
+            .ok_or(GitError::Ownership)?;
+        if snapshot.preservation.as_ref() != Some(manifest)
+            || !snapshot.validate()
+            || snapshot.base_oid != intent.input_base
+        {
+            return Err(GitError::Ownership);
+        }
+        // Verify the immutable base once; unchanged blobs use their native OID
+        // directly and never become UTF-8 content in the integration pipeline.
+        super::preservation::verify_base(
+            &self.executor,
+            Path::new(&intent.worktree.path),
+            manifest,
+        )?;
+        let mut files = manifest
+            .entries
+            .iter()
+            .map(|e| (e.path.clone(), e.git_oid.clone()))
+            .collect::<BTreeMap<_, _>>();
+        for file in &snapshot.files {
+            if manifest.editable_paths.binary_search(&file.path).is_err() {
+                return Err(GitError::Scope);
+            }
+            match &file.worktree {
+                Some(content) => {
+                    files.insert(
+                        file.path.clone(),
+                        object(
+                            &self.executor,
+                            Path::new(&intent.worktree.path),
+                            "blob",
+                            content.content.as_bytes(),
+                            write,
+                        )?,
+                    );
+                }
+                None => {
+                    files.remove(&file.path);
+                }
+            }
+        }
+        write_oid_tree(
+            &self.executor,
+            Path::new(&intent.worktree.path),
+            &files,
+            0,
+            write,
+        )
     }
     pub fn commit(&self, intent: &IntegrationIntent, tree: &str, result: &str) -> GitResult<()> {
         self.require_scope()?;
@@ -278,10 +415,7 @@ impl IntegrationGit {
         intent: &IntegrationIntent,
         result: &str,
         before_write: impl FnOnce() -> Result<(), E>,
-    ) -> Result<TargetState, E>
-    where
-        E: From<GitError>,
-    {
+    ) -> Result<TargetState, ApplyFilesError<E>> {
         self.require_scope()?;
         if self.target(intent, &intent.input_base, &intent.input_base)? != intent.target {
             return Err(GitError::Conflict.into());
@@ -299,7 +433,7 @@ impl IntegrationGit {
         }
         // Refresh and coherent fingerprint reads can consume time. The service
         // must recheck authorization/cancellation at the actual byte-write edge.
-        before_write()?;
+        before_write().map_err(ApplyFilesError::BeforeWrite)?;
         // Two-tree fast-forward update checks for local changes. No reset,
         // clean, stash, cherry-pick, hooks, filters or project scripts.
         self.executor
@@ -341,11 +475,12 @@ pub(crate) fn result_ref(intent: &IntegrationIntent) -> String {
 pub(crate) fn commit_body(intent: &IntegrationIntent, tree: &str) -> Vec<u8> {
     format!("tree {tree}\nparent {}\nauthor Orchestrix <orchestrix@local.invalid> {} +0000\ncommitter Orchestrix <orchestrix@local.invalid> {} +0000\n\nOrchestrix serial integration {}\n",intent.input_base,intent.created_ms/1000,intent.created_ms/1000,intent.id).into_bytes()
 }
-pub(crate) fn initial_target(
+pub(crate) fn initial_target_with_preservation(
     executor: &GitExecutor,
     root: &Path,
     common: &Path,
     base: &str,
+    preservation: Option<&crate::git_records::BasePreservation>,
 ) -> GitResult<TargetState> {
     let branch = text(
         executor
@@ -355,7 +490,15 @@ pub(crate) fn initial_target(
     if !branch.starts_with("refs/heads/") || branch.starts_with("refs/heads/orchestrix/") {
         return Err(GitError::Unsupported);
     }
-    super::capture::clean_target(executor, root, common, base, base, &branch)
+    super::capture::clean_target_with_preservation(
+        executor,
+        root,
+        common,
+        base,
+        base,
+        &branch,
+        preservation,
+    )
 }
 fn read_file(path: &Path) -> GitResult<Vec<u8>> {
     let file = fs::File::open(path)?;
@@ -454,6 +597,68 @@ fn write_tree(
         }
     }
     object(executor, root, "tree", &body, write)
+}
+
+fn write_oid_tree(
+    executor: &GitExecutor,
+    root: &Path,
+    files: &BTreeMap<String, String>,
+    depth: usize,
+    write: bool,
+) -> GitResult<String> {
+    if depth > 32 {
+        return Err(GitError::Limit);
+    }
+    let mut direct = BTreeMap::new();
+    let mut directories: BTreeMap<String, BTreeMap<String, String>> = BTreeMap::new();
+    for (path, id) in files {
+        if !oid(id) {
+            return Err(GitError::Ownership);
+        }
+        if let Some((name, tail)) = path.split_once('/') {
+            directories
+                .entry(name.into())
+                .or_default()
+                .insert(tail.into(), id.clone());
+        } else {
+            direct.insert(path.clone(), id.clone());
+        }
+    }
+    let mut entries = Vec::new();
+    for (name, id) in direct {
+        if directories.contains_key(&name) {
+            return Err(GitError::Conflict);
+        }
+        entries.push((name, false, id));
+    }
+    for (name, files) in directories {
+        entries.push((
+            name,
+            true,
+            write_oid_tree(executor, root, &files, depth + 1, write)?,
+        ));
+    }
+    entries.sort_by(|a, b| {
+        format!("{}{}", a.0, if a.1 { "/" } else { "\0" })
+            .as_bytes()
+            .cmp(format!("{}{}", b.0, if b.1 { "/" } else { "\0" }).as_bytes())
+    });
+    let mut bytes = Vec::new();
+    for (name, directory, id) in entries {
+        bytes.extend_from_slice(
+            format!("{} {name}\0", if directory { "40000" } else { "100644" }).as_bytes(),
+        );
+        for pair in id.as_bytes().as_chunks::<2>().0 {
+            bytes.push(
+                u8::from_str_radix(
+                    std::str::from_utf8(pair).map_err(|_| GitError::Process)?,
+                    16,
+                )
+                .map_err(|_| GitError::Process)?,
+            );
+        }
+    }
+    object(executor, root, "tree", &bytes, write)
 }
 
 #[cfg(all(test, windows))]

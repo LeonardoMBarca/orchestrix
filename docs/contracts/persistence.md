@@ -51,6 +51,19 @@ Bucket bodies are omitted from compact snapshots/list/history pages; explicit re
 
 ## Durable command contract
 
+Opaque-base-v2 is a versioned extension of the existing immutable Git JSON
+records, not another table/content store. `preservation` is absent for legacy
+records and explicitly versioned when present; null/future versions are rejected.
+Legacy serialization/revision hashes retain their original meaning. New Git
+intent reads allow the separate 1 MiB manifest budget in addition to the prior
+65,536-byte intent envelope; artifact limits still count metadata plus text.
+Restoration binds artifact/intent manifests, worker allowlists and integration
+snapshots exactly. Metadata contains native object IDs, modes, lengths and
+SHA-256, never opaque bodies. Existing base/ownership refs retain reconstruction
+objects. No trigger/migration is rewritten and no SQLite writer spans Git or
+runtime work. Older readers must reject the unknown version/field rather than
+reinterpreting a v2 record as textual history.
+
 A command contains a validated idempotency scope/key, its typed business content and an expected store revision. The initial optimistic concurrency boundary is the **whole store**: a successful business transition advances its revision once. This is intentionally conservative for serial V1 operation and does not create a scheduler.
 
 The persistence boundary computes a SHA-256 fingerprint from the canonical typed command representation, command schema and expected revision. Input is checked against bounds before hashing; the pre-redaction representation is ephemeral and is never stored as a command payload. Runtime frame content is represented by its digest, not raw bytes. The scope/key uniqueness and stored fingerprint/result live in SQLite, not a process-local set. Equivalent replay returns the originally stored result, including its original revision, without another attempt, message, artifact, evidence or business event. Reusing a **committed** scope/key for different content or expected revision returns a conflict.

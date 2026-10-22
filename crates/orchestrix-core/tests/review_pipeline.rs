@@ -90,6 +90,7 @@ impl Fixture {
         // Explicit policy permission, not inferred model entitlement.
         policy.mode_defaults.fallback = Some(Fallback::Compatible);
         ManualTaskRequest {
+            editable_paths: None,
             schema_version: 1,
             id: id.into(),
             project_id: "fixture-project".into(),

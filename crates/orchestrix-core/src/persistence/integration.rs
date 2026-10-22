@@ -105,6 +105,7 @@ pub(super) fn validate(state: &SavedState) -> StoreResult<()> {
             || exact.id().as_str() != i.capture_id
             || exact.revision().as_str() != i.capture_revision
             || source.base_oid != i.input_base
+            || source.preservation != i.worktree.preservation
             || source.attempt_id != worker.intent.attempt_id
             || i.worktree.project_id != worker.intent.project_id
             || i.worktree.repository_id != worker.intent.repository_id
@@ -132,6 +133,7 @@ pub(super) fn validate(state: &SavedState) -> StoreResult<()> {
             && (!snapshot.validate()
                 || snapshot.operation_id != i.worktree.operation_id
                 || snapshot.base_oid != i.input_base
+                || snapshot.preservation != i.worktree.preservation
                 || snapshot.run_id != i.run_id
                 || snapshot.task_id != i.task_id
                 || snapshot.attempt_id != i.worktree.attempt_id

@@ -21,6 +21,10 @@ const DEADLINE: Duration = Duration::from_secs(15);
 const OUTPUT_LIMIT: usize = 8 * 1024 * 1024;
 const OBJECT_ENTRIES: usize = 16_384;
 static NEXT_DIRECTORY: AtomicU64 = AtomicU64::new(1);
+#[cfg(test)]
+thread_local! {
+    static OBJECT_STORE_READS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
 
 fn owned_index_refresh(args: &[OsString], scoped: bool) -> bool {
     scoped && args == strings(&["update-index", "--refresh"])
@@ -34,7 +38,7 @@ fn scoped_run(
     limit: usize,
 ) -> GitResult<GitOutput> {
     use orchestrix_process::{OwnedProcess, ProcessEvent, ProcessLimits, SpawnSpec};
-    let mut process = OwnedProcess::spawn_identified(
+    let mut process = OwnedProcess::spawn_identified_backpressured(
         SpawnSpec {
             executable: PathBuf::from(command.get_program()),
             arguments: command.get_args().map(OsString::from).collect(),
@@ -52,11 +56,13 @@ fn scoped_run(
         scope,
     )
     .map_err(|_| GitError::Ownership)?;
-    if let Some(bytes) = input.filter(|bytes| !bytes.is_empty()) {
-        process
-            .send(bytes, deadline)
-            .map_err(|_| GitError::Process)?;
-    }
+    // Git's batch protocol may produce a large blob before reading the next
+    // request. Do not await a completed pipe write while its output queue needs
+    // this same consumer: retain one bounded write ticket and drain both sides.
+    let mut pending_input = input
+        .filter(|bytes| !bytes.is_empty())
+        .map(|bytes| process.begin_send(bytes).map_err(scoped_io_error))
+        .transpose()?;
     process.close_input();
     let started = Instant::now();
     let mut stdout = Vec::new();
@@ -64,12 +70,25 @@ fn scoped_run(
         if started.elapsed() >= deadline {
             return Err(GitError::Deadline);
         }
+        if let Some(pending) = &mut pending_input
+            && pending.try_complete().map_err(scoped_io_error)?.is_some()
+        {
+            pending_input = None;
+        }
         match process.receive(Duration::from_millis(5)) {
             Ok(Some(ProcessEvent::Stdout(bytes))) => stdout.extend(bytes),
             Ok(Some(ProcessEvent::Stderr(_))) | Ok(None) => {}
-            Err(orchestrix_process::ProcessError::Budget) => return Err(GitError::OutputLimit),
-            Err(orchestrix_process::ProcessError::Deadline) => return Err(GitError::Deadline),
-            Err(_) => return Err(GitError::Process),
+            Err(error) => return Err(scoped_io_error(error)),
+        }
+        // Drain a bounded burst before querying OS tree state. Raw local blob
+        // reads can fill the same small event queue much faster than per-chunk
+        // Job queries; neither the queue nor byte/deadline budgets are enlarged.
+        for _ in 0..64 {
+            match process.receive(Duration::ZERO).map_err(scoped_io_error)? {
+                Some(ProcessEvent::Stdout(bytes)) => stdout.extend(bytes),
+                Some(ProcessEvent::Stderr(_)) => {}
+                None => break,
+            }
         }
         let tree = process.tree().map_err(|_| GitError::Ownership)?;
         let streams = process.streams();
@@ -78,12 +97,19 @@ fn scoped_run(
             && tree.active_processes == 0
             && streams.stdout_closed
             && streams.stderr_closed
+            && pending_input.is_none()
         {
-            while let Ok(Some(event)) = process.receive(Duration::from_millis(1)) {
-                if let ProcessEvent::Stdout(bytes) = event {
-                    stdout.extend(bytes);
+            loop {
+                match process
+                    .receive(Duration::from_millis(1))
+                    .map_err(scoped_io_error)?
+                {
+                    Some(ProcessEvent::Stdout(bytes)) => stdout.extend(bytes),
+                    Some(ProcessEvent::Stderr(_)) => {}
+                    None => break,
                 }
             }
+            process.health().map_err(scoped_io_error)?;
             let stopped = process
                 .terminate(Duration::from_secs(3))
                 .map_err(|_| GitError::Ownership)?;
@@ -101,6 +127,14 @@ fn scoped_run(
                 status: code as i32,
             });
         }
+    }
+}
+
+fn scoped_io_error(error: orchestrix_process::ProcessError) -> GitError {
+    match error {
+        orchestrix_process::ProcessError::Budget => GitError::OutputLimit,
+        orchestrix_process::ProcessError::Deadline => GitError::Deadline,
+        _ => GitError::Process,
     }
 }
 
@@ -224,6 +258,20 @@ impl GitExecutor {
 
     pub(crate) fn run(&self, cwd: &Path, args: &[OsString]) -> GitResult<GitOutput> {
         self.run_bounded(cwd, args, None, DEADLINE, OUTPUT_LIMIT)
+    }
+    /// Fixed, bounded commit read used only by the opt-in preservation profile.
+    pub(super) fn read_preservation_commit(&self, root: &Path, oid: &str) -> GitResult<Vec<u8>> {
+        if !super::worktrees::valid_oid(oid) {
+            return Err(GitError::Base);
+        }
+        self.run_bounded(
+            root,
+            &strings(&["cat-file", "commit", oid]),
+            None,
+            DEADLINE,
+            1_048_576,
+        )?
+        .checked()
     }
     pub(super) fn with_read_budget(
         mut self,
@@ -620,9 +668,17 @@ impl GitExecutor {
                     return Err(GitError::Unsupported);
                 }
             }
-            inspect_object_store(&dir.join("objects"))?;
         }
         let [admin, common] = directories;
+        // These are two roles in one fresh support observation, not two
+        // independent repositories. A main checkout reports the very same
+        // canonical directory for both. Validate both roles' paths above, then
+        // inspect each distinct current object store once. Nothing is retained
+        // across calls, captures or effects; linked-worktree stores stay separate.
+        inspect_object_store(&admin.join("objects"))?;
+        if common != admin {
+            inspect_object_store(&common.join("objects"))?;
+        }
         Ok(SupportedDirectories { admin, common })
     }
 }
@@ -1066,6 +1122,8 @@ pub(crate) mod test_timing {
 /// objects/info. Its children must be regular files and share the same total
 /// entry budget; arbitrary/deeper directories and links remain unsupported.
 fn inspect_object_store(root: &Path) -> GitResult<()> {
+    #[cfg(test)]
+    OBJECT_STORE_READS.with(|count| count.set(count.get() + 1));
     reject_links(root)?;
     match fs::symlink_metadata(root) {
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
@@ -1174,6 +1232,42 @@ fn reap_bounded(child: &mut std::process::Child) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn aliased_metadata_roles_share_one_current_store_read_without_caching() {
+        let executor = GitExecutor::new().unwrap();
+        let fixture = executor.private.with_extension("metadata-roles");
+        let first = fixture.join("first");
+        let second = fixture.join("second");
+        for directory in [&first, &second] {
+            fs::create_dir_all(directory.join("objects/aa")).unwrap();
+            fs::write(
+                directory.join("objects/aa/entry"),
+                b"owned metadata fixture",
+            )
+            .unwrap();
+        }
+        OBJECT_STORE_READS.with(|count| count.set(0));
+        let same = executor
+            .ensure_admin_stores([first.clone(), first.clone()])
+            .unwrap();
+        assert_eq!(same.admin, same.common);
+        OBJECT_STORE_READS.with(|count| assert_eq!(count.get(), 1));
+        let distinct = executor
+            .ensure_admin_stores([first.clone(), second])
+            .unwrap();
+        assert_ne!(distinct.admin, distinct.common);
+        OBJECT_STORE_READS.with(|count| assert_eq!(count.get(), 3));
+        executor
+            .ensure_admin_stores([first.clone(), first.clone()])
+            .unwrap();
+        OBJECT_STORE_READS.with(|count| assert_eq!(count.get(), 4));
+        fs::create_dir(first.join("objects/aa/unsupported-depth")).unwrap();
+        assert!(matches!(
+            executor.ensure_admin_stores([first.clone(), first]),
+            Err(GitError::Unsupported)
+        ));
+        OBJECT_STORE_READS.with(|count| assert_eq!(count.get(), 5));
+    }
     #[test]
     fn index_refresh_cannot_stage_or_escape_owned_scope() {
         let refresh = strings(&["update-index", "--refresh"]);

@@ -47,6 +47,17 @@ Observation leases bind connection ID/revision, runtime version, fact, model sco
 
 ## Focused context
 
+The opt-in manual request schema 2 adds a canonical `editable_paths` allowlist
+for Git's [opaque-base-v2 profile](git-worktrees.md#exact-opaque-base-preservation--profile-v2).
+Schema-1 requests and historical artifacts keep the textual profile. The list
+is validated before metadata, pinned in the worker intent/worktree/artifact,
+and inherited unchanged by correction. Context grants remain separate; selected
+unsafe, binary, oversized or excluded context blocks before a provider read.
+Preservation is not disclosure authorization or read confinement: the runtime's
+workspace tools can read materialized files under their actual permissions.
+The reviewed evidence contains the exact textual delta and preservation
+provenance/counts/digest, not the opaque bodies or a whole-tree prompt.
+
 The host reads only individually authorized relative files, rejects links/reparse points/escapes and records the SHA-256 of the actual read bytes, including an explicitly selected dirty working file. This is not a claim that these bytes came from the pinned Git base. The worker separately materializes its pinned base and preserves staged, unstaged and untracked source changes.
 
 The pack includes objective, acceptance criteria, constraints, authorized instructions/files, source revisions, budget, byte counts and omissions. Required unsafe/oversized content blocks; optional content may be omitted with a reason. No repository scan or provider transcript is included. Context budget is UTF-8 bytes, with an optional byte/4 local token estimate rather than provider tokenization. The initial adapter limits the actual rendered pack to 32 KiB; the manifest records the effective budget. Repository/user instructions are untrusted task content, not permission grants.

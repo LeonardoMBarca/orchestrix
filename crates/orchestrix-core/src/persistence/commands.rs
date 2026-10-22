@@ -38,7 +38,7 @@ pub enum Command {
         attempt: Option<AttemptId>,
     },
     Records(crate::persistence_records::RecordsCommand),
-    Git(crate::git_records::GitCommand),
+    Git(Box<crate::git_records::GitCommand>),
     Worker(crate::worker_records::WorkerCommand),
     Review(crate::review_records::ReviewCommand),
     Integration(crate::integration_records::IntegrationCommand),
@@ -115,6 +115,10 @@ fn application(value: &ApplicationEvidence) -> Value {
 }
 
 impl Command {
+    pub fn git(command: crate::git_records::GitCommand) -> Self {
+        Self::Git(Box::new(command))
+    }
+
     pub fn create_run(run: Run) -> Self {
         Self::CreateRun(Box::new(run))
     }
@@ -335,7 +339,7 @@ impl Command {
         }
         if let Self::Git(command) = self {
             super::git::apply(state, command)?;
-            return Ok(match command {
+            return Ok(match command.as_ref() {
                 crate::git_records::GitCommand::RecordArtifact(artifact) => {
                     json!({"gitArtifact":{"id":artifact.id,"revision":artifact.revision,"operationId":artifact.operation_id}})
                 }

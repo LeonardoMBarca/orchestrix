@@ -3,7 +3,10 @@
 use super::worktrees::valid_oid;
 use super::{GitError, GitExecutor, GitResult, capture, paths};
 use crate::{
-    git_records::{MAX_FILE_BYTES, relative_file_path},
+    git_records::{
+        BasePreservation, MAX_EDITABLE_FILES, MAX_FILE_BYTES, MAX_OPAQUE_FILE_BYTES,
+        PreservedBaseEntry, relative_file_path,
+    },
     persistence_privacy::sanitize_text,
     runtime::CancellationToken,
 };
@@ -17,7 +20,7 @@ use std::{
 
 const FILES: usize = super::SOURCE_FILES;
 const READ_BYTES: usize = super::SOURCE_BYTES;
-const BATCH_BYTES: usize = 7 * MAX_FILE_BYTES;
+const BATCH_BYTES: usize = 7 * 1_048_576;
 const INSPECTION_SECONDS: u64 = 90;
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
@@ -64,6 +67,8 @@ pub struct Limits {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct RepositoryPreflight {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub preservation: Option<PreservationSummary>,
     pub schema_version: u32,
     pub profile: String,
     pub base_oid: String,
@@ -77,6 +82,16 @@ pub struct RepositoryPreflight {
     pub limits: Limits,
     pub model_called: bool,
     pub authority: String,
+}
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct PreservationSummary {
+    pub base_files: usize,
+    pub base_bytes: u64,
+    pub preserved_files: usize,
+    pub preserved_bytes: u64,
+    pub editable_paths: Vec<String>,
+    pub selection_required: bool,
 }
 pub(super) fn source_path(path: &str, aliases: &mut BTreeSet<String>) -> bool {
     relative_file_path(path)
@@ -148,6 +163,22 @@ pub fn inspect_repository(
     base: Option<&str>,
     cancel: &CancellationToken,
 ) -> GitResult<RepositoryPreflight> {
+    inspect_repository_profile(root, base, cancel, None)
+}
+pub fn inspect_repository_with_editable(
+    root: &Path,
+    base: Option<&str>,
+    editable_paths: &[String],
+    cancel: &CancellationToken,
+) -> GitResult<RepositoryPreflight> {
+    inspect_repository_profile(root, base, cancel, Some(editable_paths))
+}
+fn inspect_repository_profile(
+    root: &Path,
+    base: Option<&str>,
+    cancel: &CancellationToken,
+    editable_paths: Option<&[String]>,
+) -> GitResult<RepositoryPreflight> {
     let start = Instant::now();
     let root = paths::canonical_directory(root)?;
     let executor = GitExecutor::new()?.with_read_budget(
@@ -161,9 +192,29 @@ pub fn inspect_repository(
     if !valid_oid(base) {
         return Err(GitError::Base);
     }
+    let mut selected = editable_paths.unwrap_or_default().to_vec();
+    selected.sort();
+    let mut selected_aliases = BTreeSet::new();
+    let selected_valid = selected.len() <= MAX_EDITABLE_FILES
+        && selected
+            .iter()
+            .all(|p| source_path(p, &mut selected_aliases) && capture::exclusion(p).is_none());
     let mut report = RepositoryPreflight {
-        schema_version: 1,
-        profile: "regular-utf8-v1".into(),
+        preservation: editable_paths.map(|_| PreservationSummary {
+            base_files: 0,
+            base_bytes: 0,
+            preserved_files: 0,
+            preserved_bytes: 0,
+            editable_paths: selected.clone(),
+            selection_required: selected.is_empty(),
+        }),
+        schema_version: if editable_paths.is_some() { 2 } else { 1 },
+        profile: if editable_paths.is_some() {
+            "opaque-base-v2"
+        } else {
+            "regular-utf8-v1"
+        }
+        .into(),
         base_oid: base.into(),
         head_oid: head.clone(),
         compatible: false,
@@ -180,6 +231,13 @@ pub fn inspect_repository(
         model_called: false,
         authority: "inspection-only-revalidate-before-effects".into(),
     };
+    if editable_paths.is_some() {
+        if selected.is_empty() {
+            report.block("editable-selection-required", None);
+        } else if !selected_valid {
+            report.block("editable-scope-invalid", None);
+        }
+    }
     if base != head {
         report.block("base-not-head", None);
     }
@@ -239,7 +297,22 @@ pub fn inspect_repository(
             .checked_add(size as u64)
             .ok_or(GitError::Limit)?;
         report.inventory.largest_file_bytes = report.inventory.largest_file_bytes.max(size as u64);
-        if size > MAX_FILE_BYTES {
+        let editable = selected.binary_search_by(|p| p.as_str().cmp(path)).is_ok();
+        if let Some(summary) = &mut report.preservation {
+            summary.base_files += 1;
+            summary.base_bytes = summary.base_bytes.saturating_add(size as u64);
+            if !editable {
+                summary.preserved_files += 1;
+                summary.preserved_bytes = summary.preserved_bytes.saturating_add(size as u64);
+            }
+        }
+        if size
+            > if editable_paths.is_some() && !editable {
+                MAX_OPAQUE_FILE_BYTES as usize
+            } else {
+                MAX_FILE_BYTES
+            }
+        {
             report.inventory.oversized += 1;
             report.inventory.content_skipped += 1;
             report.block("file-size-limit", Some(path));
@@ -282,6 +355,7 @@ pub fn inspect_repository(
     // below GitExecutor's 8 MiB output limit, including framing overhead.
     let mut position = 0;
     let mut base_hashes = BTreeMap::new();
+    let mut preservation_entries = Vec::new();
     while position < entries.len() {
         checkpoint(cancel, start)?;
         let mut end = position;
@@ -310,19 +384,47 @@ pub fn inspect_repository(
             if rest.len() < entry.size + 1 || rest[entry.size] != b'\n' {
                 return Err(GitError::InconsistentCapture);
             }
-            if let Some(code) = content_issue(&rest[..entry.size])? {
+            if editable_paths.is_some() {
+                super::object_identity::verify("blob", &entry.oid, &rest[..entry.size])?;
+            }
+            let opaque_large = editable_paths.is_some()
+                && selected.binary_search(&entry.path).is_err()
+                && entry.size > MAX_FILE_BYTES;
+            let issue = if opaque_large {
+                if rest[..entry.size].contains(&0) {
+                    Some("binary-content")
+                } else if std::str::from_utf8(&rest[..entry.size]).is_err() {
+                    Some("non-utf8")
+                } else {
+                    None
+                }
+            } else {
+                content_issue(&rest[..entry.size])?
+            };
+            if let Some(code) = issue {
                 match code {
                     "binary-content" => report.inventory.binary += 1,
                     "non-utf8" => report.inventory.non_utf8 += 1,
                     _ => report.inventory.secret_pattern += 1,
                 };
-                report.block(code, Some(&entry.path));
+                if editable_paths.is_none() || selected.binary_search(&entry.path).is_ok() {
+                    report.block(code, Some(&entry.path));
+                }
             }
             report.inventory.content_inspected += 1;
             base_hashes.insert(
                 entry.path.clone(),
                 crate::git_records::content_hash(&rest[..entry.size]),
             );
+            if editable_paths.is_some() {
+                preservation_entries.push(PreservedBaseEntry {
+                    path: entry.path.clone(),
+                    mode: "100644".into(),
+                    size: entry.size as u64,
+                    git_oid: entry.oid.clone(),
+                    sha256: crate::git_records::content_hash(&rest[..entry.size]),
+                });
+            }
             rest = &rest[entry.size + 1..];
         }
         if !rest.is_empty() {
@@ -371,7 +473,34 @@ pub fn inspect_repository(
     checkpoint(cancel, start)?;
     let mut no_omissions = false;
     if report.blockers.is_empty() && report.complete {
-        match capture::inspect_preparation(&executor, &root, base, &base_hashes) {
+        let preservation = if editable_paths.is_some() {
+            preservation_entries.sort_by(|a, b| a.path.cmp(&b.path));
+            let tree_oid = super::object_identity::base_tree(&executor, &root, base)?;
+            super::object_identity::inventory_tree(&tree_oid, &preservation_entries)?;
+            Some(BasePreservation {
+                schema_version: 2,
+                base_oid: base.into(),
+                tree_oid,
+                entries: preservation_entries,
+                editable_paths: selected,
+            })
+        } else {
+            None
+        };
+        let inspected = if preservation.as_ref().is_some_and(|p| !p.validate()) {
+            Err(GitError::Limit)
+        } else if preservation.is_some() {
+            capture::inspect_preparation_with_preservation(
+                &executor,
+                &root,
+                base,
+                &base_hashes,
+                preservation.as_ref(),
+            )
+        } else {
+            capture::inspect_preparation(&executor, &root, base, &base_hashes)
+        };
+        match inspected {
             Ok((value, clean)) => {
                 report.compatible = true;
                 no_omissions = value;
@@ -440,4 +569,42 @@ pub fn inspect_repository(
         return Err(GitError::OutputLimit);
     }
     Ok(report)
+}
+
+#[cfg(all(test, windows))]
+mod tests {
+    use super::*;
+
+    /// Explicit, read-only timing of an already isolated complete snapshot.
+    /// Never falls back to the developer checkout or accesses a provider.
+    #[test]
+    #[ignore = "Requires an explicit owned snapshot path for bounded timing"]
+    fn measured_owned_snapshot_preflight() {
+        let root = std::path::PathBuf::from(
+            std::env::var_os("ORCHESTRIX_OPAQUE_TIMING_REPOSITORY")
+                .expect("explicit isolated repository required"),
+        );
+        let base = std::env::var("ORCHESTRIX_OPAQUE_TIMING_COMMIT")
+            .expect("explicit pinned full commit required");
+        super::super::executor::test_timing::begin();
+        let started = Instant::now();
+        let result = inspect_repository_with_editable(
+            &root,
+            Some(&base),
+            &["docs/CONTEXT_OWNERSHIP.md".into()],
+            &CancellationToken::new(),
+        );
+        let samples = super::super::executor::test_timing::finish();
+        let mut grouped = BTreeMap::<&str, (usize, u128)>::new();
+        for sample in &samples {
+            let entry = grouped.entry(sample.builtin).or_default();
+            entry.0 += 1;
+            entry.1 += sample.elapsed_micros;
+        }
+        println!(
+            "OPAQUE_PREFLIGHT_TIMING={}",
+            serde_json::json!({"elapsedMs":started.elapsed().as_millis(),"result":format!("{result:?}"),"grouped":grouped,"samples":samples})
+        );
+        assert!(result.is_ok_and(|report| report.compatible && report.application_eligible));
+    }
 }

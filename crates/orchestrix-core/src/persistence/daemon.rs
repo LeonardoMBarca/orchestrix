@@ -466,6 +466,7 @@ mod tests {
             let task = format!("task-{n:03}");
             let attempt = format!("attempt-{n:03}");
             let intent = WorkerIntent {
+                editable_paths: None,
                 id: id.clone(),
                 request_hash: "a".repeat(64),
                 run_id: "run".into(),

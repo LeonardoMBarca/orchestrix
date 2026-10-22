@@ -2,10 +2,12 @@
 //! No checkout conversion, clean filter, external diff or project command runs.
 use super::{GitError, GitExecutor, GitResult};
 use crate::git_records::{
-    CaptureExclusion, CapturedArtifact, CapturedFile, FileContent, MAX_CAPTURE_BYTES,
-    MAX_CAPTURE_FILES, MAX_FILE_BYTES, WorktreeIntent, content_hash, relative_file_path,
+    BasePreservation, CaptureExclusion, CapturedArtifact, CapturedFile, FileContent,
+    MAX_CAPTURE_BYTES, MAX_CAPTURE_FILES, MAX_FILE_BYTES, MAX_OPAQUE_FILE_BYTES, WorktreeIntent,
+    content_hash, relative_file_path,
 };
 use crate::persistence_privacy::sanitize_text;
+use sha2::{Digest, Sha256};
 use std::{
     collections::{BTreeMap, BTreeSet},
     ffi::OsString,
@@ -77,6 +79,7 @@ struct FileStamp {
 #[derive(Clone, Debug, PartialEq, Eq)]
 struct WorkingFile {
     bytes: Vec<u8>,
+    preserved_sha256: Option<String>,
     stamp: FileStamp,
 }
 #[derive(Debug, PartialEq, Eq)]
@@ -255,6 +258,49 @@ fn read_working(root: &Path, relative: &str, maximum: usize) -> GitResult<Option
     }
     Ok(Some(WorkingFile {
         bytes,
+        preserved_sha256: None,
+        stamp: before,
+    }))
+}
+fn read_preserved(root: &Path, relative: &str) -> GitResult<Option<WorkingFile>> {
+    let path = root.join(relative);
+    super::paths::reject_links(&path)?;
+    let before = match fs::symlink_metadata(&path) {
+        Ok(value) => stamp(&value)?,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(_) => return Err(GitError::Io),
+    };
+    if before.length > MAX_OPAQUE_FILE_BYTES {
+        return Err(GitError::Limit);
+    }
+    let mut file = File::open(&path)?;
+    if stamp(&file.metadata()?)? != before {
+        return Err(GitError::InconsistentCapture);
+    }
+    let mut digest = Sha256::new();
+    let mut buffer = [0u8; 65_536];
+    let mut size = 0u64;
+    loop {
+        let n = file.read(&mut buffer)?;
+        if n == 0 {
+            break;
+        }
+        size += n as u64;
+        if size > MAX_OPAQUE_FILE_BYTES {
+            return Err(GitError::Limit);
+        }
+        digest.update(&buffer[..n]);
+    }
+    super::paths::reject_links(&path)?;
+    if size != before.length
+        || stamp(&file.metadata()?)? != before
+        || stamp(&fs::symlink_metadata(&path)?)? != before
+    {
+        return Err(GitError::InconsistentCapture);
+    }
+    Ok(Some(WorkingFile {
+        bytes: Vec::new(),
+        preserved_sha256: Some(format!("{:x}", digest.finalize())),
         stamp: before,
     }))
 }
@@ -334,14 +380,6 @@ fn raw_index_at(path: &Path) -> GitResult<Vec<u8>> {
     }
     Ok(bytes)
 }
-fn inspect(
-    executor: &GitExecutor,
-    root: &Path,
-    base: &str,
-    limits: CaptureLimits,
-) -> GitResult<Snapshot> {
-    inspect_at(executor, root, base, base, limits)
-}
 // Read-only admission inspection uses the capture validator itself, including
 // index flags, attributes, links and coherent repeated observations.
 pub(super) fn inspect_preparation(
@@ -350,13 +388,26 @@ pub(super) fn inspect_preparation(
     base: &str,
     base_hashes: &BTreeMap<String, String>,
 ) -> GitResult<(bool, bool)> {
+    inspect_preparation_with_preservation(executor, root, base, base_hashes, None)
+}
+pub(super) fn inspect_preparation_with_preservation(
+    executor: &GitExecutor,
+    root: &Path,
+    base: &str,
+    base_hashes: &BTreeMap<String, String>,
+    preservation: Option<&BasePreservation>,
+) -> GitResult<(bool, bool)> {
     let limits = CaptureLimits::default();
-    let first = inspect(executor, root, base, limits)?;
-    for file in first.files.values().flatten() {
-        text_content(file.bytes.clone(), "100644")?;
+    let first = inspect_at_profile(executor, root, base, base, limits, preservation)?;
+    for (path, file) in &first.files {
+        if preservation.is_none_or(|m| m.editable_paths.binary_search(path).is_ok())
+            && let Some(file) = file
+        {
+            text_content(file.bytes.clone(), "100644")?;
+        }
     }
-    if inspect(executor, root, base, limits)? != first
-        || inspect(executor, root, base, limits)? != first
+    if inspect_at_profile(executor, root, base, base, limits, preservation)? != first
+        || inspect_at_profile(executor, root, base, base, limits, preservation)? != first
     {
         return Err(GitError::InconsistentCapture);
     }
@@ -366,9 +417,13 @@ pub(super) fn inspect_preparation(
         && first.files.len() == base_hashes.len()
         && first.files.iter().all(|(path, file)| {
             file.as_ref().is_some_and(|file| {
-                base_hashes
-                    .get(path)
-                    .is_some_and(|hash| *hash == content_hash(&file.bytes))
+                base_hashes.get(path).is_some_and(|hash| {
+                    *hash
+                        == file
+                            .preserved_sha256
+                            .clone()
+                            .unwrap_or_else(|| content_hash(&file.bytes))
+                })
             })
         });
     Ok((first.exclusions.is_empty(), clean))
@@ -380,39 +435,73 @@ pub(super) fn profile_attributes(
     source: Option<&str>,
 ) -> GitResult<Vec<u8>> {
     let mut attributes = Vec::new();
-    for batch in included.chunks(16) {
-        let mut command = args(&["check-attr", "-z", "--all"]);
+    let mut position = 0;
+    while position < included.len() {
+        let (end, input) = attribute_input(included, position)?;
+        let batch = &included[position..end];
+        let mut command = args(&["check-attr", "--stdin", "-z", "--all"]);
         if let Some(source) = source {
             if !super::worktrees::valid_oid(source) {
                 return Err(GitError::Base);
             }
             command.push(format!("--source={source}").into());
         }
-        command.push("--".into());
-        command.extend(batch.iter().map(OsString::from));
-        let observed = executor.run(root, &command)?.checked()?;
+        let observed = executor.run_with_input(root, &command, &input)?.checked()?;
         let fields = nul_entries(&observed)?;
         if fields.len() % 3 != 0 {
             return Err(GitError::Process);
         }
+        let mut seen = BTreeSet::new();
         for triple in fields.chunks(3) {
+            if !batch.iter().any(|path| path.as_bytes() == triple[0])
+                || triple[1].is_empty()
+                || !seen.insert((triple[0], triple[1]))
+            {
+                return Err(GitError::Process);
+            }
             if matches!(triple[1], b"filter" | b"working-tree-encoding" | b"ident") {
                 return Err(GitError::Unsupported);
             }
         }
-        if attributes.len().saturating_add(observed.len()) > 8 * MAX_FILE_BYTES {
+        if attributes.len().saturating_add(observed.len()) > 8 * 1_048_576 {
             return Err(GitError::Limit);
         }
         attributes.extend(observed);
+        position = end;
     }
     Ok(attributes)
 }
-fn inspect_at(
+
+// Bound both bytes and records, independently of editable-file budgets. NUL
+// framing avoids Windows argv limits; --stdin never interprets paths as flags.
+fn attribute_input(included: &[String], start: usize) -> GitResult<(usize, Vec<u8>)> {
+    const INPUT_BYTES: usize = 65_536;
+    const INPUT_PATHS: usize = 256;
+    let mut end = start;
+    let mut input = Vec::new();
+    while let Some(path) = included.get(end) {
+        if !relative_file_path(path) || path.chars().any(char::is_control) {
+            return Err(GitError::Path);
+        }
+        if end - start == INPUT_PATHS || input.len() + path.len() + 1 > INPUT_BYTES {
+            break;
+        }
+        input.extend_from_slice(path.as_bytes());
+        input.push(0);
+        end += 1;
+    }
+    if end == start {
+        return Err(GitError::Limit);
+    }
+    Ok((end, input))
+}
+fn inspect_at_profile(
     executor: &GitExecutor,
     root: &Path,
     base: &str,
     expected_head: &str,
     limits: CaptureLimits,
+    preservation: Option<&BasePreservation>,
 ) -> GitResult<Snapshot> {
     let observation = executor.capture_head(root)?;
     let head = observation.head;
@@ -435,6 +524,18 @@ fn inspect_at(
     )?;
     let (index, index_flags) =
         staged_index(&git(executor, root, &["ls-files", "-s", "-v", "-z"])?)?;
+    if let Some(manifest) = preservation
+        && (!manifest.validate()
+            || manifest.base_oid != base
+            || manifest.entries.len() != base_entries.len()
+            || manifest.entries.iter().any(|entry| {
+                !base_entries
+                    .get(&entry.path)
+                    .is_some_and(|base| base.oid == entry.git_oid && base.mode == entry.mode)
+            }))
+    {
+        return Err(GitError::Ownership);
+    }
     let untracked = path_list(&git(
         executor,
         root,
@@ -452,6 +553,9 @@ fn inspect_at(
             "-z",
         ],
     )?;
+    if preservation.is_some() && !ignored.is_empty() {
+        return Err(GitError::UnpreservedWork);
+    }
     let inventory: BTreeSet<_> = base_entries
         .keys()
         .chain(index.keys())
@@ -481,7 +585,25 @@ fn inspect_at(
     }
     let mut included = Vec::new();
     for path in inventory {
-        if let Some((scope, reason)) = exclusion(&path) {
+        if let Some(manifest) = preservation {
+            if exclusion(&path).is_some() {
+                return Err(GitError::Unsupported);
+            }
+            if manifest.editable_paths.binary_search(&path).is_err() {
+                let entry = manifest
+                    .entries
+                    .iter()
+                    .find(|e| e.path == path)
+                    .ok_or(GitError::Scope)?;
+                if !index
+                    .get(&path)
+                    .is_some_and(|value| value.oid == entry.git_oid && value.mode == entry.mode)
+                {
+                    return Err(GitError::UnpreservedWork);
+                }
+            }
+            included.push(path);
+        } else if let Some((scope, reason)) = exclusion(&path) {
             exclude(&mut exclusions, scope, reason);
         } else {
             included.push(path);
@@ -493,6 +615,19 @@ fn inspect_at(
     let attributes = profile_attributes(executor, root, &included, None)?;
     let mut files = BTreeMap::new();
     let mut read_bytes = 0usize;
+    let mut editable_bytes = 0usize;
+    let editable_budget = if let Some(manifest) = preservation {
+        limits
+            .artifact_bytes
+            .checked_sub(
+                serde_json::to_vec(manifest)
+                    .map_err(|_| GitError::Limit)?
+                    .len(),
+            )
+            .ok_or(GitError::Limit)?
+    } else {
+        limits.read_bytes
+    };
     for path in included {
         for entry in [base_entries.get(&path), index.get(&path)]
             .into_iter()
@@ -502,13 +637,48 @@ fn inspect_at(
                 return Err(GitError::Unsupported);
             }
         }
-        let observed = read_working(root, &path, limits.file_bytes)?;
+        let opaque = preservation.filter(|m| m.editable_paths.binary_search(&path).is_err());
+        let observed = if opaque.is_some() {
+            read_preserved(root, &path)?
+        } else {
+            read_working(
+                root,
+                &path,
+                if preservation.is_some() {
+                    limits
+                        .file_bytes
+                        .min(editable_budget.saturating_sub(editable_bytes))
+                } else {
+                    limits.file_bytes
+                },
+            )?
+        };
+        if opaque.is_none()
+            && let Some(file) = &observed
+        {
+            editable_bytes = editable_bytes
+                .checked_add(file.bytes.len())
+                .ok_or(GitError::Limit)?;
+        }
+        if let Some(manifest) = opaque {
+            let entry = manifest
+                .entries
+                .iter()
+                .find(|e| e.path == path)
+                .ok_or(GitError::Scope)?;
+            if !observed.as_ref().is_some_and(|file| {
+                file.stamp.length == entry.size
+                    && file.preserved_sha256.as_ref() == Some(&entry.sha256)
+            }) {
+                return Err(GitError::UnpreservedWork);
+            }
+        }
         if let Some(file) = &observed {
             if file.stamp.mode != "100644" {
                 return Err(GitError::Unsupported);
             }
             read_bytes = read_bytes
-                .checked_add(file.bytes.len())
+                .checked_add(file.stamp.length as usize)
                 .ok_or(GitError::Limit)?;
             if read_bytes > limits.read_bytes {
                 return Err(GitError::Limit);
@@ -540,13 +710,14 @@ fn inspect_at(
 
 /// Conservative application profile: no staged, unstaged, untracked or omitted
 /// data. A commit name alone never grants authority over the current checkout.
-pub(crate) fn clean_target(
+pub(crate) fn clean_target_with_preservation(
     executor: &GitExecutor,
     root: &Path,
     common_git_dir: &Path,
     tree_commit: &str,
     head: &str,
     symbolic_ref: &str,
+    preservation: Option<&BasePreservation>,
 ) -> GitResult<crate::integration_records::TargetState> {
     let root = super::paths::canonical_directory(root)?;
     let common = super::paths::canonical_directory(common_git_dir)?;
@@ -562,7 +733,10 @@ pub(crate) fn clean_target(
         return Err(GitError::Ownership);
     }
     let limits = CaptureLimits::default();
-    let first = inspect_at(executor, &root, tree_commit, head, limits)?;
+    let rebased = preservation
+        .map(|m| super::preservation::for_tree(executor, &root, m, tree_commit))
+        .transpose()?;
+    let first = inspect_at_profile(executor, &root, tree_commit, head, limits, rebased.as_ref())?;
     if std::str::from_utf8(&first.branch)
         .map_err(|_| GitError::Path)?
         .trim()
@@ -577,22 +751,38 @@ pub(crate) fn clean_target(
     let mut bytes = 0;
     let mut files = Vec::new();
     for (path, entry) in &first.base {
-        let base = read_blob(executor, &root, entry, limits, &mut cache, &mut bytes)?;
         let working = first
             .files
             .get(path)
             .and_then(Option::as_ref)
             .ok_or(GitError::UnpreservedWork)?;
-        if working.bytes != base || entry.mode != "100644" {
+        let sha = if let Some(manifest) = &rebased {
+            let expected = manifest
+                .entries
+                .iter()
+                .find(|e| e.path == *path)
+                .ok_or(GitError::Ownership)?;
+            let observed = working
+                .preserved_sha256
+                .clone()
+                .unwrap_or_else(|| content_hash(&working.bytes));
+            if observed != expected.sha256 {
+                return Err(GitError::UnpreservedWork);
+            }
+            observed
+        } else {
+            let base = read_blob(executor, &root, entry, limits, &mut cache, &mut bytes)?;
+            if working.bytes != base {
+                return Err(GitError::UnpreservedWork);
+            }
+            content_hash(&working.bytes)
+        };
+        if entry.mode != "100644" {
             return Err(GitError::UnpreservedWork);
         }
-        files.push(serde_json::json!([
-            path,
-            content_hash(&working.bytes),
-            working.stamp.mode
-        ]));
+        files.push(serde_json::json!([path, sha, working.stamp.mode]));
     }
-    if inspect_at(executor, &root, tree_commit, head, limits)? != first {
+    if inspect_at_profile(executor, &root, tree_commit, head, limits, rebased.as_ref())? != first {
         return Err(GitError::InconsistentCapture);
     }
     Ok(crate::integration_records::TargetState {
@@ -750,7 +940,20 @@ pub fn capture_with_observer<F: FnOnce() -> GitResult<()>>(
     if root == super::paths::canonical_directory(Path::new(&intent.main_repository))? {
         return Err(GitError::Scope);
     }
-    let first = inspect(executor, &root, &intent.base_oid, limits)?;
+    if let Some(manifest) = &intent.preservation {
+        super::preservation::verify_base(executor, &root, manifest)?;
+    }
+    let observe = || {
+        inspect_at_profile(
+            executor,
+            &root,
+            &intent.base_oid,
+            &intent.base_oid,
+            limits,
+            intent.preservation.as_ref(),
+        )
+    };
+    let first = observe()?;
     let branch = std::str::from_utf8(&first.branch)
         .map_err(|_| GitError::Ownership)?
         .trim();
@@ -758,7 +961,7 @@ pub fn capture_with_observer<F: FnOnce() -> GitResult<()>>(
         return Err(GitError::Ownership);
     }
     between()?;
-    let second = inspect(executor, &root, &intent.base_oid, limits)?;
+    let second = observe()?;
     if first != second {
         return Err(GitError::InconsistentCapture);
     }
@@ -767,14 +970,40 @@ pub fn capture_with_observer<F: FnOnce() -> GitResult<()>>(
     let mut files = Vec::new();
     let mut patch = String::new();
     for (path, working) in &first.files {
+        if intent
+            .preservation
+            .as_ref()
+            .is_some_and(|m| m.editable_paths.binary_search(path).is_err())
+        {
+            continue;
+        }
         let base_entry = first.base.get(path);
         let index_entry = first.index.get(path);
+        if let Some(manifest) = &intent.preservation
+            && base_entry == index_entry
+            && let Some(entry) = manifest.entries.iter().find(|entry| entry.path == *path)
+            && working
+                .as_ref()
+                .is_some_and(|file| content_hash(&file.bytes) == entry.sha256)
+        {
+            continue;
+        }
         let base_bytes = base_entry
             .map(|entry| read_blob(executor, &root, entry, limits, &mut cache, &mut read_bytes))
             .transpose()?;
         let index_bytes = index_entry
             .map(|entry| read_blob(executor, &root, entry, limits, &mut cache, &mut read_bytes))
             .transpose()?;
+        if intent.preservation.is_some() {
+            for (entry, bytes) in [
+                (base_entry, base_bytes.as_ref()),
+                (index_entry, index_bytes.as_ref()),
+            ] {
+                if let (Some(entry), Some(bytes)) = (entry, bytes) {
+                    super::object_identity::verify("blob", &entry.oid, bytes)?;
+                }
+            }
+        }
         let work_bytes = working.as_ref().map(|file| &file.bytes);
         if base_bytes.as_ref() == index_bytes.as_ref() && index_bytes.as_ref() == work_bytes {
             continue;
@@ -808,8 +1037,11 @@ pub fn capture_with_observer<F: FnOnce() -> GitResult<()>>(
     }
     // The immutable-object reads above must not widen the accepted observation
     // interval: a final read also catches writes during patch/manifest assembly.
-    if inspect(executor, &root, &intent.base_oid, limits)? != first {
+    if observe()? != first {
         return Err(GitError::InconsistentCapture);
+    }
+    if let Some(manifest) = &intent.preservation {
+        super::preservation::verify_base(executor, &root, manifest)?;
     }
     safe_text(&patch)?;
     let mut artifact = CapturedArtifact {
@@ -833,6 +1065,7 @@ pub fn capture_with_observer<F: FnOnce() -> GitResult<()>>(
             .collect(),
         patch_sha256: content_hash(patch.as_bytes()),
         patch,
+        preservation: intent.preservation.clone(),
     };
     artifact.revision = artifact.content_revision();
     let artifact_bytes = artifact
@@ -840,11 +1073,24 @@ pub fn capture_with_observer<F: FnOnce() -> GitResult<()>>(
         .iter()
         .flat_map(|file| [&file.base, &file.index, &file.worktree])
         .flatten()
-        .try_fold(artifact.patch.len(), |bytes, content| {
-            bytes
-                .checked_add(content.content.len())
-                .ok_or(GitError::Limit)
-        })?;
+        .try_fold(
+            artifact.patch.len()
+                + artifact
+                    .preservation
+                    .as_ref()
+                    .map(|m| {
+                        serde_json::to_vec(m)
+                            .map(|v| v.len())
+                            .map_err(|_| GitError::Limit)
+                    })
+                    .transpose()?
+                    .unwrap_or(0),
+            |bytes, content| {
+                bytes
+                    .checked_add(content.content.len())
+                    .ok_or(GitError::Limit)
+            },
+        )?;
     if artifact_bytes > limits.artifact_bytes || !artifact.validate() {
         return Err(GitError::Limit);
     }
@@ -854,6 +1100,60 @@ pub fn capture_with_observer<F: FnOnce() -> GitResult<()>>(
 #[cfg(test)]
 mod metadata_batch_tests {
     use super::*;
+
+    #[test]
+    fn attribute_input_is_nul_framed_and_bounded_by_bytes_and_records() {
+        let paths = (0..584)
+            .map(|n| format!("docs/file {n}.md"))
+            .collect::<Vec<_>>();
+        let (next, bytes) = attribute_input(&paths, 0).unwrap();
+        assert_eq!(next, 256);
+        assert_eq!(
+            bytes.split(|b| *b == 0).filter(|p| !p.is_empty()).count(),
+            256
+        );
+        assert!(bytes.ends_with(&[0]));
+        assert!(bytes.len() <= 65_536);
+        let long = (0..20)
+            .map(|n| format!("{n}{}", "x".repeat(4093)))
+            .collect::<Vec<_>>();
+        let (next, bytes) = attribute_input(&long, 0).unwrap();
+        assert_eq!(next, 16);
+        assert!(bytes.len() <= 65_536);
+        for path in ["../outside", "bad\0path", "bad\npath", ".git/config"] {
+            assert_eq!(attribute_input(&[path.into()], 0), Err(GitError::Path));
+        }
+    }
+
+    #[test]
+    fn stdin_attributes_preserve_exact_observations_and_reject_protected_attributes() {
+        let fixture = super::super::executor::MetadataFixture::new();
+        let root = fixture.repository("attribute-batches");
+        fs::write(root.join(".gitattributes"), b"*.md text eol=lf\n").unwrap();
+        let paths = (0..584)
+            .map(|n| format!("docs/file {n}.md"))
+            .collect::<Vec<_>>();
+        let actual = profile_attributes(&fixture.executor, &root, &paths, None).unwrap();
+        let mut expected = Vec::new();
+        for batch in paths.chunks(16) {
+            let mut command = args(&["check-attr", "-z", "--all", "--"]);
+            command.extend(batch.iter().map(OsString::from));
+            expected.extend(
+                fixture
+                    .executor
+                    .run(&root, &command)
+                    .unwrap()
+                    .checked()
+                    .unwrap(),
+            );
+        }
+        assert_eq!(actual, expected);
+        fs::write(root.join(".gitattributes"), b"*.md filter=must-never-run\n").unwrap();
+        assert_eq!(
+            profile_attributes(&fixture.executor, &root, &paths, None),
+            Err(GitError::Unsupported)
+        );
+    }
 
     #[test]
     fn staged_flags_preserve_separate_observations() {
@@ -921,6 +1221,7 @@ mod metadata_batch_tests {
         fs::write(checkout.join(".git"), marker(&first)).unwrap();
         let text = |path: &Path| path.to_str().unwrap().to_owned();
         let intent = WorktreeIntent {
+            preservation: None,
             operation_id: "capture-frame".into(),
             project_id: "project".into(),
             repository_id: "repository".into(),

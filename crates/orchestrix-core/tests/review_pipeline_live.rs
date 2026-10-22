@@ -389,7 +389,7 @@ fn codex_independent_review_and_same_task_correction_live_opt_in() {
     let cancel = CancellationToken::new();
     let mut policy = PolicyDocument::default();
     policy.mode_defaults.fallback = Some(Fallback::Compatible);
-    let input=ManualTaskRequest{schema_version:1,id:"live-review-implementation".into(),project_id:"live-review-fixture".into(),
+    let input=ManualTaskRequest{editable_paths:None,schema_version:1,id:"live-review-implementation".into(),project_id:"live-review-fixture".into(),
         repository_id:"live-review-repository".into(),repository_directory:fixture.repository.clone(),
         authorized_worktree_directory:fixture.authorized.clone(),base_commit:fixture.base.clone(),
         connection_id:"live-codex-subscription".into(),connection_revision:1,

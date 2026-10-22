@@ -46,6 +46,7 @@ pub enum GitFaultPoint {
     None,
     AfterIntent,
     AfterRefs,
+    DuringMaterialization,
     AfterWorktree,
     CreateConfirmationRollback,
     AfterWorktreeRemoval,
@@ -66,7 +67,10 @@ impl WorktreeService {
     }
     /// The caller owns a separate persisted integration intent. This does not
     /// reserve or fabricate an execution attempt in the domain/worker tables.
-    pub(super) fn create_integration_owned(&self, intent: &WorktreeIntent) -> GitResult<()> {
+    /// Returns true only when this call verified the complete initial base and
+    /// wrote its completion anchor. Existing completed work is never overwritten
+    /// or represented as a fresh verification.
+    pub(super) fn create_integration_owned(&self, intent: &WorktreeIntent) -> GitResult<bool> {
         if !intent.validate() {
             return Err(GitError::Ownership);
         }
@@ -84,7 +88,7 @@ impl WorktreeService {
             return Err(GitError::Scope);
         }
         self.validate_main(intent)?;
-        let material = read_base(&self.executor, &repo, &intent.base_oid)?;
+        let material = read_intent_base(&self.executor, &repo, intent)?;
         self.ensure_refs(intent)?;
         if !path_exists(target)? {
             self.validate_target(intent, false)?;
@@ -115,7 +119,7 @@ impl WorktreeService {
                 )?
                 .checked()?;
             self.inspect_registration(intent, true)?;
-            materialize(target, &material)?;
+            materialize_profile(&self.executor, &repo, target, intent, &material, false)?;
             self.executor
                 .run(target, &args_of(&["read-tree", &intent.base_oid]))?
                 .checked()?;
@@ -124,8 +128,9 @@ impl WorktreeService {
         if !self.materialized(intent)? {
             verify_base(&self.executor, target, intent, &material)?;
             self.mark_materialized(intent)?;
+            return Ok(true);
         }
-        Ok(())
+        Ok(false)
     }
     pub(super) fn inspect_integration_owned(&self, intent: &WorktreeIntent) -> GitResult<()> {
         self.validate_main(intent)?;
@@ -148,12 +153,39 @@ impl WorktreeService {
         request: &CreateWorktree,
         fault: GitFaultPoint,
     ) -> GitResult<WorktreeRecord> {
-        let intent = self.intent(store, request)?;
+        self.create_profile(store, request, None, fault)
+    }
+    pub fn create_with_preservation(
+        &self,
+        store: &mut Store,
+        request: &CreateWorktree,
+        editable_paths: &[String],
+    ) -> GitResult<WorktreeRecord> {
+        self.create_profile(store, request, Some(editable_paths), GitFaultPoint::None)
+    }
+    #[doc(hidden)]
+    pub fn create_with_preservation_and_fault(
+        &self,
+        store: &mut Store,
+        request: &CreateWorktree,
+        editable_paths: &[String],
+        fault: GitFaultPoint,
+    ) -> GitResult<WorktreeRecord> {
+        self.create_profile(store, request, Some(editable_paths), fault)
+    }
+    fn create_profile(
+        &self,
+        store: &mut Store,
+        request: &CreateWorktree,
+        editable_paths: Option<&[String]>,
+        fault: GitFaultPoint,
+    ) -> GitResult<WorktreeRecord> {
+        let intent = self.intent(store, request, editable_paths)?;
         let plan = Request {
             scope: request.scope.clone(),
             key: request.key.clone(),
             expected_revision: request.expected_revision,
-            command: Command::Git(GitCommand::Plan(intent.clone())),
+            command: Command::git(GitCommand::Plan(intent.clone())),
         };
         applied(store.execute(&plan)?)?;
         if fault == GitFaultPoint::AfterIntent {
@@ -169,7 +201,7 @@ impl WorktreeService {
         let repo = Path::new(&intent.main_repository);
         self.executor.ensure_supported(repo)?;
         self.validate_main(&intent)?;
-        let material = read_base(&self.executor, repo, &intent.base_oid)?;
+        let material = read_intent_base(&self.executor, repo, &intent)?;
         self.ensure_refs(&intent)?;
         if fault == GitFaultPoint::AfterRefs {
             return Err(GitError::Injected);
@@ -200,7 +232,14 @@ impl WorktreeService {
             // No checkout, hooks, filters, reset, stash or clean: raw blob bytes
             // are created once inside the newly registered owned directory.
             self.inspect_registration(&intent, true)?;
-            materialize(target, &material)?;
+            materialize_profile(
+                &self.executor,
+                repo,
+                target,
+                &intent,
+                &material,
+                fault == GitFaultPoint::DuringMaterialization,
+            )?;
             self.executor
                 .run(target, &args_of(&["read-tree", &intent.base_oid]))?
                 .checked()?;
@@ -368,7 +407,7 @@ impl WorktreeService {
                 scope: scope.clone(),
                 key: key.clone(),
                 expected_revision,
-                command: Command::Git(GitCommand::RecordArtifact(artifact.clone())),
+                command: Command::git(GitCommand::RecordArtifact(artifact.clone())),
             })?)?;
             return Ok(artifact);
         }
@@ -389,7 +428,7 @@ impl WorktreeService {
             scope: scope.clone(),
             key: key.clone(),
             expected_revision,
-            command: Command::Git(GitCommand::RecordArtifact(artifact.clone())),
+            command: Command::git(GitCommand::RecordArtifact(artifact.clone())),
         };
         progress("persist");
         applied(store.execute(&request)?)?;
@@ -450,7 +489,7 @@ impl WorktreeService {
             scope: scope.clone(),
             key: key.clone(),
             expected_revision,
-            command: Command::Git(GitCommand::PlanCleanup {
+            command: Command::git(GitCommand::PlanCleanup {
                 operation_id: operation_id.into(),
                 observation: cleanup_observation,
             }),
@@ -549,7 +588,12 @@ impl WorktreeService {
         record(store, operation_id)
     }
 
-    fn intent(&self, store: &Store, request: &CreateWorktree) -> GitResult<WorktreeIntent> {
+    fn intent(
+        &self,
+        store: &Store,
+        request: &CreateWorktree,
+        editable_paths: Option<&[String]>,
+    ) -> GitResult<WorktreeIntent> {
         let state = store.load()?;
         let project = state
             .projects()
@@ -701,6 +745,9 @@ impl WorktreeService {
                 )
             });
         let intent = WorktreeIntent {
+            preservation: editable_paths
+                .map(|paths| super::preservation::plan(&self.executor, &repo, &resolved, paths))
+                .transpose()?,
             operation_id: operation_id.clone(),
             project_id: request.project.as_str().into(),
             repository_id: request.repository.as_str().into(),
@@ -1129,7 +1176,7 @@ fn commit_phase(
         scope: scope.clone(),
         key,
         expected_revision: revision,
-        command: Command::Git(command),
+        command: Command::git(command),
     };
     applied(store.execute_with_fault(&request, fault)?)
 }
@@ -1304,6 +1351,35 @@ pub(super) fn read_base(
         }
     }
     Ok(files)
+}
+pub(super) fn read_intent_base(
+    executor: &GitExecutor,
+    root: &Path,
+    intent: &WorktreeIntent,
+) -> GitResult<BTreeMap<String, Vec<u8>>> {
+    match &intent.preservation {
+        Some(manifest) => {
+            super::preservation::verify_base(executor, root, manifest)?;
+            Ok(BTreeMap::new())
+        }
+        None => read_base(executor, root, &intent.base_oid),
+    }
+}
+fn materialize_profile(
+    executor: &GitExecutor,
+    source: &Path,
+    target: &Path,
+    intent: &WorktreeIntent,
+    files: &BTreeMap<String, Vec<u8>>,
+    fault_after_first: bool,
+) -> GitResult<()> {
+    match &intent.preservation {
+        Some(manifest) => {
+            super::preservation::materialize(executor, source, target, manifest, fault_after_first)
+        }
+        None if fault_after_first => Err(GitError::Unsupported),
+        None => materialize(target, files),
+    }
 }
 fn materialize(root: &Path, files: &BTreeMap<String, Vec<u8>>) -> GitResult<()> {
     for (relative, bytes) in files {
@@ -1564,6 +1640,7 @@ mod metadata_batch_tests {
         let authorized = fixture.root.join("attempts");
         fs::create_dir(&authorized).unwrap();
         let intent = WorktreeIntent {
+            preservation: None,
             operation_id: "fresh-directories".into(),
             project_id: "project".into(),
             repository_id: "repository".into(),
@@ -1696,6 +1773,7 @@ mod metadata_batch_tests {
         let authorized = fixture.root.join("attempts");
         fs::create_dir(&authorized).unwrap();
         let intent = WorktreeIntent {
+            preservation: None,
             operation_id: "metadata-batch".into(),
             project_id: "project".into(),
             repository_id: "repository".into(),

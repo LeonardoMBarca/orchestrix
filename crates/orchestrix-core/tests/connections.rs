@@ -679,6 +679,7 @@ fn known_link_old_prepared_task_is_rejected_after_disable_enable_and_unlink_with
     let mut policy = PolicyDocument::default();
     policy.mode_defaults.fallback = Some(Fallback::Compatible);
     let mut task = ManualTaskRequest {
+        editable_paths: None,
         schema_version: 1,
         id: "known-connection-worker".into(),
         project_id: "project".into(),

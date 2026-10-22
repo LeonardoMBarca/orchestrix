@@ -45,7 +45,8 @@ fn historical_artifact(
     ).optional()?;
     let Some(row) = row else { return Ok(None) };
     let artifact: CapturedArtifact = decode(&row[6], 32 * 1_048_576)?;
-    let intent: WorktreeIntent = decode(&row[7], 65_536)?;
+    let intent: WorktreeIntent =
+        decode(&row[7], 65_536 + crate::git_records::MAX_PRESERVATION_BYTES)?;
     let columns = [
         &artifact.id,
         &artifact.revision,
@@ -75,6 +76,7 @@ fn historical_artifact(
         || artifact.attempt_id != intent.attempt_id
         || artifact.origin != intent.path
         || artifact.base_oid != intent.base_oid
+        || artifact.preservation != intent.preservation
     {
         return Err(StoreError::InvalidState);
     }
@@ -280,7 +282,7 @@ impl Store {
                 reviews
                     .push(historical_review(&self.connection, &id, &run, &task, &body)?.summary());
             }
-            let artifact=artifact.map(|a|json!({"id":a.id,"revision":a.revision,"baseOid":a.base_oid,"patchSha256":a.patch_sha256,"files":a.files.iter().map(|f|json!({"path":f.path,"untracked":f.untracked,"baseHash":f.base.as_ref().map(|c|&c.sha256),"worktreeHash":f.worktree.as_ref().map(|c|&c.sha256)})).collect::<Vec<_>>(),"exclusions":a.exclusions,"immutable":true}));
+            let artifact=artifact.map(|a|json!({"id":a.id,"revision":a.revision,"baseOid":a.base_oid,"patchSha256":a.patch_sha256,"preservation":a.preservation.as_ref().map(|p|json!({"profile":"opaque-base-v2","baseFiles":p.entries.len(),"baseBytes":p.entries.iter().map(|e|e.size).sum::<u64>(),"editablePaths":p.editable_paths})),"files":a.files.iter().map(|f|json!({"path":f.path,"untracked":f.untracked,"baseHash":f.base.as_ref().map(|c|&c.sha256),"worktreeHash":f.worktree.as_ref().map(|c|&c.sha256)})).collect::<Vec<_>>(),"exclusions":a.exclusions,"immutable":true}));
             let integration_history = self.integration_worker_history(id)?;
             Ok(
                 json!({"worker":{"intent":worker.intent,"status":worker.status()},"connectionId":connection,"connectionRevision":revision,"summary":worker.summary(),"artifact":artifact,"reviews":reviews,"integrations":integration_history.0,"integrationCount":integration_history.1,"integrationsMore":integration_history.1>16,"historical":true,"currentVerification":"not-revalidated","delivered":false}),
@@ -352,7 +354,8 @@ impl Store {
                 if count > 128 {
                     return Err(StoreError::Configuration);
                 }
-                let intent: WorktreeIntent = decode(&row[9], 65_536)?;
+                let intent: WorktreeIntent =
+                    decode(&row[9], 65_536 + crate::git_records::MAX_PRESERVATION_BYTES)?;
                 let columns = [
                     &intent.operation_id,
                     &intent.project_id,
@@ -628,6 +631,7 @@ mod projection_tests {
         connection.execute_batch("CREATE TABLE runs(id TEXT,project_id TEXT,repository_id TEXT);CREATE TABLE projects(id TEXT,repository_id TEXT);CREATE TABLE repositories(id TEXT);CREATE TABLE tasks(run_id TEXT,id TEXT);CREATE TABLE attempts(id TEXT,run_id TEXT,task_id TEXT,session_id TEXT);CREATE TABLE sessions(id TEXT,connection_id TEXT,connection_revision INTEGER,adapter TEXT);CREATE TABLE connections(id TEXT,revision INTEGER,adapter TEXT);CREATE TABLE manual_workers(id TEXT,run_id TEXT,task_id TEXT,attempt_id TEXT,intent TEXT);CREATE TABLE worker_observations(worker_id TEXT,ordinal INTEGER,body TEXT,digest TEXT);CREATE TABLE git_worktrees(operation_id TEXT,project_id TEXT,repository_id TEXT,run_id TEXT,task_id TEXT,attempt_id TEXT,path TEXT,branch TEXT,main_repository TEXT,intent TEXT);CREATE TABLE captured_artifacts(id TEXT,revision TEXT,operation_id TEXT,attempt_id TEXT,base_oid TEXT,patch_sha256 TEXT,body TEXT);CREATE TABLE independent_reviews(id TEXT,run_id TEXT,task_id TEXT,intent TEXT);CREATE TABLE review_observations(review_id TEXT,ordinal INTEGER,body TEXT,digest TEXT);CREATE TABLE serial_integrations(id TEXT,run_id TEXT,task_id TEXT,intent TEXT);CREATE TABLE integration_observations(integration_id TEXT,ordinal INTEGER,body TEXT,digest TEXT);INSERT INTO runs VALUES('run','project','repo');INSERT INTO projects VALUES('project','repo');INSERT INTO repositories VALUES('repo');INSERT INTO tasks VALUES('run','task');INSERT INTO attempts VALUES('attempt','run','task','source-session');INSERT INTO sessions VALUES('source-session','account',1,'fixture'),('review-session','account',1,'fixture');INSERT INTO connections VALUES('account',1,'fixture');").unwrap();
         let root = std::env::temp_dir().canonicalize().unwrap();
         let intent = WorktreeIntent {
+            preservation: None,
             operation_id: "operation".into(),
             project_id: "project".into(),
             repository_id: "repo".into(),
@@ -654,6 +658,7 @@ mod projection_tests {
         };
         assert!(intent.validate());
         let worker = WorkerIntent {
+            editable_paths: None,
             id: "worker".into(),
             request_hash: "a".repeat(64),
             run_id: "run".into(),
@@ -704,6 +709,7 @@ mod projection_tests {
             )
             .unwrap();
         let mut artifact = CapturedArtifact {
+            preservation: None,
             id: "artifact".into(),
             revision: String::new(),
             operation_id: intent.operation_id.clone(),

@@ -93,6 +93,7 @@ impl Fixture {
         policy.mode_defaults.fallback = Some(Fallback::Compatible);
         let check = check("after\n");
         let task = ManualTaskRequest {
+            editable_paths: None,
             schema_version: 1,
             id: "implementation".into(),
             project_id: "integration-project".into(),

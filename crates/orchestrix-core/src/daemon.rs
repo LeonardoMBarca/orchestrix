@@ -650,7 +650,8 @@ fn handle_inner(
                 "configuration-v1",
                 "diagnostic-history-v1",
                 "connection-capacity-v1",
-                "repository-inspection-v1"
+                "repository-inspection-v1",
+                "opaque-base-v2"
             ]);
             return Ok(snapshot);
         }

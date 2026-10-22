@@ -36,6 +36,8 @@ pub struct ContextFileRequest {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ManualTaskRequest {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub editable_paths: Option<Vec<String>>,
     pub schema_version: u32,
     pub id: String,
     pub project_id: String,
@@ -233,7 +235,7 @@ impl ManualWorker {
     ) -> Result<WorkerRecord> {
         let body = serde_json::to_value(input).map_err(|_| WorkerError("manifest"))?;
         if !exact_safe(&body, 1_048_576)
-            || input.schema_version != 1
+            || input.schema_version != if input.editable_paths.is_some() { 2 } else { 1 }
             || LocalRef::new(&input.id).is_err()
         {
             return Err(WorkerError("manifest"));
@@ -340,6 +342,28 @@ impl ManualWorker {
         }
         if cancel.is_cancelled() {
             return Err(WorkerError("cancelled-before-reservation"));
+        }
+        // The editable allowlist is separate from read/context authority. Pin
+        // and validate it before any provider metadata or runtime admission.
+        if let Some(editable) = &input.editable_paths {
+            if !crate::git_records::editable_paths_valid(editable) {
+                return Err(WorkerError("editable-file-list"));
+            }
+            git::plan_base_preservation(&repository, &input.base_commit, editable, cancel)?;
+        }
+        for file in input
+            .context_files
+            .iter()
+            .filter(|_| input.editable_paths.is_some())
+        {
+            if !policy::context_path_eligible(&file.path)
+                || LocalRef::new(&file.authorization_ref).is_err()
+            {
+                return Err(WorkerError("context-file-authorization"));
+            }
+            let path =
+                git::paths::authorized_child(&repository, &repository.join(&file.path), true)?;
+            validate_context_file(&path)?;
         }
         // Mechanical classifications are handled by the explicit local query entry point, never inferred by a model.
         if input.classification.kind.is_mechanical() {
@@ -561,6 +585,7 @@ impl ManualWorker {
             }
         }
         let intent = WorkerIntent {
+            editable_paths: input.editable_paths.clone(),
             id: input.id.clone(),
             request_hash,
             run_id: run_id.as_str().into(),
@@ -661,24 +686,26 @@ impl ManualWorker {
     ) -> Result<()> {
         let initial = record(store, &input.id)?;
         let service = WorktreeService::new()?;
-        let worktree = service.create(
-            store,
-            &CreateWorktree {
-                scope: LocalRef::new(&input.id)?,
-                key: LocalRef::new(format!("create-{suffix}"))?,
-                expected_revision: store.load()?.revision(),
-                project: ProjectId::new(&input.project_id)?,
-                repository: RepositoryId::new(&input.repository_id)?,
-                run: RunId::new(&initial.intent.run_id)?,
-                task: TaskId::new(&initial.intent.task_id)?,
-                attempt: AttemptId::new(&initial.intent.attempt_id)?,
-                directory_reference: LocalRef::new(format!("directory-{}", input.project_id))?,
-                worktree_reference: LocalRef::new(format!("worktree-{suffix}"))?,
-                repository_path: repository.into(),
-                authorized_directory: authorized.into(),
-                base_commit: input.base_commit.clone(),
-            },
-        )?;
+        let worktree_request = CreateWorktree {
+            scope: LocalRef::new(&input.id)?,
+            key: LocalRef::new(format!("create-{suffix}"))?,
+            expected_revision: store.load()?.revision(),
+            project: ProjectId::new(&input.project_id)?,
+            repository: RepositoryId::new(&input.repository_id)?,
+            run: RunId::new(&initial.intent.run_id)?,
+            task: TaskId::new(&initial.intent.task_id)?,
+            attempt: AttemptId::new(&initial.intent.attempt_id)?,
+            directory_reference: LocalRef::new(format!("directory-{}", input.project_id))?,
+            worktree_reference: LocalRef::new(format!("worktree-{suffix}"))?,
+            repository_path: repository.into(),
+            authorized_directory: authorized.into(),
+            base_commit: input.base_commit.clone(),
+        };
+        let worktree = if let Some(editable) = &initial.intent.editable_paths {
+            service.create_with_preservation(store, &worktree_request, editable)?
+        } else {
+            service.create(store, &worktree_request)?
+        };
         if let Some(origin) = &initial.intent.correction {
             crate::review::materialize_correction(store, &worktree, origin)?;
         }
@@ -903,8 +930,11 @@ impl ManualWorker {
         )?;
         checkpoint(WorkerCheckpoint::Checking);
         for (n, spec) in input.checks.iter().enumerate() {
-            let before =
-                git::capture(&executor, &path, &worktree.intent, CaptureLimits::default())?;
+            let before = git::capture(&executor, &path, &worktree.intent, CaptureLimits::default())
+                .map_err(|error| {
+                    *capture_diagnostic = Some(CaptureDiagnostic::new("capture", &error));
+                    WorkerError::from(error)
+                })?;
             if before.revision != artifact.revision || changed(&files_watch, &git_watch)? {
                 invalidated = true;
                 break;
@@ -919,6 +949,9 @@ impl ManualWorker {
             )
             .map_err(WorkerError)?;
             let after = git::capture(&executor, &path, &worktree.intent, CaptureLimits::default());
+            if let Err(error) = &after {
+                *capture_diagnostic = Some(CaptureDiagnostic::new("capture", error));
+            }
             let stable = after
                 .as_ref()
                 .is_ok_and(|a| a.revision == artifact.revision)
@@ -966,12 +999,11 @@ impl ManualWorker {
         } else {
             WorkerStatus::NeedsWork
         };
-        observe(
-            store,
-            &input.id,
-            status,
-            json!({"artifactRevision":artifact.revision,"checksOmitted":input.checks.iter().skip(checks.len()).map(|c|json!({"id":c.id,"reason":"prior-check-failed-or-artifact-invalidated"})).collect::<Vec<_>>(),"checks":checks,"synthetic":report.synthetic,"worktreeOperation":worktree.intent.operation_id,"review":"pending-independent-review","delivered":false}),
-        )?;
+        let mut verification_details = json!({"artifactRevision":artifact.revision,"checksOmitted":input.checks.iter().skip(checks.len()).map(|c|json!({"id":c.id,"reason":"prior-check-failed-or-artifact-invalidated"})).collect::<Vec<_>>(),"checks":checks,"synthetic":report.synthetic,"worktreeOperation":worktree.intent.operation_id,"review":"pending-independent-review","delivered":false});
+        if let Some(diagnostic) = capture_diagnostic {
+            diagnostic.attach(&mut verification_details);
+        }
+        observe(store, &input.id, status, verification_details)?;
         if status == WorkerStatus::Verified && changed(&files_watch, &git_watch)? {
             invalidate_evidence(store, &current, &version, "changed-after-checks")?;
             observe(
@@ -1429,6 +1461,22 @@ fn context(
             ..ContextBudget::default()
         },
     )?)
+}
+
+/// Content eligibility is independent of preserving opaque bytes locally. This
+/// grants no path access; callers must first resolve their native/root authority.
+pub fn validate_context_file(path: &Path) -> Result<()> {
+    git::paths::reject_links(path)?;
+    let mut bytes = Vec::new();
+    std::fs::File::open(path)
+        .map_err(|_| WorkerError("context-file-read"))?
+        .take(1_048_577)
+        .read_to_end(&mut bytes)
+        .map_err(|_| WorkerError("context-file-read"))?;
+    let text = String::from_utf8(bytes).map_err(|_| WorkerError("context-file-encoding"))?;
+    crate::git_records::FileContent::new(text, "100644".into())
+        .map_err(|_| WorkerError("context-file-not-eligible"))?;
+    Ok(())
 }
 
 pub(crate) fn diagnostic_input(

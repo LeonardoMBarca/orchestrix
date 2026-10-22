@@ -21,6 +21,7 @@ static NEXT_DIRECTORY: AtomicU64 = AtomicU64::new(0);
 
 fn git_intent(directory: &Path) -> WorktreeIntent {
     WorktreeIntent {
+        preservation: None,
         operation_id: "worktree-operation-1".into(),
         project_id: "project-1".into(),
         repository_id: "repository-1".into(),
@@ -46,6 +47,7 @@ fn git_observation(kind: &str) -> WorktreeObservation {
 }
 fn captured(intent: &WorktreeIntent) -> CapturedArtifact {
     let mut artifact = CapturedArtifact {
+        preservation: None,
         id: "artifact-git".into(),
         revision: String::new(),
         operation_id: intent.operation_id.clone(),
@@ -89,7 +91,7 @@ fn git_records_are_atomic_owned_idempotent_and_preserve_exact_content() {
     let plan = request(
         &store,
         "plan-git",
-        Command::Git(GitCommand::Plan(intent.clone())),
+        Command::git(GitCommand::Plan(intent.clone())),
     );
     let receipt = store.execute(&plan).unwrap();
     assert_eq!(receipt.result.disposition, Disposition::Applied);
@@ -98,7 +100,7 @@ fn git_records_are_atomic_owned_idempotent_and_preserve_exact_content() {
     let confirm = request(
         &store,
         "confirm-git",
-        Command::Git(GitCommand::ConfirmCreated {
+        Command::git(GitCommand::ConfirmCreated {
             operation_id: intent.operation_id.clone(),
             observation: git_observation("created"),
         }),
@@ -118,7 +120,7 @@ fn git_records_are_atomic_owned_idempotent_and_preserve_exact_content() {
     let save = request(
         &store,
         "capture-git",
-        Command::Git(GitCommand::RecordArtifact(artifact.clone())),
+        Command::git(GitCommand::RecordArtifact(artifact.clone())),
     );
     assert_eq!(
         store.execute_with_fault(&save, FaultPoint::AfterState),
@@ -168,7 +170,7 @@ fn git_records_are_atomic_owned_idempotent_and_preserve_exact_content() {
     let invalid = request(
         &store,
         "invalid-hash",
-        Command::Git(GitCommand::RecordArtifact(altered)),
+        Command::git(GitCommand::RecordArtifact(altered)),
     );
     assert_eq!(
         store.execute(&invalid).unwrap().result.disposition,
@@ -177,7 +179,7 @@ fn git_records_are_atomic_owned_idempotent_and_preserve_exact_content() {
     let mut wrong = intent.clone();
     wrong.operation_id = "different-operation".into();
     wrong.attempt_id = "unknown-attempt".into();
-    let invalid = request(&store, "wrong-owner", Command::Git(GitCommand::Plan(wrong)));
+    let invalid = request(&store, "wrong-owner", Command::git(GitCommand::Plan(wrong)));
     assert_eq!(
         store.execute(&invalid).unwrap().result.disposition,
         Disposition::InvalidNoChange
@@ -196,7 +198,7 @@ fn git_records_are_atomic_owned_idempotent_and_preserve_exact_content() {
     let invalid = request(
         &store,
         "secret-content",
-        Command::Git(GitCommand::RecordArtifact(secret)),
+        Command::git(GitCommand::RecordArtifact(secret)),
     );
     assert_eq!(
         store.execute(&invalid).unwrap().result.disposition,
@@ -207,7 +209,7 @@ fn git_records_are_atomic_owned_idempotent_and_preserve_exact_content() {
     let invalid = request(
         &store,
         "oversized-exact-content",
-        Command::Git(GitCommand::RecordArtifact(oversized)),
+        Command::git(GitCommand::RecordArtifact(oversized)),
     );
     assert!(matches!(
         store.execute(&invalid),
@@ -229,7 +231,7 @@ fn git_records_are_atomic_owned_idempotent_and_preserve_exact_content() {
             },
         ),
     ] {
-        execute(&mut store, key, Command::Git(command));
+        execute(&mut store, key, Command::git(command));
     }
     assert_eq!(
         store.load().unwrap().worktrees()[&intent.operation_id].state,

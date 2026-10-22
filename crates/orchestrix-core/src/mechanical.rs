@@ -16,6 +16,8 @@ pub enum QueryKind {
     RepositoryPreflight {
         repository: PathBuf,
         base_commit: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        editable_paths: Option<Vec<String>>,
     },
     GitStatus {
         repository: PathBuf,
@@ -49,12 +51,22 @@ pub fn execute(store: Option<&mut Store>, input: &Query) -> Result<Value, Worker
         QueryKind::RepositoryPreflight {
             repository,
             base_commit,
+            editable_paths,
         } => {
-            let report = git::inspect_repository(
-                repository,
-                base_commit.as_deref(),
-                &crate::runtime::CancellationToken::new(),
-            )
+            let report = if let Some(editable) = editable_paths {
+                git::inspect_repository_with_editable(
+                    repository,
+                    base_commit.as_deref(),
+                    editable,
+                    &crate::runtime::CancellationToken::new(),
+                )
+            } else {
+                git::inspect_repository(
+                    repository,
+                    base_commit.as_deref(),
+                    &crate::runtime::CancellationToken::new(),
+                )
+            }
             .map_err(|error| {
                 WorkerError(match error {
                     git::GitError::Deadline => "repository-inspection-deadline",

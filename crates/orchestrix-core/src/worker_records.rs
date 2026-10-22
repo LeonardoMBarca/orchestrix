@@ -8,6 +8,8 @@ use serde_json::{Value, json};
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 #[serde(deny_unknown_fields)]
 pub struct WorkerIntent {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub editable_paths: Option<Vec<String>>,
     pub id: String,
     pub request_hash: String,
     pub run_id: String,
@@ -46,7 +48,10 @@ pub enum WorkerLaunchProtocol {
 }
 impl WorkerIntent {
     pub fn validate(&self) -> bool {
-        LocalRef::new(&self.id).is_ok()
+        self.editable_paths
+            .as_ref()
+            .is_none_or(|p| crate::git_records::editable_paths_valid(p))
+            && LocalRef::new(&self.id).is_ok()
             && is_hash(&self.request_hash)
             && RunId::new(&self.run_id).is_ok()
             && TaskId::new(&self.task_id).is_ok()

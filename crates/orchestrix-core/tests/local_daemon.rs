@@ -98,6 +98,7 @@ impl Fixture {
         let mut policy = PolicyDocument::default();
         policy.mode_defaults.fallback = Some(Fallback::Compatible);
         ManualTaskRequest {
+            editable_paths: None,
             schema_version: 1,
             id: id.into(),
             project_id: "daemon-project".into(),
@@ -816,6 +817,7 @@ fn repository_reads_are_shared_nonblocking_bounded_and_never_dispatch_a_runtime(
         authorized: true,
         authorization_ref: "local-read-consent".into(),
         query: QueryKind::RepositoryPreflight {
+            editable_paths: None,
             repository: f.repository.clone(),
             base_commit: Some(f.base.clone()),
         },

@@ -131,8 +131,55 @@ impl IntegrationIntent {
                     && c.executable_sha256.as_ref().is_none_or(|v| is_hash(v))
             })
             && self.created_ms > 0
-            && exact_safe(&json!(self), 1_048_576)
+            && self.privacy_valid()
     }
+
+    fn privacy_valid(&self) -> bool {
+        let mut body = json!(self);
+        if self.worktree.preservation.is_some() {
+            // Preserve the existing physical envelope bound as well as privacy
+            // checks on all non-manifest fields. Every manifest field has been
+            // checked by WorktreeIntent::validate above.
+            if !serde_json::to_vec(&body).is_ok_and(|bytes| bytes.len() <= 1_048_576) {
+                return false;
+            }
+            body["worktree"] = self.worktree.privacy_projection();
+        }
+        exact_safe(&body, 1_048_576)
+    }
+}
+
+fn has_preserved_snapshot(details: &Value) -> bool {
+    details
+        .get("snapshot")
+        .and_then(|snapshot| snapshot.get("preservation"))
+        .is_some()
+}
+
+/// Project exactly one recognized, validated typed manifest. Arbitrary fields,
+/// transcripts and text remain subject to the original privacy/node budgets.
+fn details_safe(details: &Value) -> bool {
+    if !has_preserved_snapshot(details) {
+        return exact_safe(details, 4_194_304);
+    }
+    if !serde_json::to_vec(details).is_ok_and(|bytes| bytes.len() <= 4_194_304) {
+        return false;
+    }
+    let Some(value) = details.get("snapshot") else {
+        return false;
+    };
+    let Ok(snapshot) = serde_json::from_value::<CapturedArtifact>(value.clone()) else {
+        return false;
+    };
+    if !snapshot.validate() {
+        return false;
+    }
+    let Some(preservation) = &snapshot.preservation else {
+        return false;
+    };
+    let mut projected = details.clone();
+    projected["snapshot"]["preservation"] = preservation.privacy_identity();
+    exact_safe(&projected, 4_194_304)
 }
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "kebab-case")]
@@ -205,7 +252,7 @@ impl IntegrationRecord {
         self.intent.validate()
             && self.observations.len() <= 128
             && self.observations.iter().all(|o| {
-                let result = transition(old, o.status) && exact_safe(&o.details, 4_194_304);
+                let result = transition(old, o.status) && details_safe(&o.details);
                 old = o.status;
                 result
             })
@@ -258,7 +305,25 @@ impl IntegrationCommand {
     }
     pub(crate) fn body(&self) -> Value {
         match self {
+            Self::Reserve(r) if r.intent.worktree.preservation.is_some() => json!([
+                "integration.reserve",
+                "opaque-base-v2",
+                content_hash(&serde_json::to_vec(r).expect("typed integration serialization"))
+            ]),
             Self::Reserve(r) => json!(["integration.reserve", r]),
+            Self::Observe {
+                id,
+                status,
+                details,
+            } if has_preserved_snapshot(details) => json!([
+                "integration.observe",
+                id,
+                status,
+                "opaque-base-v2",
+                content_hash(
+                    &serde_json::to_vec(details).expect("typed observation serialization")
+                )
+            ]),
             Self::Observe {
                 id,
                 status,
@@ -269,9 +334,169 @@ impl IntegrationCommand {
     pub(crate) fn bounded(&self) -> bool {
         match self {
             Self::Reserve(r) => r.validate() && r.observations.is_empty(),
-            Self::Observe { id, details, .. } => {
-                LocalRef::new(id).is_ok() && exact_safe(details, 4_194_304)
-            }
+            Self::Observe { id, details, .. } => LocalRef::new(id).is_ok() && details_safe(details),
         }
+    }
+}
+
+#[cfg(test)]
+mod preservation_tests {
+    use super::*;
+    use crate::git_records::{BasePreservation, PreservedBaseEntry};
+
+    fn fixture() -> (IntegrationRecord, CapturedArtifact) {
+        let root = std::env::temp_dir();
+        let directory = |tail: &str| root.join(tail).to_str().unwrap().to_owned();
+        let manifest = BasePreservation {
+            schema_version: 2,
+            base_oid: "a".repeat(40),
+            tree_oid: "b".repeat(40),
+            editable_paths: vec!["editable.txt".into()],
+            entries: (0..1000)
+                .map(|index| PreservedBaseEntry {
+                    path: format!("file-{index:04}.bin"),
+                    mode: "100644".into(),
+                    size: 0,
+                    git_oid: "e69de29bb2d1d6434b8b29ae775ad8c2e48c5391".into(),
+                    sha256: content_hash(b""),
+                })
+                .collect(),
+        };
+        let mut snapshot = CapturedArtifact {
+            preservation: Some(manifest.clone()),
+            id: "capture".into(),
+            revision: String::new(),
+            operation_id: "operation".into(),
+            repository_id: "repository".into(),
+            run_id: "run".into(),
+            task_id: "task".into(),
+            attempt_id: "attempt".into(),
+            base_oid: "a".repeat(40),
+            origin: directory("owned/attempt"),
+            files: vec![],
+            exclusions: vec![],
+            patch: String::new(),
+            patch_sha256: content_hash(b""),
+        };
+        snapshot.revision = snapshot.content_revision();
+        assert!(snapshot.validate());
+        let record = IntegrationRecord {
+            intent: IntegrationIntent {
+                launch_protocol: "guarded-git-and-checks-v1".into(),
+                id: "integration".into(),
+                request_hash: "d".repeat(64),
+                worker_id: "worker".into(),
+                run_id: "run".into(),
+                task_id: "task".into(),
+                artifact: json!({"reference":"artifact"}),
+                capture_id: snapshot.id.clone(),
+                capture_revision: snapshot.revision.clone(),
+                input_base: "a".repeat(40),
+                target: TargetState {
+                    directory: directory("repository"),
+                    common_git_dir: directory("repository/.git"),
+                    symbolic_ref: "refs/heads/main".into(),
+                    head: "a".repeat(40),
+                    index_sha256: "d".repeat(64),
+                    working_sha256: "e".repeat(64),
+                },
+                worktree: WorktreeIntent {
+                    preservation: Some(manifest),
+                    operation_id: "operation".into(),
+                    project_id: "project".into(),
+                    repository_id: "repository".into(),
+                    run_id: "run".into(),
+                    task_id: "task".into(),
+                    attempt_id: "attempt".into(),
+                    base_oid: "a".repeat(40),
+                    domain_base: "base".into(),
+                    worktree_ref: "worktree".into(),
+                    authorized_root: directory("owned"),
+                    path: directory("owned/attempt"),
+                    main_repository: directory("repository"),
+                    common_git_dir: directory("repository/.git"),
+                    branch: "orchestrix/attempt".into(),
+                    ownership_token: "f".repeat(64),
+                },
+                checks: vec![CheckSpec {
+                    id: "check".into(),
+                    executable: root.join("check.exe"),
+                    arguments: vec![],
+                    authorization_ref: "owned-check".into(),
+                    authorized: true,
+                    timeout_ms: 1000,
+                    executable_sha256: None,
+                }],
+                authorization_ref: "explicit-integration".into(),
+                created_ms: 1,
+            },
+            observations: vec![],
+        };
+        (record, snapshot)
+    }
+
+    #[test]
+    fn typed_large_inventory_preserves_bodies_and_privacy_without_small_command_node_limit() {
+        let (record, snapshot) = fixture();
+        let original = serde_json::to_vec(&record).unwrap();
+        assert!(!exact_safe(&json!(record.intent), 1_048_576));
+        assert!(record.validate());
+        let command = IntegrationCommand::Reserve(Box::new(record.clone()));
+        assert!(command.bounded());
+        assert!(exact_safe(&command.body(), 1_048_576));
+        assert_eq!(serde_json::to_vec(&record).unwrap(), original);
+        let details = json!({"snapshot":snapshot});
+        assert!(!exact_safe(&details, 4_194_304));
+        assert!(details_safe(&details));
+        let observation = IntegrationCommand::Observe {
+            id: "integration".into(),
+            status: IntegrationStatus::Materialized,
+            details: details.clone(),
+        };
+        assert!(observation.bounded());
+        assert!(exact_safe(&observation.body(), 1_048_576));
+        for key in ["password", "transcript"] {
+            let mut invalid = details.clone();
+            invalid[key] = json!("synthetic-forbidden-content");
+            assert!(!details_safe(&invalid));
+        }
+        let mut invalid = details.clone();
+        invalid["snapshot"]["extra"] = json!("not-a-typed-artifact-field");
+        assert!(!details_safe(&invalid));
+        let mut invalid = details.clone();
+        invalid["snapshot"]["preservation"]["entries"][0]["sha256"] = json!("not-a-hash");
+        assert!(!details_safe(&invalid));
+        let mut invalid = details;
+        invalid["extra"] = json!("x".repeat(4_194_304));
+        assert!(!details_safe(&invalid));
+        let mut invalid = record.clone();
+        invalid.intent.artifact["password"] = json!("synthetic-forbidden-content");
+        assert!(!invalid.validate());
+    }
+
+    #[test]
+    fn legacy_integration_command_bodies_are_unchanged() {
+        let (mut record, _) = fixture();
+        record.intent.worktree.preservation = None;
+        assert!(record.validate());
+        assert_eq!(
+            IntegrationCommand::Reserve(Box::new(record.clone())).body(),
+            json!(["integration.reserve", record])
+        );
+        let details = json!({"reason":"original-observation"});
+        assert_eq!(
+            IntegrationCommand::Observe {
+                id: "integration".into(),
+                status: IntegrationStatus::Preparing,
+                details: details.clone()
+            }
+            .body(),
+            json!([
+                "integration.observe",
+                "integration",
+                IntegrationStatus::Preparing,
+                details
+            ])
+        );
     }
 }
