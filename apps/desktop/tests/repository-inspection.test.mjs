@@ -36,3 +36,19 @@ test('repository inspection messages have Portuguese and Spanish counterparts',(
  for(const match of source.matchAll(/\bt\('([^']+)'\)/g))assert(repositoryTranslations[match[1]]?.every(Boolean)||existing.includes(`'${match[1]}'`)||catalogs.some(value=>value.en===match[1]&&value.es),match[1]);
  for(const text of ['Inspecting repository…','Reading Git status…','Inspection incomplete','Compatible with the worker profile','Repository blocked for this profile','Regular files','Executable files','Links','Submodules','Oversized files','Binary files','Non-UTF-8 files','Sensitive patterns','Excluded paths','Content not inspected'])assert(repositoryTranslations[text]?.every(Boolean),text);
 });
+
+
+test('opaque profile requires the same explicit editable scope and never grants read confinement',()=>{
+ const v2={...report,schemaVersion:2,profile:'opaque-base-v2',preservation:{baseFiles:573,baseBytes:54332380,preservedFiles:572,preservedBytes:54320000,editablePaths:['docs/guide.md'],selectionRequired:false}};
+ assert(repositoryResponseSupported(v2));
+ assert(!repositoryInspectionReady({directoryGrant:'folder-one',report:v2},'folder-one'));
+ assert(repositoryInspectionReady({directoryGrant:'folder-one',report:v2},'folder-one',['docs/guide.md']));
+ assert(!repositoryInspectionReady({directoryGrant:'folder-one',report:v2},'folder-one',['another.md']));
+ assert(!repositoryInspectionReady({directoryGrant:'folder-one',report},'folder-one',['docs/guide.md']));
+ assert.equal(repositoryOutcome(v2),'Compatible with the opaque-base profile');
+ assert.equal(repositoryOutcome({...v2,compatible:false,preservation:{...v2.preservation,selectionRequired:true}}),'Select editable files to complete compatibility');
+});
+
+test('opaque preservation and protected-content explanations retain Portuguese and Spanish labels',()=>{
+ for(const text of ['Recorded base preservation','File inventory','Pattern matches in preserved files do not prove real credentials and do not authorize their content as context or edits. Selected text still requires privacy validation.','Protected or unlisted content changed. Application is blocked; preserve and inspect the worktree and target before a new authorized decision.'])assert(repositoryTranslations[text]?.every(Boolean),text);
+});

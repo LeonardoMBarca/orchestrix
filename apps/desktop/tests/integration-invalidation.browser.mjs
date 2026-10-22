@@ -12,9 +12,9 @@ try{
   let sequence=0,suspended=false;const events=[],calls=[];
   const summary={id:'candidate-one',worker_id:'worker-one',source_artifact_revision:'artifact-one',status:'approved',input_base:'base',result_revision:'result',candidate_revision:'candidate-revision',target:{directory:'C:\\fixture\\target'},approval:{expiresMs:Date.now()+900000},checks:[],delivered:false};
   const integration={historical:true,currentVerification:'not-performed',summary,intent:{},phases:[]};
-  const worker={worker:{intent:{}},summary:{workerId:'worker-one',status:'verified',details:{checks:[]}},artifact:{id:'artifact-one',revision:'artifact-one',immutable:true,files:[]},reviews:[{id:'review-one',worker_id:'worker-one',artifact_revision:'artifact-one',status:'accepted',result:{summary:'Exact reviewed evidence retained',findings:[]}}],integrations:[summary],historical:true};
+  const worker={worker:{intent:{}},summary:{workerId:'worker-one',status:'verified',details:{checks:[]}},artifact:{id:'artifact-one',revision:'artifact-one',baseOid:'b'.repeat(40),preservation:{profile:'opaque-base-v2',baseFiles:19,baseBytes:5000,editablePaths:['docs/guide.md']},immutable:true,files:[]},reviews:[{id:'review-one',worker_id:'worker-one',artifact_revision:'artifact-one',status:'accepted',result:{summary:'Exact reviewed evidence retained',findings:[]}}],integrations:[summary],historical:true};
   const daemon=()=>({state:{suspended,generation:1,cursor:{database:'edit-candidate',sequence}},workers:[{workerId:'worker-one',status:'verified'}],workerCount:1,workerFactsHistorical:true,activeWorkerId:null,features:['desktop-v1','review-v1','integration-v1']});
-  window.__qa={calls,external:'external bytes'};window.__TAURI_EVENT_PLUGIN_INTERNALS__={unregisterListener(){}};
+  window.__qa={calls,external:'external bytes',showProtectedChange(){summary.reason='protected-or-unlisted-content-changed';}};window.__TAURI_EVENT_PLUGIN_INTERNALS__={unregisterListener(){}};
   window.__TAURI_INTERNALS__={transformCallback(){return 1;},unregisterCallback(){},async invoke(command,args={}){
    if(command==='connect_daemon')return daemon();if(command.startsWith('plugin:event|'))return 1;
    if(command==='desktop_poll')return {daemon:daemon(),cursor:{database:'edit-candidate',sequence},events:events.filter(event=>event.sequence>args.cursor.sequence),resyncRequired:false};
@@ -42,6 +42,9 @@ try{
  await page.goto(process.env.ORCHESTRIX_RENDERER_URL??'http://127.0.0.1:1420/');
  await page.getByRole('heading',{name:'What shall we create today?'}).waitFor();
  await page.locator('.o-rail').getByRole('button',{name:'Studio',exact:true}).click();await page.locator('.o-dock').getByRole('button',{name:'Work',exact:true}).click();await page.locator('.o-page>.o-work-card').first().click();
+ const preservation=page.getByText('Recorded base preservation',{exact:true}).locator('..');
+ assert.match(await preservation.innerText(),/File inventory: 19/);
+ assert(!((await preservation.innerText()).includes('?')),'exact base inventory uses meaningful labels and separators');
  await page.locator('.o-integration-history button').click();
  await page.getByLabel('I authorize applying this exact candidate to the selected checkout after Core revalidation.',{exact:true}).check();
  await page.evaluate(()=>{window.__qa.deferInspect=true;});
@@ -66,6 +69,14 @@ try{
  await page.getByText('target-changed',{exact:true}).waitFor();
  assert.equal(await page.evaluate(()=>window.__qa.calls.find(request=>request.type==='revalidate-integration').commandId),'edit-revalidation-one','retry preserves the original uncertain command identity');
  await page.locator('.o-rail').getByRole('button',{name:'Files',exact:true}).click();assert.equal(await buffer.inputValue(),'my unsaved buffer');assert.equal(await page.evaluate(()=>window.__qa.external),'external bytes');
+ await page.evaluate(()=>window.__qa.showProtectedChange());
+ await page.locator('.o-rail').getByRole('button',{name:'Studio',exact:true}).click();
+ await page.getByRole('button',{name:'Refresh integration history',exact:true}).click();
+ const protectedWarning=page.getByText('Protected or unlisted content changed. Application is blocked; preserve and inspect the worktree and target before a new authorized decision.',{exact:true});
+ await protectedWarning.waitFor();assert.equal(await page.getByRole('button',{name:'Apply approved candidate',exact:true}).count(),0);
+ assert.equal(await page.getByText('protected-or-unlisted-content-changed',{exact:true}).count(),0,'the provider-neutral reason has a readable explanation');
+ const warningOutput=fileURLToPath(new URL(`../../../artifacts/desktop-renderer-qa/integration-warning-${Date.now()}/`,import.meta.url));mkdirSync(warningOutput,{recursive:true});
+ await protectedWarning.scrollIntoViewIfNeeded();await page.screenshot({path:warningOutput+'protected-change.png'});console.log('Protected-content warning renderer evidence: '+warningOutput);
  assert.deepEqual(errors,[]);console.log('Integration edit regression passed: save conflict preserves buffer, candidate becomes stale, historical refresh cannot approve, original deterministic retry invalidates while suspended.');
 }catch(error){
  const output=fileURLToPath(new URL(`../../../artifacts/desktop-renderer-qa/integration-invalidation-failure-${Date.now()}/`,import.meta.url));mkdirSync(output,{recursive:true});

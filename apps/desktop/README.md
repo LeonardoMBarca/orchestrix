@@ -1,5 +1,13 @@
 # Orchestrix Desktop
 
+Task preparation can opt into **Preserve complete base** and name the exact
+repository-relative text files allowed to change. Inspect again after changing
+that list; context files are selected separately. The opaque-base profile shows
+preserved counts and limits without sending baseline bodies to the model.
+Runtime tools can still read files materialized in its workspace: this feature
+does not claim a read sandbox. Unexpected changes block the result and leave the
+worktree available for inspection. Legacy textual tasks remain supported.
+
 Production Tauri/React client of the local daemon. The HTML study in `prototypes/desktop` remains the approved visual/interaction reference; it is not the runtime engine.
 
 ## Development
@@ -103,6 +111,13 @@ The nondefault Rust feature `test-fixtures` is reserved for controlled tests. No
 The fixture exercises the real bridge, daemon, Git, SQLite, supervised processes, checks and review/correction pipeline. It never establishes provider authentication, model entitlement or a live Codex review proof. No fixture is injected into normal application opening, and no turn is sent until the normal authorization action.
 
 To build the isolated release QA window, stage release sidecars with `node scripts/prepare-native.mjs --release`, then run `npm.cmd run tauri -- build --no-bundle --features test-fixtures`. Generate a fresh fixture with `node scripts/native-fixture.mjs --release` and pass its returned configuration path through `ORCHESTRIX_DESKTOP_FIXTURE_CONFIG` only to that QA process. A later normal package requires a fresh `npm.cmd run native:build` without the feature; do not distribute the QA executable as the normal application.
+
+`--complete-snapshot --release` instead clones every tracked file of the pinned
+`b053a7f` snapshot into a fresh temporary QA directory, using the same layout as
+the complete-snapshot Core rehearsal. The returned configuration path is the
+authority for this fixture's location. Its synthetic documentation task, checks
+and accepted-review scenario still require the normal UI authorization steps;
+the helper creates no verification, approval or delivery records.
 
 For active-turn controls, add `--controls` when creating a **fresh** native fixture. This selects the explicit `qa-controlled` reviewer: it reports exact connection/session/attempt/native turn identity, writes bounded active heartbeats in its own home, and responds to the real interrupt protocol. Its 85-second safety watchdog exits with failure; the adapter retains the already supported 90-second turn / 5-second interrupt limits. Existing synthetic scenarios retain their six-second limit. An identity-bound `*.release.json` in that fixture's home may release the QA turn; it is not a domain approval or a replacement for the UI Cancel command. A completed release without valid structured review output must not become an accepted review. The QA-only Read native dimensions action reports actual Tauri physical/logical sizes and system scale; application text scale is a separate setting. Normal builds reject this diagnostic action.
 

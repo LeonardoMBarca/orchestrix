@@ -92,8 +92,13 @@ impl FixtureConfig {
             Some("qa-controlled"),
         ]
         .contains(&self.review_scenario.as_deref())
-            || ![None, Some("review-implementation"), Some("qa-controlled")]
-                .contains(&self.worker_scenario.as_deref())
+            || ![
+                None,
+                Some("review-implementation"),
+                Some("qa-controlled"),
+                Some("opaque-document"),
+            ]
+            .contains(&self.worker_scenario.as_deref())
         {
             return Err("native-fixture-scenario".into());
         }
@@ -147,6 +152,8 @@ fn fixture_config() -> Result<Option<FixtureConfig>, String> {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct TaskDraft {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub editable_paths: Option<Vec<String>>,
     pub conversation_id: String,
     pub project_id: Option<String>,
     pub repository_grant: String,
@@ -195,6 +202,8 @@ pub struct CheckDraft {
 pub enum HostRequest {
     InspectRepository {
         directory_grant: String,
+        #[serde(default)]
+        editable_paths: Option<Vec<String>>,
     },
     GitStatus {
         directory_grant: String,
@@ -1264,7 +1273,10 @@ impl Host {
                 offset,
                 limit,
             }),
-            HostRequest::InspectRepository { directory_grant } => {
+            HostRequest::InspectRepository {
+                directory_grant,
+                editable_paths,
+            } => {
                 let root = self
                     .editor
                     .lock()
@@ -1272,6 +1284,7 @@ impl Host {
                     .directory(&directory_grant)?;
                 self.repository_read(
                     orchestrix_core::mechanical::QueryKind::RepositoryPreflight {
+                        editable_paths,
                         repository: root,
                         base_commit: None,
                     },
@@ -1934,7 +1947,19 @@ impl Host {
             })?;
         }
     }
-    fn prepare(&self, draft: TaskDraft) -> Result<Value, String> {
+    fn prepare(&self, mut draft: TaskDraft) -> Result<Value, String> {
+        if let Some(paths) = &mut draft.editable_paths {
+            if paths.len() > 128 || paths.iter().any(|p| p.len() > 4096) {
+                return Err("editable-file-list-limit".into());
+            }
+            *paths = paths
+                .iter()
+                .map(|p| p.trim().to_owned())
+                .filter(|p| !p.is_empty())
+                .collect();
+            paths.sort();
+            paths.dedup();
+        }
         if draft.correction_budget > 3 || draft.context_files.len() > 32 || draft.checks.len() > 16
         {
             return Err(err("task-budget"));
@@ -1948,9 +1973,16 @@ impl Host {
             let mut context_files = Vec::new();
             for item in &draft.context_files {
                 let file = editor.context_file(&item.grant, &item.relative)?;
+                orchestrix_core::worker::validate_context_file(&file)
+                    .map_err(|_| "context-file-not-eligible")?;
                 let child = file
                     .strip_prefix(&repository)
                     .map_err(|_| "context-must-be-inside-authorized-repository")?;
+                if !orchestrix_core::policy::context_path_eligible(
+                    &child.to_string_lossy().replace('\\', "/"),
+                ) {
+                    return Err("context-path-not-eligible".into());
+                }
                 context_files.push(ContextFileRequest {
                     path: child.to_string_lossy().replace('\\', "/"),
                     authorization_ref: id("context-consent"),
@@ -1989,6 +2021,7 @@ impl Host {
         let report: orchestrix_core::git::RepositoryPreflight =
             serde_json::from_value(self.repository_read(
                 orchestrix_core::mechanical::QueryKind::RepositoryPreflight {
+                    editable_paths: draft.editable_paths.clone(),
                     repository: repository.clone(),
                     base_commit: None,
                 },
@@ -2097,7 +2130,8 @@ impl Host {
         )?;
         self.guard_prepared_settings(&settings_fingerprint)?;
         let task = ManualTaskRequest {
-            schema_version: 1,
+            editable_paths: draft.editable_paths.clone(),
+            schema_version: if draft.editable_paths.is_some() { 2 } else { 1 },
             id: id("worker"),
             project_id,
             repository_id,
@@ -2257,9 +2291,26 @@ impl Host {
                     .ok_or("native-fixture-binding-revision")?,
             )
         };
-        let draft = json!({"conversationId":"","projectId":"native-fixture-project","repositoryGrant":repository.id,"worktreeGrant":worktrees.id,"connectionId":if fixture.connections_onboarding{""}else{"native-fixture-account"},"connectionRevision":connection_revision,"allowMetadataRead":!fixture.connections_onboarding,"objective":"fixture-edit: update fixture.txt while preserving the project","acceptanceCriteria":["fixture.txt contains after and the authorized check passes"],"contextFiles":[],"checks":[{"id":"fixture-check","executable":check.id,"args":["--check-fixture","after\n"],"timeoutSeconds":30}],"strategy":"balanced","preset":"","model":"","effort":"","correctionBudget":1,"fallback":"compatible"});
+        let mut draft = json!({"conversationId":"","projectId":"native-fixture-project","repositoryGrant":repository.id,"worktreeGrant":worktrees.id,"connectionId":if fixture.connections_onboarding{""}else{"native-fixture-account"},"connectionRevision":connection_revision,"allowMetadataRead":!fixture.connections_onboarding,"objective":"fixture-edit: update fixture.txt while preserving the project","acceptanceCriteria":["fixture.txt contains after and the authorized check passes"],"contextFiles":[],"checks":[{"id":"fixture-check","executable":check.id,"args":["--check-fixture","after\n"],"timeoutSeconds":30}],"strategy":"balanced","preset":"","model":"","effort":"","correctionBudget":1,"fallback":"compatible"});
+        if fixture.worker_scenario.as_deref() == Some("opaque-document") {
+            draft["editablePaths"] = json!(["docs/CONTEXT_OWNERSHIP.md"]);
+            draft["objective"] = json!(
+                "opaque-document: clarify workspace access versus explicit context in the existing ownership document"
+            );
+            draft["acceptanceCriteria"] = json!([
+                "The exact documentation addition passes the authorized check; every other tracked file remains identical"
+            ]);
+            draft["checks"][0]["args"] = json!([
+                "--check-opaque-document",
+                sha(
+                    &fs::read(fixture.repository.join("docs/CONTEXT_OWNERSHIP.md"))
+                        .map_err(|_| "native-fixture-document")?
+                )
+            ]);
+        }
+        let prompt = draft["objective"].clone();
         Ok(
-            json!({"nativeTestMode":true,"grants":[repository,worktrees,check],"projectId":"native-fixture-project","draft":draft,"prompt":"fixture-edit: update fixture.txt while preserving the project"}),
+            json!({"nativeTestMode":true,"grants":[repository,worktrees,check],"projectId":"native-fixture-project","draft":draft,"prompt":prompt}),
         )
     }
 }
@@ -2387,6 +2438,7 @@ fn compatible(snapshot: Value) -> Result<Value, String> {
         || !features.iter().any(|f| f == "diagnostic-history-v1")
         || !features.iter().any(|f| f == "connection-capacity-v1")
         || !features.iter().any(|f| f == "repository-inspection-v1")
+        || !features.iter().any(|f| f == "opaque-base-v2")
     {
         return Err(err("daemon-version-incompatible"));
     }

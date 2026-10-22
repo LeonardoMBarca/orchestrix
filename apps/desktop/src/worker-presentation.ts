@@ -20,6 +20,11 @@ const stages:Record<string,[string,string]>={
 };
 export function workerStage(status:string):{title:string,description:string}{const value=stages[status];return value?{title:value[0],description:value[1]}:{title:status,description:'No confirmed execution state is available.'};}
 
+export function workerActionIssue(reason:unknown){
+ if(typeof reason==='string'&&reason.includes('review-staged-source-outside-profile'))return 'Staged changes were preserved, but this profile requires an unchanged index for review and integration. Prepare a compatible attempt without staging files.';
+ return undefined;
+}
+
 // Conversation links are chronological attempts, not separate Tasks. Their
 // order and identifiers do not establish an implementation/correction role.
 export function conversationAttempt(work:ConversationWork,index:number,workers:WorkerSummary[]){

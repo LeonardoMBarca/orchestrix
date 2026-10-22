@@ -1,6 +1,12 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {conversationAttempt} from '../src/worker-presentation.ts';
+import {conversationAttempt,workerActionIssue} from '../src/worker-presentation.ts';
+
+test('unsupported staged review explains preservation without inventing a result or action for other errors',()=>{
+ assert.match(workerActionIssue('review-staged-source-outside-profile'),/preserved.*unchanged index/);
+ assert.equal(workerActionIssue('review-unavailable'),undefined);
+ assert.equal(workerActionIssue({reason:'review-staged-source-outside-profile'}),undefined);
+});
 
 test('conversation attempts sharing a Task retain distinct chronological labels and exact observed statuses',()=>{
  const first={runId:'same-run',taskId:'same-task',attemptId:'attempt-one',workerId:'implementation-worker'},second={...first,attemptId:'attempt-two',workerId:'correction-worker'};

@@ -38,6 +38,7 @@ fn repository_preflight_requires_native_grants_and_blocks_before_metadata() {
         fixture
             .host
             .handle(HostRequest::InspectRepository {
+                editable_paths: None,
                 directory_grant: fixture.config.repository.to_string_lossy().into_owned()
             })
             .is_err(),
@@ -46,6 +47,7 @@ fn repository_preflight_requires_native_grants_and_blocks_before_metadata() {
     let report = fixture
         .host
         .handle(HostRequest::InspectRepository {
+            editable_paths: None,
             directory_grant: draft.repository_grant.clone(),
         })
         .unwrap();
@@ -75,7 +77,34 @@ fn repository_preflight_requires_native_grants_and_blocks_before_metadata() {
     );
     assert!(!fixture.config.home.join("dispatch-count").exists());
     fs::write(fixture.config.repository.join("fixture.txt"), b"before\n").unwrap();
+    draft.editable_paths = Some(vec![]);
+    assert!(
+        fixture
+            .host
+            .prepare(draft.clone())
+            .unwrap_err()
+            .starts_with("repository-preflight-blocked:")
+    );
+    assert_eq!(
+        fixture.metadata_reads(),
+        reads,
+        "missing editable authority never reads metadata"
+    );
+    draft.editable_paths = Some(vec!["fixture.txt".into()]);
+    let opaque = fixture
+        .host
+        .handle(HostRequest::InspectRepository {
+            editable_paths: draft.editable_paths.clone(),
+            directory_grant: draft.repository_grant.clone(),
+        })
+        .unwrap();
+    assert_eq!(opaque["profile"], "opaque-base-v2");
+    assert_eq!(opaque["compatible"], true);
+    assert_eq!(opaque["preservation"]["preservedFiles"], 1);
+    assert_eq!(fixture.metadata_reads(), reads);
     let prepared = fixture.host.prepare(draft).unwrap();
+    assert_eq!(prepared["task"]["schema_version"], 2);
+    assert_eq!(prepared["task"]["editable_paths"], json!(["fixture.txt"]));
     assert_eq!(prepared["task"]["connection_id"], "local-connection");
     assert_eq!(prepared["task"]["connection_revision"], 1);
     assert_eq!(
