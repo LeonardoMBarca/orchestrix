@@ -119,6 +119,13 @@ authority for this fixture's location. Its synthetic documentation task, checks
 and accepted-review scenario still require the normal UI authorization steps;
 the helper creates no verification, approval or delivery records.
 
+The complete-snapshot helper uses an independent packed local clone (`--no-local`),
+then verifies the pinned tree and reachable history. It keeps all tracked files;
+this is not certification of arbitrary loose-object repository performance.
+Freeze QA executables outside the edited tree before opening the window.
+The current Core-only full-snapshot proof and the separate native-interaction
+gate are recorded in the [development status](../../docs/DEVELOPMENT_STATUS.md#incremento-atual--ox-017-base-completa-e-delta-autorizado).
+
 For active-turn controls, add `--controls` when creating a **fresh** native fixture. This selects the explicit `qa-controlled` reviewer: it reports exact connection/session/attempt/native turn identity, writes bounded active heartbeats in its own home, and responds to the real interrupt protocol. Its 85-second safety watchdog exits with failure; the adapter retains the already supported 90-second turn / 5-second interrupt limits. Existing synthetic scenarios retain their six-second limit. An identity-bound `*.release.json` in that fixture's home may release the QA turn; it is not a domain approval or a replacement for the UI Cancel command. A completed release without valid structured review output must not become an accepted review. The QA-only Read native dimensions action reports actual Tauri physical/logical sizes and system scale; application text scale is a separate setting. Normal builds reject this diagnostic action.
 
 `--controls-worker` instead selects the same controlled protocol for the implementation turn, without depending on an independent-review preflight. This is a separate fresh-fixture option; it does not change `--controls` or the normal implementation scenario. Releasing this turn does not edit the fixture, so the configured `after` check must fail rather than fabricate a verified result. Cancel must still originate from the normal native control.
