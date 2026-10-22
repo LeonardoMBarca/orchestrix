@@ -682,6 +682,12 @@ mod diagnostics {
         readonly: bool,
         sha256: Option<String>,
     }
+    // A complete 54 MiB target, its independent packed Git store and a second
+    // full integration worktree measured 138,787,246 bytes (1,401 entries).
+    // This read-only diagnostic fingerprints their union, not one source base.
+    // Keep its independent ceiling explicit; production capture/base budgets
+    // and the 120-second diagnostic Job ceiling remain unchanged.
+    const DIAGNOSTIC_INVENTORY_BYTES: usize = 160 * 1024 * 1024;
     fn fingerprint(roots: &[PathBuf]) -> BTreeMap<PathBuf, Stamp> {
         fn visit(path: &Path, files: &mut BTreeMap<PathBuf, Stamp>, bytes: &mut usize) {
             if files.contains_key(path) {
@@ -698,7 +704,10 @@ mod diagnostics {
                 *bytes = bytes
                     .checked_add(usize::try_from(metadata.len()).expect("diagnostic-size"))
                     .expect("diagnostic-size");
-                assert!(*bytes <= 64 * 1024 * 1024, "diagnostic-inventory-bytes");
+                assert!(
+                    *bytes <= DIAGNOSTIC_INVENTORY_BYTES,
+                    "diagnostic-inventory-bytes"
+                );
                 Some(content_hash(&fs::read(path).expect("diagnostic-read")))
             } else {
                 None
