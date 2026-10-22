@@ -629,6 +629,101 @@ fn native_oid_empty_tree_directory_outside_recursive_inventory_is_explicitly_rej
     assert_eq!(git_cmd(&fixture.main, &["show-ref"]), references);
     assert_eq!(fs::read_dir(&fixture.authorized).unwrap().count(), 0);
 }
+
+#[test]
+fn native_oid_valid_blob_changed_during_capture_is_rejected_and_recoverable() {
+    let fixture = Fixture::new();
+    let intent = fixture.intent();
+    let manifest = intent.preservation.as_ref().unwrap();
+    let root = Path::new(&intent.path);
+    let executor = GitExecutor::new().unwrap();
+    let baseline = git::capture(&executor, root, &intent, CaptureLimits::default()).unwrap();
+    assert!(baseline.files.is_empty());
+    let baseline_bytes = serde_json::to_vec(&baseline).unwrap();
+    let manifest_bytes = serde_json::to_vec(manifest).unwrap();
+    let entry = manifest
+        .entries
+        .iter()
+        .find(|entry| entry.path == "mixed.bin")
+        .unwrap();
+    let expected_object = fixture_loose_object(&fixture, &entry.git_oid);
+    let original_object = fs::read(&expected_object).unwrap();
+    let mut changed_body = git_cmd(&fixture.main, &["cat-file", "blob", &entry.git_oid]);
+    changed_body[2] ^= 0x40;
+    let different_oid = store_valid_native_fixture_object(&fixture, "blob", &changed_body);
+    assert_ne!(different_oid, entry.git_oid);
+    let different_object = fixture_loose_object(&fixture, &different_oid);
+    let wrong_object_bytes = fs::read(&different_object).unwrap();
+    let main_before = working_hashes(&fixture.main, manifest);
+    let attempt_before = working_hashes(root, manifest);
+    let main_index = fs::read(fixture.main.join(".git/index")).unwrap();
+    let attempt_index_path = PathBuf::from(git_text(
+        root,
+        &["rev-parse", "--path-format=absolute", "--git-path", "index"],
+    ));
+    let attempt_index = fs::read(&attempt_index_path).unwrap();
+    let references = git_cmd(&fixture.main, &["show-ref"]);
+    let mut observer_reached = false;
+    let result =
+        git::capture_with_observer(&executor, root, &intent, CaptureLimits::default(), || {
+            // This hook runs after native base verification AND the first
+            // complete working observation. Alter only the owned loose object;
+            // working bytes, size and timestamps cannot reveal this mutation.
+            observer_reached = true;
+            writable_owned_loose_object(&fixture, &expected_object);
+            fs::copy(&different_object, &expected_object)?;
+            Ok(())
+        });
+    assert!(
+        observer_reached,
+        "initial complete observation must be reached"
+    );
+    assert_eq!(fs::read(&expected_object).unwrap(), wrong_object_bytes);
+    let native = git_output(&fixture.main, &["cat-file", "blob", &entry.git_oid]);
+    assert!(native.stdout.len() <= 65_536 && native.stderr.len() <= 8192);
+    let diagnostic = json!({
+        "stage":"blob-changed-after-first-capture-observation",
+        "nativeStatus":native.status.code(),
+        "nativeStdoutSha256":content_hash(&native.stdout),
+        "nativeStderr":String::from_utf8_lossy(&native.stderr),
+        "expectedObject":entry.git_oid,
+        "differentValidObject":different_oid,
+        "coreResult":result.as_ref().err().map(ToString::to_string),
+    });
+    eprintln!("OPAQUE_NATIVE_CAPTURE_INTERVAL_DIAGNOSTIC={diagnostic}");
+    fs::write(
+        fixture.root.join("native-capture-interval.json"),
+        serde_json::to_vec(&diagnostic).unwrap(),
+    )
+    .unwrap();
+    assert_eq!(native.status.code(), Some(0));
+    assert_eq!(native.stdout, changed_body);
+    assert!(native.stderr.is_empty());
+    assert_eq!(working_hashes(&fixture.main, manifest), main_before);
+    assert_eq!(working_hashes(root, manifest), attempt_before);
+    assert_eq!(
+        fs::read(fixture.main.join(".git/index")).unwrap(),
+        main_index
+    );
+    assert_eq!(fs::read(&attempt_index_path).unwrap(), attempt_index);
+    assert_eq!(git_cmd(&fixture.main, &["show-ref"]), references);
+    assert_eq!(serde_json::to_vec(manifest).unwrap(), manifest_bytes);
+    assert_eq!(serde_json::to_vec(&baseline).unwrap(), baseline_bytes);
+
+    // Restore explicitly in the test; capture must neither repair the object
+    // nor return a partial/successful artifact from the interval above.
+    writable_owned_loose_object(&fixture, &expected_object);
+    fs::write(&expected_object, &original_object).unwrap();
+    assert_eq!(result, Err(GitError::InconsistentCapture));
+    assert_eq!(
+        git::capture(&executor, root, &intent, CaptureLimits::default()).unwrap(),
+        baseline
+    );
+    assert_eq!(fs::read(&expected_object).unwrap(), original_object);
+    assert_eq!(working_hashes(root, manifest), attempt_before);
+    assert_eq!(fs::read(&attempt_index_path).unwrap(), attempt_index);
+    assert_eq!(git_cmd(&fixture.main, &["show-ref"]), references);
+}
 #[test]
 fn mixed_base_manifest_and_preflight_keep_legacy_blocked_and_require_explicit_selection() {
     let fixture = Fixture::new();

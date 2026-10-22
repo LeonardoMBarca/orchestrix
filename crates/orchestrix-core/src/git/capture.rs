@@ -1,5 +1,7 @@
 //! Exact, bounded snapshots of the supported regular UTF-8 file profile.
 //! No checkout conversion, clean filter, external diff or project command runs.
+#[cfg(all(test, windows))]
+use super::executor::test_timing::Call as TimingCall;
 use super::{GitError, GitExecutor, GitResult};
 use crate::git_records::{
     BasePreservation, CaptureExclusion, CapturedArtifact, CapturedFile, FileContent,
@@ -188,6 +190,8 @@ fn path_list(bytes: &[u8]) -> GitResult<BTreeSet<String>> {
     nul_entries(bytes)?.into_iter().map(path_text).collect()
 }
 fn stamp(metadata: &Metadata) -> GitResult<FileStamp> {
+    #[cfg(all(test, windows))]
+    let _timing = TimingCall::phase("phase-capture-stamp");
     if !metadata.is_file() || metadata.file_type().is_symlink() {
         return Err(GitError::Unsupported);
     }
@@ -231,28 +235,64 @@ fn stamp(metadata: &Metadata) -> GitResult<FileStamp> {
     })
 }
 fn read_working(root: &Path, relative: &str, maximum: usize) -> GitResult<Option<WorkingFile>> {
+    #[cfg(all(test, windows))]
+    let mut timing = TimingCall::phase("phase-capture-editable-file");
     let absolute = root.join(relative);
+    #[cfg(all(test, windows))]
+    let path_timing = TimingCall::phase("phase-capture-path-guard");
     super::paths::reject_links(&absolute)?;
+    #[cfg(all(test, windows))]
+    drop(path_timing);
+    #[cfg(all(test, windows))]
+    let metadata_timing = TimingCall::phase("phase-capture-path-metadata");
     let before = match fs::symlink_metadata(&absolute) {
         Ok(metadata) => stamp(&metadata)?,
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
         Err(_) => return Err(GitError::Io),
     };
+    #[cfg(all(test, windows))]
+    drop(metadata_timing);
     if before.length > maximum as u64 {
         return Err(GitError::Limit);
     }
+    #[cfg(all(test, windows))]
+    let open_timing = TimingCall::phase("phase-capture-file-open");
     let mut file = File::open(&absolute)?;
+    #[cfg(all(test, windows))]
+    drop(open_timing);
+    #[cfg(all(test, windows))]
+    let metadata_timing = TimingCall::phase("phase-capture-handle-metadata");
     if stamp(&file.metadata()?)? != before {
         return Err(GitError::InconsistentCapture);
     }
+    #[cfg(all(test, windows))]
+    drop(metadata_timing);
     let mut bytes = Vec::with_capacity(before.length as usize);
+    #[cfg(all(test, windows))]
+    let mut read_timing = TimingCall::phase("phase-capture-editable-read");
     file.by_ref()
         .take(maximum as u64 + 1)
         .read_to_end(&mut bytes)?;
+    #[cfg(all(test, windows))]
+    {
+        if let Some(timing) = &mut timing {
+            timing.add_bytes(bytes.len() as u64);
+        }
+        if let Some(timing) = &mut read_timing {
+            timing.add_bytes(bytes.len() as u64);
+        }
+        drop(read_timing);
+    }
     if bytes.len() > maximum {
         return Err(GitError::Limit);
     }
+    #[cfg(all(test, windows))]
+    let path_timing = TimingCall::phase("phase-capture-path-guard");
     super::paths::reject_links(&absolute)?;
+    #[cfg(all(test, windows))]
+    drop(path_timing);
+    #[cfg(all(test, windows))]
+    let _metadata_timing = TimingCall::phase("phase-capture-final-file-fence");
     if stamp(&fs::symlink_metadata(&absolute)?)? != before || bytes.len() as u64 != before.length {
         return Err(GitError::InconsistentCapture);
     }
@@ -263,25 +303,52 @@ fn read_working(root: &Path, relative: &str, maximum: usize) -> GitResult<Option
     }))
 }
 fn read_preserved(root: &Path, relative: &str) -> GitResult<Option<WorkingFile>> {
+    #[cfg(all(test, windows))]
+    let mut timing = TimingCall::phase("phase-capture-preserved-file");
     let path = root.join(relative);
+    #[cfg(all(test, windows))]
+    let path_timing = TimingCall::phase("phase-capture-path-guard");
     super::paths::reject_links(&path)?;
+    #[cfg(all(test, windows))]
+    drop(path_timing);
+    #[cfg(all(test, windows))]
+    let metadata_timing = TimingCall::phase("phase-capture-path-metadata");
     let before = match fs::symlink_metadata(&path) {
         Ok(value) => stamp(&value)?,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
         Err(_) => return Err(GitError::Io),
     };
+    #[cfg(all(test, windows))]
+    drop(metadata_timing);
     if before.length > MAX_OPAQUE_FILE_BYTES {
         return Err(GitError::Limit);
     }
+    #[cfg(all(test, windows))]
+    let open_timing = TimingCall::phase("phase-capture-file-open");
     let mut file = File::open(&path)?;
+    #[cfg(all(test, windows))]
+    drop(open_timing);
+    #[cfg(all(test, windows))]
+    let metadata_timing = TimingCall::phase("phase-capture-handle-metadata");
     if stamp(&file.metadata()?)? != before {
         return Err(GitError::InconsistentCapture);
     }
+    #[cfg(all(test, windows))]
+    drop(metadata_timing);
     let mut digest = Sha256::new();
     let mut buffer = [0u8; 65_536];
     let mut size = 0u64;
     loop {
+        #[cfg(all(test, windows))]
+        let mut read_timing = TimingCall::phase("phase-capture-preserved-read");
         let n = file.read(&mut buffer)?;
+        #[cfg(all(test, windows))]
+        {
+            if let Some(timing) = &mut read_timing {
+                timing.add_bytes(n as u64);
+            }
+            drop(read_timing);
+        }
         if n == 0 {
             break;
         }
@@ -289,15 +356,35 @@ fn read_preserved(root: &Path, relative: &str) -> GitResult<Option<WorkingFile>>
         if size > MAX_OPAQUE_FILE_BYTES {
             return Err(GitError::Limit);
         }
+        #[cfg(all(test, windows))]
+        let mut hash_timing = TimingCall::phase("phase-capture-preserved-hash");
         digest.update(&buffer[..n]);
+        #[cfg(all(test, windows))]
+        if let Some(timing) = &mut hash_timing {
+            timing.add_bytes(n as u64);
+        }
     }
+    #[cfg(all(test, windows))]
+    if let Some(timing) = &mut timing {
+        timing.add_bytes(size);
+    }
+    #[cfg(all(test, windows))]
+    let path_timing = TimingCall::phase("phase-capture-path-guard");
     super::paths::reject_links(&path)?;
+    #[cfg(all(test, windows))]
+    drop(path_timing);
+    #[cfg(all(test, windows))]
+    let metadata_timing = TimingCall::phase("phase-capture-final-file-fence");
     if size != before.length
         || stamp(&file.metadata()?)? != before
         || stamp(&fs::symlink_metadata(&path)?)? != before
     {
         return Err(GitError::InconsistentCapture);
     }
+    #[cfg(all(test, windows))]
+    drop(metadata_timing);
+    #[cfg(all(test, windows))]
+    let _hash_timing = TimingCall::phase("phase-capture-preserved-finalize");
     Ok(Some(WorkingFile {
         bytes: Vec::new(),
         preserved_sha256: Some(format!("{:x}", digest.finalize())),
@@ -366,6 +453,8 @@ fn index_path(executor: &GitExecutor, root: &Path) -> GitResult<PathBuf> {
     Ok(path)
 }
 fn raw_index_at(path: &Path) -> GitResult<Vec<u8>> {
+    #[cfg(all(test, windows))]
+    let _timing = TimingCall::phase("phase-capture-index-read");
     super::paths::reject_links(path)?;
     if path.with_extension("lock").exists() {
         return Err(GitError::Conflict);
@@ -397,6 +486,8 @@ pub(super) fn inspect_preparation_with_preservation(
     base_hashes: &BTreeMap<String, String>,
     preservation: Option<&BasePreservation>,
 ) -> GitResult<(bool, bool)> {
+    #[cfg(all(test, windows))]
+    let _timing = TimingCall::phase("phase-capture-preparation");
     let limits = CaptureLimits::default();
     let first = inspect_at_profile(executor, root, base, base, limits, preservation)?;
     for (path, file) in &first.files {
@@ -434,6 +525,8 @@ pub(super) fn profile_attributes(
     included: &[String],
     source: Option<&str>,
 ) -> GitResult<Vec<u8>> {
+    #[cfg(all(test, windows))]
+    let _timing = TimingCall::phase("phase-capture-attributes");
     let mut attributes = Vec::new();
     let mut position = 0;
     while position < included.len() {
@@ -503,6 +596,8 @@ fn inspect_at_profile(
     limits: CaptureLimits,
     preservation: Option<&BasePreservation>,
 ) -> GitResult<Snapshot> {
+    #[cfg(all(test, windows))]
+    let _timing = TimingCall::phase("phase-capture-observation");
     let observation = executor.capture_head(root)?;
     let head = observation.head;
     if std::str::from_utf8(&head)

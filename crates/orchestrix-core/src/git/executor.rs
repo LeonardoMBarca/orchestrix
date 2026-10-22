@@ -543,6 +543,8 @@ impl GitExecutor {
         &self,
         repo: &Path,
     ) -> GitResult<SupportedDirectories> {
+        #[cfg(all(test, windows))]
+        let _timing = test_timing::Call::phase("phase-support-directories");
         self.ensure_local_config(repo)?;
         let raw = self
             .run(
@@ -561,6 +563,8 @@ impl GitExecutor {
     /// One fresh capture observation; symbolic HEAD remains a separate native
     /// symbolic-ref query because rev-parse's DWIM name output is not equivalent.
     pub(super) fn capture_head(&self, repo: &Path) -> GitResult<CaptureHead> {
+        #[cfg(all(test, windows))]
+        let _timing = test_timing::Call::phase("phase-capture-head-support");
         self.ensure_local_config(repo)?;
         let output = self.run(
             repo,
@@ -590,6 +594,8 @@ impl GitExecutor {
     }
 
     fn ensure_local_config(&self, repo: &Path) -> GitResult<()> {
+        #[cfg(all(test, windows))]
+        let _timing = test_timing::Call::phase("phase-support-config");
         // Check the worktree marker too, not only the directory returned after
         // Git resolves it. A normal linked-worktree .git file is supported.
         let marker = repo.join(".git");
@@ -638,6 +644,8 @@ impl GitExecutor {
         &self,
         mut directories: [PathBuf; 2],
     ) -> GitResult<SupportedDirectories> {
+        #[cfg(all(test, windows))]
+        let _timing = test_timing::Call::phase("phase-support-admin-stores");
         for dir in &mut directories {
             *dir = canonical_directory(dir)?;
             for name in [
@@ -1047,27 +1055,72 @@ impl Drop for MetadataFixture {
 
 #[cfg(all(test, windows))]
 pub(crate) mod test_timing {
-    use std::{cell::RefCell, ffi::OsString, time::Instant};
+    use std::{cell::RefCell, collections::BTreeMap, ffi::OsString, time::Instant};
 
     #[derive(serde::Serialize)]
     pub(crate) struct Sample {
         pub builtin: &'static str,
         pub elapsed_micros: u128,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub calls: Option<u64>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub measured_bytes: Option<u64>,
+    }
+    #[derive(Default)]
+    struct Aggregate {
+        elapsed_micros: u128,
+        calls: u64,
+        measured_bytes: Option<u64>,
     }
     thread_local! {
         static SAMPLES: RefCell<Option<Vec<Sample>>> = const { RefCell::new(None) };
+        static PHASES: RefCell<Option<BTreeMap<&'static str, Aggregate>>> = const { RefCell::new(None) };
     }
     pub(crate) fn begin() {
         SAMPLES.with(|samples| assert!(samples.replace(Some(Vec::new())).is_none()));
+        PHASES.with(|phases| assert!(phases.replace(Some(BTreeMap::new())).is_none()));
     }
     pub(crate) fn finish() -> Vec<Sample> {
-        SAMPLES.with(|samples| samples.take().expect("diagnostic trace not enabled"))
+        let mut samples =
+            SAMPLES.with(|samples| samples.take().expect("diagnostic trace not enabled"));
+        PHASES.with(|phases| {
+            for (builtin, total) in phases.take().expect("diagnostic phases not enabled") {
+                samples.push(Sample {
+                    builtin,
+                    elapsed_micros: total.elapsed_micros,
+                    calls: Some(total.calls),
+                    measured_bytes: total.measured_bytes,
+                });
+            }
+        });
+        samples
     }
-    pub(super) struct Call {
+    pub(crate) struct Call {
         builtin: &'static str,
         started: Instant,
+        aggregate: bool,
+        measured_bytes: Option<u64>,
     }
     impl Call {
+        /// Test-only nested spans are aggregated by fixed labels. Their totals
+        /// overlap their child phases and must not be summed as elapsed wall time.
+        #[inline(never)]
+        pub(crate) fn phase(label: &'static str) -> Option<Self> {
+            if !SAMPLES.with(|samples| samples.borrow().is_some()) {
+                return None;
+            }
+            Some(Self {
+                builtin: label,
+                started: Instant::now(),
+                aggregate: true,
+                measured_bytes: None,
+            })
+        }
+        #[inline(never)]
+        pub(crate) fn add_bytes(&mut self, bytes: u64) {
+            self.measured_bytes = Some(self.measured_bytes.unwrap_or(0).saturating_add(bytes));
+        }
+        #[inline(never)]
         pub(super) fn start(args: &[OsString]) -> Option<Self> {
             if !SAMPLES.with(|samples| samples.borrow().is_some()) {
                 return None;
@@ -1099,16 +1152,37 @@ pub(crate) mod test_timing {
             Some(Self {
                 builtin,
                 started: Instant::now(),
+                aggregate: false,
+                measured_bytes: None,
             })
         }
     }
     impl Drop for Call {
+        #[inline(never)]
         fn drop(&mut self) {
+            let elapsed_micros = self.started.elapsed().as_micros();
+            if self.aggregate {
+                PHASES.with(|phases| {
+                    if let Some(phases) = phases.borrow_mut().as_mut() {
+                        assert!(phases.contains_key(self.builtin) || phases.len() < 32);
+                        let total = phases.entry(self.builtin).or_default();
+                        total.calls = total.calls.saturating_add(1);
+                        total.elapsed_micros = total.elapsed_micros.saturating_add(elapsed_micros);
+                        if let Some(bytes) = self.measured_bytes {
+                            total.measured_bytes =
+                                Some(total.measured_bytes.unwrap_or(0).saturating_add(bytes));
+                        }
+                    }
+                });
+                return;
+            }
             SAMPLES.with(|samples| {
                 if let Some(samples) = samples.borrow_mut().as_mut() {
                     samples.push(Sample {
                         builtin: self.builtin,
-                        elapsed_micros: self.started.elapsed().as_micros(),
+                        elapsed_micros,
+                        calls: None,
+                        measured_bytes: None,
                     });
                 }
             });
@@ -1122,6 +1196,8 @@ pub(crate) mod test_timing {
 /// objects/info. Its children must be regular files and share the same total
 /// entry budget; arbitrary/deeper directories and links remain unsupported.
 fn inspect_object_store(root: &Path) -> GitResult<()> {
+    #[cfg(all(test, windows))]
+    let _timing = test_timing::Call::phase("phase-support-object-store");
     #[cfg(test)]
     OBJECT_STORE_READS.with(|count| count.set(count.get() + 1));
     reject_links(root)?;
@@ -1157,13 +1233,21 @@ fn inspect_object_store(root: &Path) -> GitResult<()> {
     Ok(())
 }
 fn object_entry(path: &Path, count: &mut usize) -> GitResult<fs::Metadata> {
+    #[cfg(all(test, windows))]
+    let _timing = test_timing::Call::phase("phase-support-object-entry");
     *count = count.saturating_add(1);
     if *count > OBJECT_ENTRIES {
         return Err(GitError::Limit);
     }
     // Check each entry before reading its type or descending. In particular,
     // objects/aa junctions cannot redirect a subsequent hash-object write.
+    #[cfg(all(test, windows))]
+    let path_timing = test_timing::Call::phase("phase-support-object-path-guard");
     reject_links(path)?;
+    #[cfg(all(test, windows))]
+    drop(path_timing);
+    #[cfg(all(test, windows))]
+    let _metadata_timing = test_timing::Call::phase("phase-support-object-metadata");
     fs::symlink_metadata(path).map_err(|_| GitError::Io)
 }
 
