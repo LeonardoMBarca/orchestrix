@@ -1474,6 +1474,7 @@ impl RuntimeChoice {
                     "review-invalid",
                     "review-mutate",
                     "qa-controlled",
+                    "opaque-document",
                 ]
                 .contains(&scenario.as_str())
                 {
@@ -1528,6 +1529,26 @@ fn validate_database_separation(database: &Path, task: &ManualTaskRequest) -> Re
 #[cfg(all(test, windows))]
 mod tests {
     use super::*;
+    #[test]
+    fn opaque_document_fixture_routes_without_relaxing_synthetic_bounds_or_allowlist() {
+        let directory = std::env::temp_dir();
+        let choice = |scenario: &str| RuntimeChoice::Synthetic {
+            executable: directory.join("never-executed-fixture.exe"),
+            home: directory.clone(),
+            scenario: scenario.into(),
+        };
+        let launch = choice("opaque-document").launch_in(&directory).unwrap();
+        assert!(launch.is_synthetic());
+        assert_eq!(launch.cwd(), directory);
+        assert_eq!(launch.turn_timeout, Duration::from_secs(6));
+        assert_eq!(launch.interrupt_grace, Duration::from_millis(300));
+        assert_eq!(
+            choice("opaque-document-unrecognized")
+                .launch_in(&directory)
+                .unwrap_err(),
+            "synthetic-scenario"
+        );
+    }
     #[test]
     fn desktop_preparation_policy_fence_rejects_unadmitted_replay_but_keeps_known_receipt() {
         let root = std::env::temp_dir().join(format!(

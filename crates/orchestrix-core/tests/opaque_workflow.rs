@@ -25,13 +25,25 @@ use std::{
 };
 
 fn git(root: &Path, args: &[&str]) -> Vec<u8> {
-    let out = Command::new("git")
+    let mut command = Command::new("git");
+    for (key, _) in std::env::vars_os() {
+        if key
+            .to_string_lossy()
+            .to_ascii_uppercase()
+            .starts_with("GIT_")
+        {
+            command.env_remove(key);
+        }
+    }
+    let out = command
         .current_dir(root)
         .args(["-c", "core.hooksPath=NUL", "-c", "core.autocrlf=false"])
         .args(args)
         .env("GIT_CONFIG_NOSYSTEM", "1")
         .env("GIT_CONFIG_GLOBAL", "NUL")
         .env("GIT_OPTIONAL_LOCKS", "0")
+        .env("GIT_NO_REPLACE_OBJECTS", "1")
+        .env("GIT_TERMINAL_PROMPT", "0")
         .output()
         .unwrap();
     assert!(
@@ -75,12 +87,14 @@ impl Fixture {
             );
             // A local clone transports tracked objects/history only; no worktree,
             // appdata, dependencies or uncommitted developer bytes are copied.
+            // Transport preserves the full reachable history in packfiles;
+            // it neither prunes the source nor weakens object-store validation.
             git(
                 &root,
                 &[
                     "clone",
                     "--quiet",
-                    "--no-hardlinks",
+                    "--no-local",
                     "--no-checkout",
                     source.to_str().unwrap(),
                     repo.to_str().unwrap(),

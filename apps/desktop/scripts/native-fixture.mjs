@@ -29,9 +29,11 @@ if(!completeSnapshot){
 // Correction intentionally rejects snapshots containing excluded secret files.
 writeFileSync(path.join(root,'.env'),'COLOR=blue\n');
 const env=Object.fromEntries(Object.entries(process.env).filter(([key])=>!key.toUpperCase().startsWith('GIT_')));
-Object.assign(env,{GIT_CONFIG_NOSYSTEM:'1',GIT_CONFIG_GLOBAL:'NUL',GIT_TERMINAL_PROMPT:'0'});
+Object.assign(env,{GIT_CONFIG_NOSYSTEM:'1',GIT_CONFIG_GLOBAL:'NUL',GIT_TERMINAL_PROMPT:'0',GIT_NO_REPLACE_OBJECTS:'1'});
 const commands=completeSnapshot?[
- ['clone','--quiet','--no-hardlinks','--no-checkout',repoRoot,repository],
+ // Local Git transport packs the complete reachable history without hardlinks.
+ // This changes object storage, never the pinned tree, files or object IDs.
+ ['clone','--quiet','--no-local','--no-checkout',repoRoot,repository],
  ['checkout','--quiet','-B','main','b053a7f']
 ]:[['init','--quiet','--initial-branch=main'],['add','--all'],['commit','--quiet','-m','Owned native Desktop fixture']];
 for(const args of commands){
