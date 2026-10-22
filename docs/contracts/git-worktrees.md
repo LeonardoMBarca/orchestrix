@@ -163,6 +163,15 @@ Attributes are inspected both at the pinned base and in the working checkout. [`
 
 Preflight has a 90-second total Git budget, the existing 15-second/8-MiB per-command bounds and cancellation between commands. It does not enlarge worker/runtime/check budgets. Unsupported metadata can reject before inventory; no empty report is presented as a successful scan. The schema-1 textual limits and historical hashes remain unchanged; the opt-in v2 limits above apply only to that separate profile.
 
+That observation deadline is checked at operation boundaries, rather than a
+hard preemption of Windows filesystem calls. A bounded metadata walk can cross
+it before the next check reports Deadline; entry/path/byte limits still apply.
+Object-store layout and filesystem latency can therefore block an otherwise
+compatible inventory. Tests may use an independent local transport clone with
+packfiles while preserving the exact pinned tree and its reachable history;
+this does not remove tracked files, repack the user's repository, skip guards
+or certify arbitrary loose-object repositories within the deadline.
+
 Equivalent metadata queries may share a bounded Git process: the two administrative directory paths from [rev-parse](https://git-scm.com/docs/git-rev-parse), stage/flag records from [ls-files](https://git-scm.com/docs/git-ls-files), and exact generated refs from [for-each-ref](https://git-scm.com/docs/git-for-each-ref). Each parser rejects malformed, duplicate or unexpected fields; only default `H`/stage-zero index entries are accepted. Ref observations are repeated around the exact ownership blob. Because enumeration can omit broken refs, an optional missing ref still requires the direct resolver and absence of a loose entry; dangling symbolic or corrupt refs are not authority to treat a resource as absent. Grouping does not cache support/ownership across operations, remove coherent snapshots or increase command/keeper budgets.
 
 Attribute reads use documented [`check-attr --stdin -z --all`](https://git-scm.com/docs/git-check-attr): at most 256 paths/64 KiB input per process, with the existing 8 MiB output ceiling. Path/attribute framing, requested-path membership and duplicate pairs are checked; forbidden attributes remain forbidden. Source and working observations remain separate and are repeated at their original fences. This avoids Windows argv limits and the process multiplication of 16-path batches; it does not cache mutable attributes or increase deadlines.

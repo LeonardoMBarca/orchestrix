@@ -21,13 +21,29 @@ use std::{
     path::{Path, PathBuf},
 };
 type Result<T> = std::result::Result<T, WorkerError>;
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ReviewCheckpoint {
+    ArtifactValidated,
+    AdmissionMetadataConfirmed,
+}
 pub struct ReviewPipeline;
 impl ReviewPipeline {
     pub fn review(
         store: &mut Store,
         input: &ReviewRequest,
+        launch: RuntimeLaunch,
+        cancel: &CancellationToken,
+    ) -> Result<ReviewRecord> {
+        Self::review_with_checkpoint(store, input, launch, cancel, &mut |_| {})
+    }
+    /// Observe phase boundaries without changing admission or evidence. The
+    /// watches below still reject filesystem changes made by any observer.
+    pub fn review_with_checkpoint(
+        store: &mut Store,
+        input: &ReviewRequest,
         mut launch: RuntimeLaunch,
         cancel: &CancellationToken,
+        checkpoint: &mut dyn FnMut(ReviewCheckpoint),
     ) -> Result<ReviewRecord> {
         if !launch.structured_results_supported() {
             return Err(WorkerError("structured-review-runtime-unsupported"));
@@ -312,6 +328,25 @@ impl ReviewPipeline {
             launch.turn_timeout = launch
                 .turn_timeout
                 .min(std::time::Duration::from_millis(remaining));
+            // Full-base capture may outlast the availability observation. Keep
+            // both sticky watches live through capture, metadata and the turn;
+            // read admission metadata only after that expensive local work.
+            // No TTL or original observation date is extended.
+            let files = DirectoryWatch::start(&path).map_err(|_| WorkerError("review-watch"))?;
+            let admin = DirectoryWatch::start(Path::new(&worktree.intent.common_git_dir))
+                .map_err(|_| WorkerError("review-watch"))?;
+            let executor = GitExecutor::new()?;
+            let before =
+                git::capture(&executor, &path, &worktree.intent, CaptureLimits::default())?;
+            if before.revision != artifact.revision {
+                return Err(WorkerError("review-artifact-changed"));
+            }
+            checkpoint(ReviewCheckpoint::ArtifactValidated);
+            if files.changed().map_err(|_| WorkerError("review-watch"))?
+                || admin.changed().map_err(|_| WorkerError("review-watch"))?
+            {
+                return Err(WorkerError("review-artifact-changed"));
+            }
             crate::connections::guard_launch(store, &connection_id, connection_revision, &launch)
                 .map_err(|_| WorkerError("connection-changed-before-runtime"))?;
             let mut adapter = CodexAdapter::connect(
@@ -360,15 +395,12 @@ impl ReviewPipeline {
             if crate::worker::now()? >= deadline {
                 return Err(WorkerError("review-budget-exhausted"));
             }
-            let executor = GitExecutor::new()?;
-            let before =
-                git::capture(&executor, &path, &worktree.intent, CaptureLimits::default())?;
-            if before.revision != artifact.revision {
+            checkpoint(ReviewCheckpoint::AdmissionMetadataConfirmed);
+            if files.changed().map_err(|_| WorkerError("review-watch"))?
+                || admin.changed().map_err(|_| WorkerError("review-watch"))?
+            {
                 return Err(WorkerError("review-artifact-changed"));
             }
-            let files = DirectoryWatch::start(&path).map_err(|_| WorkerError("review-watch"))?;
-            let admin = DirectoryWatch::start(Path::new(&worktree.intent.common_git_dir))
-                .map_err(|_| WorkerError("review-watch"))?;
             observe(
                 store,
                 &input.id,

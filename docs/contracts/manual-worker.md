@@ -14,6 +14,17 @@ The structured-result path is pinned to the Codex `0.162.0-alpha.17.2` official 
 
 Accepted/Rejected requires confirmed native read-only/network settings, independent identity, successful terminal, owned tree closure and closed streams. These conditions are revalidated on restoration of every technical final observation, including a later invalidated one. Invalid output, protocol failure, cancellation, timeout and missing quota are separate outcomes and grant no approval. Directory watches plus exact recapture detect changes during/after verification/review. Editing an old worktree cannot withdraw checks or approval from a newer correction artifact.
 
+The admission connection is discovered **after** the complete physical artifact
+capture, so expensive preservation validation cannot consume its 60-second
+availability lease before dispatch. Sticky watches on the worktree and common
+Git metadata begin before that capture, are checked again after the fresh
+identity/configuration/policy checks, and remain active through final recapture.
+Even a change restored to identical bytes blocks the watched interval before
+dispatch. The original decision snapshot, observation dates, mandatory guards,
+turn/Job bounds and lease duration do not change; no additional provider read
+is introduced. Local phase callbacks observe these boundaries and grant no
+execution authority.
+
 Read-only in this native profile enforces denied writes and disabled network through the runtime's confirmed sandbox. It does not establish OS read confinement to only the Context Pack/worktree, nor override the existing local-user threat boundary. An unsupported version or an unconfirmed mandatory restriction blocks the combination.
 
 Explicit correction creates a new attempt in the same Run/Task, with `correction_of` pointing to the rejected artifact. The Git commit-base remains the pinned commit OID; a content-manifest revision is never passed as a Git commit. The worker materializes the exact supported source bytes in its own clean worktree, preserves history and checks the materialization before dispatch. The initial correction profile rejects source artifacts with index changes relative to base; it does not silently lose staged state. Historical captures remain immutable.

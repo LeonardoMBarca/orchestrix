@@ -5,13 +5,14 @@ use orchestrix_core::{
     evaluator::CheckSpec,
     persistence::Store,
     policy::{Fallback, PolicyDocument, TaskClassification, TaskKind},
-    review::ReviewPipeline,
+    review::{ReviewCheckpoint, ReviewPipeline},
     review_records::{ReviewBudget, ReviewRequest, ReviewStatus},
     runtime::{CancellationToken, RuntimeLaunch},
     worker::{ContextFileRequest, ManualTaskRequest, ManualWorker},
     worker_records::WorkerStatus,
 };
 use std::{
+    collections::BTreeMap,
     env, fs,
     path::{Path, PathBuf},
     process::{Command, Output},
@@ -217,6 +218,189 @@ fn review_request(
             max_elapsed_ms: 600_000,
         },
     }
+}
+#[test]
+fn review_refreshes_admission_after_capture_and_blocks_transient_changes_before_dispatch() {
+    let f = Fixture::new();
+    let mut store = f.store();
+    let cancel = CancellationToken::new();
+    let mut task = f.request("review-admission-order");
+    task.checks = vec![check(&["--check-fixture", "after\n"])];
+    let implemented = ManualWorker::run(&mut store, &task, f.launch("success"), &cancel).unwrap();
+    assert_eq!(
+        implemented.status(),
+        WorkerStatus::Verified,
+        "{}",
+        implemented.summary()
+    );
+    let state = store.load().unwrap();
+    let original = state.runs()[&RunId::new(&implemented.intent.run_id).unwrap()]
+        .task(&TaskId::new(&implemented.intent.task_id).unwrap())
+        .unwrap()
+        .artifact()
+        .unwrap()
+        .clone();
+    let captured_key = (
+        original.id().as_str().to_owned(),
+        original.revision().as_str().to_owned(),
+    );
+    let captured_bytes = serde_json::to_vec(&state.captured_artifacts()[&captured_key]).unwrap();
+    let worktree = state
+        .worktrees()
+        .values()
+        .find(|worktree| worktree.intent.attempt_id == implemented.intent.attempt_id)
+        .unwrap();
+    let path = PathBuf::from(&worktree.intent.path);
+    let common = PathBuf::from(&worktree.intent.common_git_dir);
+    drop(state);
+    let working_file = path.join("fixture.txt");
+    let configuration_file = common.join("config");
+    let working_bytes = fs::read(&working_file).unwrap();
+    let configuration_bytes = fs::read(&configuration_file).unwrap();
+    let index = PathBuf::from(
+        String::from_utf8(
+            git(
+                &path,
+                &["rev-parse", "--path-format=absolute", "--git-path", "index"],
+            )
+            .stdout,
+        )
+        .unwrap()
+        .trim(),
+    );
+    let index_bytes = fs::read(&index).unwrap();
+    let references = git(&f.repository, &["show-ref"]).stdout;
+    let metadata_reads = || {
+        fs::read_to_string(f.home.join("metadata-reads"))
+            .unwrap()
+            .parse::<u64>()
+            .unwrap()
+    };
+    // dispatch-count is per process, so equal contents alone cannot prove that
+    // another reviewer did not receive a first turn. Compare the durable ledger.
+    let dispatches = || {
+        fs::read_dir(&f.home)
+            .unwrap()
+            .map(|entry| entry.unwrap())
+            .filter_map(|entry| {
+                let name = entry.file_name().into_string().unwrap();
+                (name.starts_with("dispatch-event-") && name.ends_with(".json"))
+                    .then(|| (name, fs::read(entry.path()).unwrap()))
+            })
+            .collect::<BTreeMap<_, _>>()
+    };
+    let initial_dispatches = dispatches();
+    assert_eq!(initial_dispatches.len(), 1, "only the implementation turn");
+    assert!(!f.home.join("review-sandbox").exists());
+
+    for (id, mutation) in [
+        ("review-worktree-transient", Some(&working_file)),
+        ("review-common-transient", Some(&configuration_file)),
+        ("review-admission-current", None),
+    ] {
+        let baseline_reads = metadata_reads();
+        let baseline_dispatches = dispatches();
+        let dispatch_count = fs::read(f.home.join("dispatch-count")).unwrap();
+        let mut artifact_validated = false;
+        let mut admission_confirmed = false;
+        let request = review_request(&implemented, original.revision().as_str(), id, &task.policy);
+        let reviewed = ReviewPipeline::review_with_checkpoint(
+            &mut store,
+            &request,
+            f.launch("review-accept"),
+            &cancel,
+            &mut |checkpoint| match checkpoint {
+                ReviewCheckpoint::ArtifactValidated => {
+                    assert!(!artifact_validated && !admission_confirmed);
+                    artifact_validated = true;
+                    assert_eq!(
+                        metadata_reads(),
+                        baseline_reads + 1,
+                        "the full capture precedes the second metadata connection"
+                    );
+                    assert_eq!(dispatches(), baseline_dispatches);
+                }
+                ReviewCheckpoint::AdmissionMetadataConfirmed => {
+                    assert!(artifact_validated && !admission_confirmed);
+                    admission_confirmed = true;
+                    assert_eq!(metadata_reads(), baseline_reads + 2);
+                    assert_eq!(dispatches(), baseline_dispatches);
+                    if let Some(target) = mutation {
+                        let original = fs::read(target).unwrap();
+                        let mut transient = original.clone();
+                        transient.extend_from_slice(b"\ntransient owned review race\n");
+                        fs::write(target, transient).unwrap();
+                        fs::write(target, &original).unwrap();
+                        assert_eq!(fs::read(target).unwrap(), original);
+                    }
+                }
+            },
+        )
+        .unwrap();
+        assert!(artifact_validated && admission_confirmed);
+        assert_eq!(metadata_reads(), baseline_reads + 2);
+        assert_eq!(fs::read(&working_file).unwrap(), working_bytes);
+        assert_eq!(fs::read(&configuration_file).unwrap(), configuration_bytes);
+        assert_eq!(fs::read(&index).unwrap(), index_bytes);
+        assert_eq!(git(&f.repository, &["show-ref"]).stdout, references);
+        assert_eq!(
+            serde_json::to_vec(&store.load().unwrap().captured_artifacts()[&captured_key]).unwrap(),
+            captured_bytes
+        );
+        if mutation.is_some() {
+            assert_eq!(
+                reviewed.status(),
+                ReviewStatus::Unavailable,
+                "{}",
+                reviewed.summary()
+            );
+            assert!(reviewed.output().is_none());
+            assert_eq!(
+                reviewed.observations.last().unwrap().details["reason"],
+                "review-artifact-changed"
+            );
+            assert!(
+                reviewed
+                    .observations
+                    .iter()
+                    .all(|observation| observation.status != ReviewStatus::DispatchPlanned),
+                "a watch signal must stop review before dispatch intent"
+            );
+            assert_eq!(dispatches(), baseline_dispatches);
+            assert_eq!(
+                fs::read(f.home.join("dispatch-count")).unwrap(),
+                dispatch_count
+            );
+            assert!(!f.home.join("review-sandbox").exists());
+            let state = store.load().unwrap();
+            let current_task = state.runs()[&RunId::new(&implemented.intent.run_id).unwrap()]
+                .task(&TaskId::new(&implemented.intent.task_id).unwrap())
+                .unwrap();
+            assert!(current_task.reviews().is_empty());
+            assert_eq!(current_task.state(), TaskState::NeedsReview);
+        } else {
+            assert_eq!(
+                reviewed.status(),
+                ReviewStatus::Accepted,
+                "{}",
+                reviewed.summary()
+            );
+            assert!(reviewed.output().is_some());
+            assert_eq!(
+                reviewed.observations.last().unwrap().details["readOnlyConfirmed"],
+                true
+            );
+            let sandbox: serde_json::Value =
+                serde_json::from_slice(&fs::read(f.home.join("review-sandbox")).unwrap()).unwrap();
+            assert_eq!(sandbox["type"], "readOnly");
+            let final_dispatches = dispatches();
+            assert_eq!(final_dispatches.len(), baseline_dispatches.len() + 1);
+            for (name, bytes) in baseline_dispatches {
+                assert_eq!(final_dispatches.get(&name), Some(&bytes));
+            }
+        }
+    }
+    assert_eq!(dispatches().len(), initial_dispatches.len() + 1);
 }
 #[test]
 fn independent_review_rejection_correction_preserves_task_artifact_and_rechecks_exact_version() {

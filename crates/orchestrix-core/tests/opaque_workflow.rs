@@ -286,6 +286,16 @@ fn execute_fixture(f: Fixture, correction: bool, fault: Option<&str>) {
         &cancel,
     )
     .unwrap();
+    assert_eq!(
+        review.status(),
+        if correction {
+            ReviewStatus::Rejected
+        } else {
+            ReviewStatus::Accepted
+        },
+        "{}",
+        review.summary()
+    );
     let review_context = review.intent.context.to_string();
     assert!(review_context.contains("inventory_sha256"));
     assert!(!review_context.contains("synthetic-placeholder-only"));
