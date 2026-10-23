@@ -739,7 +739,66 @@ fn execute_fixture(
         ];
         request.checks[0].authorization_ref = "explicit-transient-check-test".into();
     }
-    let prepared = if matches!(
+    let unpublished_target_index = matches!(
+        fault,
+        Some("cancel-before-reference" | "crash-before-reference")
+    )
+    .then(|| fs::read(f.repo.join(".git/index")).unwrap());
+    let prepared = if fault == Some("crash-before-reference") {
+        let config = f.root.join("preparation-crash.json");
+        fs::write(
+            &config,
+            serde_json::to_vec(&json!({"mode":"prepare","database":f.db,"request":request}))
+                .unwrap(),
+        )
+        .unwrap();
+        drop(store);
+        let mut child = Command::new(std::env::current_exe().unwrap())
+            .creation_flags(0x0800_0000)
+            .args([
+                "--ignored",
+                "--exact",
+                "opaque_application_crash_child",
+                "--nocapture",
+                "--test-threads=1",
+            ])
+            .env("ORCHESTRIX_OPAQUE_CRASH", config)
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::from(
+                fs::File::create_new(f.root.join("preparation-crash.stderr.log")).unwrap(),
+            ))
+            .spawn()
+            .unwrap();
+        let child_start = Instant::now();
+        loop {
+            if let Some(status) = child.try_wait().unwrap() {
+                assert_eq!(status.code(), Some(73));
+                break;
+            }
+            if child_start.elapsed() >= Duration::from_secs(300) {
+                let _ = child.kill();
+                let _ = child.wait();
+                panic!("owned preparation test child deadline");
+            }
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        store = Store::open(&f.db).unwrap();
+        let interrupted = store.load().unwrap().integrations()[&request.id].clone();
+        assert_eq!(interrupted.status(), IntegrationStatus::CommitPlanned);
+        let binding: GuardianBinding =
+            serde_json::from_value(interrupted.detail("guardian").unwrap().clone()).unwrap();
+        let closure_start = Instant::now();
+        let proof = loop {
+            if let Ok(proof) = read_proof(&binding) {
+                break proof;
+            }
+            assert!(closure_start.elapsed() < Duration::from_secs(5));
+            std::thread::sleep(Duration::from_millis(10));
+        };
+        assert_eq!(proof["body"]["localJobEmpty"], true);
+        interrupted
+    } else if matches!(
         measurement,
         Some(PreparationMeasurement::Daemon | PreparationMeasurement::DaemonDesktop)
     ) {
@@ -759,6 +818,11 @@ fn execute_fixture(
                 let elapsed = start.elapsed().as_millis();
                 println!("OPAQUE_INTEGRATION_PHASE={point:?} elapsedMs={elapsed}");
                 integration_phases.push((format!("{point:?}"), elapsed));
+                if point == IntegrationCheckpoint::CommitPlanned
+                    && fault == Some("cancel-before-reference")
+                {
+                    cancel.cancel();
+                }
                 if point == IntegrationCheckpoint::BaseVerified
                     && fault == Some("protected-during-materialization")
                 {
@@ -814,6 +878,89 @@ fn execute_fixture(
         assert!(prepared.candidate_revision().is_some());
         assert!(prepared.detail("approval").is_none());
         assert!(prepared.detail("application").is_none());
+        return;
+    }
+    if matches!(
+        fault,
+        Some("cancel-before-reference" | "crash-before-reference")
+    ) {
+        if fault == Some("cancel-before-reference") {
+            assert_eq!(prepared.status(), IntegrationStatus::Uncertain);
+            assert_eq!(
+                prepared.detail("reason"),
+                Some(&json!("integration-cancelled"))
+            );
+            assert!(integration_phases.iter().any(|(p, _)| p == "CommitPlanned"));
+            assert!(!integration_phases.iter().any(|(p, _)| p == "ResultRef"));
+        } else {
+            assert_eq!(prepared.status(), IntegrationStatus::CommitPlanned);
+        }
+        assert!(prepared.candidate_revision().is_none());
+        assert!(prepared.detail("approval").is_none());
+        assert!(prepared.detail("application").is_none());
+        assert_eq!(
+            prepared.intent.worktree.preservation,
+            final_artifact.preservation
+        );
+        let tree = prepared.detail("treeRevision").unwrap().as_str().unwrap();
+        assert_eq!(git(&f.repo, &["cat-file", "-t", tree]), b"tree\n");
+        let result_ref = format!(
+            "refs/heads/orchestrix/result-{}",
+            content_hash(request.id.as_bytes())
+        );
+        assert!(
+            git(
+                &f.repo,
+                &["for-each-ref", "--format=%(objectname)", &result_ref]
+            )
+            .is_empty()
+        );
+        let objects = own_object_bytes(&f.repo);
+        let ledger = fs::read(f.home.join("dispatch-count")).unwrap();
+        drop(store);
+        let mut reopened = Store::open(&f.db).unwrap();
+        let replay = service
+            .prepare(&mut reopened, &request, &CancellationToken::new())
+            .unwrap();
+        assert_eq!(
+            serde_json::to_value(&replay).unwrap(),
+            serde_json::to_value(&prepared).unwrap()
+        );
+        assert_eq!(own_object_bytes(&f.repo), objects);
+        service.reconcile(&mut reopened).unwrap();
+        let unresolved = reopened.load().unwrap().integrations()[&request.id].clone();
+        assert_eq!(unresolved.status(), IntegrationStatus::Uncertain);
+        assert!(unresolved.candidate_revision().is_none());
+        assert_eq!(unresolved.snapshot(), prepared.snapshot());
+        service.reconcile(&mut reopened).unwrap();
+        assert_eq!(
+            serde_json::to_value(&reopened.load().unwrap().integrations()[&request.id]).unwrap(),
+            serde_json::to_value(&unresolved).unwrap()
+        );
+        assert_eq!(own_object_bytes(&f.repo), objects);
+        assert!(
+            git(
+                &f.repo,
+                &["for-each-ref", "--format=%(objectname)", &result_ref]
+            )
+            .is_empty()
+        );
+        assert_eq!(
+            reopened.load().unwrap().captured_artifacts()
+                [&(final_artifact.id.clone(), final_artifact.revision.clone())],
+            final_artifact
+        );
+        assert_eq!(fs::read(f.home.join("dispatch-count")).unwrap(), ledger);
+        assert_eq!(
+            git(&f.repo, &["ls-tree", "-r", "-l", "-z", "HEAD"]),
+            source_before
+        );
+        assert_eq!(
+            fs::read(f.repo.join(".git/index")).unwrap(),
+            unpublished_target_index.unwrap()
+        );
+        assert_eq!(fs::read(f.repo.join("fixture.txt")).unwrap(), b"before\n");
+        println!("OPAQUE_UNPUBLISHED_EVIDENCE={}", f.root.display());
         return;
     }
     if fault == Some("integration-transient-check") {
@@ -1344,6 +1491,14 @@ fn mixed_base_crash_after_target_effect_reconciles_without_reapplying() {
     execute(false, false, Some("crash-after-target"))
 }
 #[test]
+fn cancellation_after_object_plan_cannot_publish_candidate_or_replay() {
+    execute(false, false, Some("cancel-before-reference"))
+}
+#[test]
+fn crash_after_durable_object_plan_does_not_publish_or_replay() {
+    execute(false, false, Some("crash-before-reference"))
+}
+#[test]
 #[ignore = "private owned application crash child; no provider access"]
 fn opaque_application_crash_child() {
     let config: serde_json::Value = serde_json::from_slice(
@@ -1351,6 +1506,18 @@ fn opaque_application_crash_child() {
     )
     .unwrap();
     let mut store = Store::open(Path::new(config["database"].as_str().unwrap())).unwrap();
+    if config["mode"] == "prepare" {
+        let request: IntegrationRequest =
+            serde_json::from_value(config["request"].clone()).unwrap();
+        IntegrationService::new()
+            .prepare_with_checkpoint(&mut store, &request, &CancellationToken::new(), |point| {
+                if point == IntegrationCheckpoint::CommitPlanned {
+                    std::process::exit(73);
+                }
+            })
+            .unwrap();
+        panic!("preparation crash checkpoint not reached");
+    }
     let request: ApplicationRequest = serde_json::from_value(config["request"].clone()).unwrap();
     IntegrationService::new()
         .apply_with_checkpoint(&mut store, &request, &CancellationToken::new(), |point| {

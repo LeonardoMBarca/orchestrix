@@ -250,6 +250,14 @@ Static link/config/path checks and repeated observations do not prevent every TO
 
 Preparation reserves an immutable integration intent in schema 7 and creates a separate Run-owned branch/worktree. It materializes the selected artifact, captures the combined version and runs only the explicitly authorized checks there. Checks bind command/hash, cwd, authorization, timeout, exit code and exact snapshot revision. A change during checks invalidates their authority. The result is a genuine Git tree/commit under its own result ref; a content hash is never used as a commit OID. The attempt worktree and immutable implementation/review artifacts remain preserved.
 
+After recording `CommitPlanned`, preparation rechecks cooperative cancellation
+before the required pre-commit inspection and again immediately before result-ref
+publication. Calculated OIDs and written, unreferenced objects do not establish a
+candidate. Cancellation or a crash at that edge preserves the existing work;
+reopening/repeating the original request cannot publish the missing ref or start
+another execution. This does not promise rollback of an already in-flight Git
+effect or power-loss atomicity between object writes, refs and SQLite.
+
 The candidate binds the integration result and source evidence. Internal integration completes the CodeTask; it does not deliver the Run or authorize changing the user's checkout. Its retained target binding additionally pins canonical checkout/common Git directory, symbolic branch, HEAD, logical index and working bytes. Index stat-cache bytes and file timestamps are excluded from this logical fingerprint; coherent reads still check metadata and bytes for concurrent changes.
 
 Human approval pins the candidate revision, target and an explicitly requested validity of 1 second to 24 hours; Accepted code review alone grants no application authority. Approval expiry, clock rollback or a changed candidate/base/content/check blocks the corresponding operation. Approve and Apply revalidate independently. Apply checks the clock again immediately before the first working-file update, after any index refresh and coherent target reads. An invalidated candidate cannot reuse its old approval. Historical inspection grants neither permission nor current verification.

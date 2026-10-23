@@ -48,6 +48,7 @@ pub enum IntegrationCheckpoint {
     BaseVerified,
     Materialized,
     Checked,
+    CommitPlanned,
     ResultRef,
     FilesApplied,
     TargetRef,
@@ -413,6 +414,8 @@ impl IntegrationService {
                     json!({"treeRevision":tree,"resultRevision":result}),
                 )
             })?;
+            checkpoint(IntegrationCheckpoint::CommitPlanned);
+            cancelled(cancel)?;
             if diagnostics
                 .measure(Phase::InspectBeforeCommit, None, || {
                     git.inspect(&record.intent)
@@ -425,6 +428,7 @@ impl IntegrationService {
             {
                 return Err(WorkerError("combined-artifact-changed"));
             }
+            cancelled(cancel)?;
             diagnostics.measure(Phase::WriteReference, None, || {
                 git.commit(&record.intent, &tree, &result)
             })?;
