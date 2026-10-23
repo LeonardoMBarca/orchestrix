@@ -45,6 +45,15 @@ pub(super) fn plan(
     base: &str,
     editable_paths: &[String],
 ) -> GitResult<BasePreservation> {
+    plan_with_projection(executor, root, base, editable_paths).map(|(manifest, _)| manifest)
+}
+
+fn plan_with_projection(
+    executor: &GitExecutor,
+    root: &Path,
+    base: &str,
+    editable_paths: &[String],
+) -> GitResult<(BasePreservation, super::object_identity::TreeProjection)> {
     executor.ensure_supported(root)?;
     if !valid_oid(base) || editable_paths.is_empty() || editable_paths.len() > MAX_EDITABLE_FILES {
         return Err(GitError::Base);
@@ -118,7 +127,10 @@ pub(super) fn plan(
         });
     }
     entries.sort_by(|a, b| a.path.cmp(&b.path));
-    super::object_identity::inventory_tree(&tree_oid, &entries)?;
+    let projection = super::object_identity::inventory_projection(&tree_oid, &entries)?;
+    // ls-tree is a projection, not native integrity proof. Verify every physical
+    // tree body in bounded batches, including subtrees later reused unchanged.
+    projection.verify_objects(executor, root)?;
     let paths = entries
         .iter()
         .map(|e| e.path.clone())
@@ -155,7 +167,7 @@ pub(super) fn plan(
     {
         return Err(GitError::Limit);
     }
-    Ok(manifest)
+    Ok((manifest, projection))
 }
 
 fn visit(
@@ -220,14 +232,23 @@ pub(super) fn verify_base(
     root: &Path,
     manifest: &BasePreservation,
 ) -> GitResult<()> {
+    verify_base_projection(executor, root, manifest).map(|_| ())
+}
+
+pub(super) fn verify_base_projection(
+    executor: &GitExecutor,
+    root: &Path,
+    manifest: &BasePreservation,
+) -> GitResult<super::object_identity::TreeProjection> {
     if !manifest.validate() {
         return Err(GitError::Ownership);
     }
-    let observed = plan(executor, root, &manifest.base_oid, &manifest.editable_paths)?;
+    let (observed, projection) =
+        plan_with_projection(executor, root, &manifest.base_oid, &manifest.editable_paths)?;
     if observed != *manifest {
         return Err(GitError::Ownership);
     }
-    Ok(())
+    Ok(projection)
 }
 
 pub(super) fn for_tree(

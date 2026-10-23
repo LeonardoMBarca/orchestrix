@@ -60,8 +60,29 @@ stored under another object's ID is inconsistent evidence, not a replacement
 base. This uses RustCrypto SHA-1 for native SHA-1 repositories and the existing
 SHA-256 implementation for native SHA-256 IDs; retained SHA-256 content hashes
 remain independent. Tree projection permits at most 32 directory levels and
-1 MiB of encoded entries. Only the pinned commit/tree and bounded blob batches
-are checked; no history-wide fsck, network recovery or HEAD substitution occurs.
+1 MiB of encoded entries. Checks cover the pinned commit, its manifest-derived
+trees and bounded blob batches; no history-wide fsck, network recovery or HEAD
+substitution occurs.
+
+V2 integration planning reconstructs native tree bodies locally with that same
+ordering/identity code. It reuses untouched directory OIDs and rebuilds only
+ancestors of actual blob changes, including additions, deletions and removal of
+empty directories. No delta or restored final content does not manufacture a
+tree change; staged/index evidence remains in the original artifact. File/directory
+collisions and component aliases are refused. The full original base and every
+required physical tree/blob are still checked, not merely their names or sizes.
+Tree reads are grouped within the existing bounded `cat-file --batch` path.
+
+The reusable projection is private to one fresh verification call. It carries
+the pinned manifest's exact serialized tree bodies and native IDs; it is neither
+checkout cache nor lasting integrity authority. Planning with writes stores only
+changed blobs/ancestor trees in the owned Job. Verification instead checks the
+physical candidate objects without writing them. Calculated tree/commit OIDs,
+object writes, result-ref publication and SQLite confirmation remain separate.
+No mutable capture/check/pre-commit/approval/application inspection is removed;
+there is no cache across operations/reopens or reliance on watcher silence.
+V1 calculation, persisted formats and historical artifact bytes/hashes stay
+unchanged. Current evidence and unresolved performance gates remain in status.
 
 Independent ceilings: 4,096 base files, 64 MiB base bytes, 6 MiB per preserved
 blob, 1 MiB serialized preservation metadata, 128 editable paths. Editable files
@@ -238,6 +259,13 @@ An explicitly opted-in host sets both `ORCHESTRIX_INTEGRATION_DIAGNOSTICS=1` and
 Both Git transports retain their existing 5 ms polling wait after the output channel disconnects. The scoped transport uses `OwnedProcess::receive`; the legacy pre-Job reader handles its own channel. A disconnected channel can precede root exit or Job closure, so it must not become an immediate busy-poll loop. Waiting consumes the existing command/Job budget; it neither restarts that budget nor establishes exit, complete drain, or successful verification. Content/byte limits, per-command deadlines, and the separate exit/stream/ownership checks remain required.
 
 Begin/end events distinguish source/target inspection, reservation, supervisor startup, materialization/base/capture, each check and its surrounding inspections, Store writes, commit planning/reference, Job closure and candidate confirmation. An interrupted span retains its begin; Rust unwinding adds an aborted end when possible. Counters report Git transport attempts/time and input/stdout bytes, captured file bytes and Store load/command counts/time. Nested spans and counters are inclusive and must not be summed with their parents. Store timers update in-memory counters only; no diagnostic I/O is performed inside SQLite transactions. A returned record has a separate Prepared/Blocked/Uncertain/other result event: a successful Rust return, check start, Checking status or returned Drop does not establish execution success or confirmed Job closure. These local measurements are not durable authority or power-loss evidence.
+
+Completed v2 plans additionally report reused/rebuilt result-directory counts,
+verified original tree-body bytes and newly written tree-body bytes. Rebuilt
+means a locally changed/new tree body, not a published ref; verification can
+therefore report rebuilt bodies with zero written bytes. Removed empty trees are
+not counted as result directories. These counters add no paths/content and do
+not replace Git's separate input/stdout counters or the trace's byte/frame limits.
 
 The ignored Windows read-only diagnostic additionally requires an exact Prepared export and its SHA-256, confines its roots to that private fixture and verifies physical fingerprints before/after. It never approves, applies, opens the Store or reuses a historical keeper. A later successful inspection does not explain an earlier failure or renew its evidence.
 

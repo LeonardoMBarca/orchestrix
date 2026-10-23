@@ -8,7 +8,7 @@ use orchestrix_core::{
     git_records::content_hash,
     integration::{IntegrationCheckpoint, IntegrationService},
     integration_records::*,
-    persistence::Store,
+    persistence::{DaemonCursor, Store},
     policy::{Fallback, PolicyDocument, TaskClassification, TaskKind},
     recovery_guardian::{GuardianBinding, read_proof},
     review::ReviewPipeline,
@@ -18,14 +18,58 @@ use orchestrix_core::{
     worker_records::WorkerStatus,
 };
 use serde_json::{Value, json};
+use sha2::{Digest, Sha256};
 use std::{
+    collections::BTreeMap,
     fs,
-    io::Write,
+    io::{Read, Write},
     os::windows::process::CommandExt,
     path::{Path, PathBuf},
     process::{Child, Command, Stdio},
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
+
+// Test-only byte inventory of a confirmed own object store. Never authority for
+// the product, and never a scan of the developer's repository or credentials.
+fn own_object_bytes(root: &Path) -> BTreeMap<PathBuf, (u64, String)> {
+    let directory = root.join(".git/objects");
+    let mut pending = vec![directory];
+    let mut inventory = BTreeMap::new();
+    let mut total = 0u64;
+    let mut entries = 0usize;
+    while let Some(path) = pending.pop() {
+        let metadata = fs::symlink_metadata(&path).unwrap();
+        assert!(!metadata.file_type().is_symlink());
+        entries += 1;
+        assert!(entries <= 16_384);
+        if metadata.is_dir() {
+            pending.extend(
+                fs::read_dir(path)
+                    .unwrap()
+                    .map(|entry| entry.unwrap().path()),
+            );
+        } else {
+            assert!(metadata.is_file());
+            let mut file = fs::File::open(&path).unwrap();
+            let mut hash = Sha256::new();
+            let mut bytes = 0u64;
+            let mut buffer = [0u8; 65_536];
+            loop {
+                let count = file.read(&mut buffer).unwrap();
+                if count == 0 {
+                    break;
+                }
+                bytes += count as u64;
+                total += count as u64;
+                assert!(total <= 160 * 1_048_576);
+                hash.update(&buffer[..count]);
+            }
+            assert_eq!(bytes, metadata.len());
+            inventory.insert(path, (bytes, format!("{:x}", hash.finalize())));
+        }
+    }
+    inventory
+}
 
 fn git(root: &Path, args: &[&str]) -> Vec<u8> {
     let mut command = Command::new("git");
@@ -194,6 +238,7 @@ fn execute(document: bool, correction: bool, fault: Option<&str>) {
 enum PreparationMeasurement {
     Direct,
     Daemon,
+    DaemonDesktop,
 }
 
 struct MeasurementDaemon {
@@ -297,7 +342,11 @@ impl Drop for MeasurementDaemon {
     }
 }
 
-fn measure_daemon_preparation(f: &Fixture, request: &IntegrationRequest) -> IntegrationRecord {
+fn measure_daemon_preparation(
+    f: &Fixture,
+    request: &IntegrationRequest,
+    desktop_poll: bool,
+) -> IntegrationRecord {
     let startup = Instant::now();
     let mut daemon = MeasurementDaemon::start(f);
     loop {
@@ -326,7 +375,7 @@ fn measure_daemon_preparation(f: &Fixture, request: &IntegrationRequest) -> Inte
             "resume",
         )
         .unwrap();
-    let bootstrap = daemon
+    let mut bootstrap = daemon
         .request(
             Operation::Desktop {
                 request: Box::new(DesktopRequest::Bootstrap),
@@ -334,6 +383,36 @@ fn measure_daemon_preparation(f: &Fixture, request: &IntegrationRequest) -> Inte
             "bootstrap-revision",
         )
         .unwrap();
+    // Normal Desktop messages establish a conversation, never worker authority.
+    // This measured profile uses the same event/snapshot/bootstrap/message-page
+    // reads as App.tsx, rather than attributing a Snapshot-only probe to the UI.
+    let conversation_id = "measurement-desktop-conversation";
+    if desktop_poll {
+        daemon
+            .request(
+                Operation::Desktop {
+                    request: Box::new(DesktopRequest::SendMessage {
+                        command_id: "measurement-desktop-message".into(),
+                        expected_revision: bootstrap["revision"].as_u64().unwrap(),
+                        conversation_id: conversation_id.into(),
+                        project_id: Some("opaque-project".into()),
+                        content: "Inspect the complete-snapshot result before integration.".into(),
+                    }),
+                },
+                "desktop-send-message",
+            )
+            .unwrap();
+        bootstrap = daemon
+            .request(
+                Operation::Desktop {
+                    request: Box::new(DesktopRequest::Bootstrap),
+                },
+                "desktop-bootstrap",
+            )
+            .unwrap();
+    }
+    let mut cursor: DaemonCursor =
+        serde_json::from_value(bootstrap["eventCursor"].clone()).unwrap();
     let operation = Operation::PrepareIntegration {
         command_id: "measurement-prepare".into(),
         expected_revision: bootstrap["revision"].as_u64().unwrap(),
@@ -356,6 +435,65 @@ fn measure_daemon_preparation(f: &Fixture, request: &IntegrationRequest) -> Inte
             "own daemon exited during preparation"
         );
         poll_count += 1;
+        if desktop_poll {
+            let events = daemon
+                .request(
+                    Operation::Events {
+                        cursor: cursor.clone(),
+                        limit: 128,
+                    },
+                    "desktop-poll-events",
+                )
+                .unwrap();
+            cursor = serde_json::from_value(events["cursor"].clone()).unwrap();
+            if events["resyncRequired"] == true
+                || events["events"].as_array().is_some_and(|e| !e.is_empty())
+            {
+                daemon
+                    .request(
+                        Operation::Desktop {
+                            request: Box::new(DesktopRequest::Bootstrap),
+                        },
+                        "desktop-event-bootstrap",
+                    )
+                    .unwrap();
+                daemon
+                    .request(
+                        Operation::Desktop {
+                            request: Box::new(DesktopRequest::Conversation {
+                                conversation_id: conversation_id.into(),
+                                after_ordinal: 0,
+                                limit: 16,
+                            }),
+                        },
+                        "desktop-message-page",
+                    )
+                    .unwrap();
+            }
+            if events["events"]
+                .as_array()
+                .is_some_and(|e| e.iter().any(|event| event["kind"] == "command-finished"))
+            {
+                daemon
+                    .request(
+                        Operation::Desktop {
+                            request: Box::new(DesktopRequest::InspectWorker {
+                                worker_id: request.worker_id.clone(),
+                            }),
+                        },
+                        "desktop-completion-worker",
+                    )
+                    .unwrap();
+                daemon
+                    .request(
+                        Operation::InspectIntegration {
+                            integration_id: request.id.clone(),
+                        },
+                        "desktop-completion-integration",
+                    )
+                    .unwrap();
+            }
+        }
         let _snapshot = daemon.request(Operation::Snapshot, "poll-snapshot");
         if let Ok(receipt) = daemon.request(
             Operation::CommandReceipt {
@@ -390,7 +528,7 @@ fn measure_daemon_preparation(f: &Fixture, request: &IntegrationRequest) -> Inte
             "commandId":"measurement-prepare","fingerprint":fingerprint,
             "acknowledgement":acknowledgement,"outcome":outcome,
             "pollCount":poll_count,"pollIntervalMs":1200,
-            "clientProfile":"Snapshot plus CommandReceipt; not the complete Desktop event/bootstrap profile",
+            "clientProfile":if desktop_poll {"Desktop Events/Snapshot plus event-triggered Bootstrap/Conversation and completion-triggered InspectWorker; exact original CommandReceipt; no renderer or native bridge"} else {"Snapshot plus CommandReceipt; not the complete Desktop event/bootstrap profile"},
             "inspection":inspection,"providerCalled":false})).unwrap()).unwrap();
     daemon.stop();
     let reopened = Store::open(&f.db).unwrap();
@@ -601,9 +739,16 @@ fn execute_fixture(
         ];
         request.checks[0].authorization_ref = "explicit-transient-check-test".into();
     }
-    let prepared = if matches!(measurement, Some(PreparationMeasurement::Daemon)) {
+    let prepared = if matches!(
+        measurement,
+        Some(PreparationMeasurement::Daemon | PreparationMeasurement::DaemonDesktop)
+    ) {
         drop(store);
-        let record = measure_daemon_preparation(&f, &request);
+        let record = measure_daemon_preparation(
+            &f,
+            &request,
+            matches!(measurement, Some(PreparationMeasurement::DaemonDesktop)),
+        );
         // The daemon has stopped and its ownership lease has closed before the
         // diagnostic reopens SQLite. There is no concurrent second Store owner.
         store = Store::open(&f.db).unwrap();
@@ -758,19 +903,73 @@ fn execute_fixture(
         prepared.intent.worktree.preservation,
         final_artifact.preservation
     );
-    service
-        .approve(
-            &mut store,
-            &ApprovalRequest {
-                schema_version: 1,
-                id: "opaque-approval".into(),
-                integration_id: request.id.clone(),
-                candidate_revision: candidate.clone(),
-                authorization_ref: "human-approved-exact-candidate".into(),
-                valid_for_ms: 120_000,
-            },
-        )
+    let approval = ApprovalRequest {
+        schema_version: 1,
+        id: "opaque-approval".into(),
+        integration_id: request.id.clone(),
+        candidate_revision: candidate.clone(),
+        authorization_ref: "human-approved-exact-candidate".into(),
+        valid_for_ms: 120_000,
+    };
+    if fault == Some("missing-candidate-blob") {
+        let result = prepared.detail("resultRevision").unwrap().as_str().unwrap();
+        let oid = String::from_utf8(git(
+            &f.repo,
+            &["rev-parse", "--verify", &format!("{result}:fixture.txt")],
+        ))
         .unwrap();
+        let oid = oid.trim();
+        assert_eq!(oid.len(), 40);
+        assert!(oid.bytes().all(|byte| byte.is_ascii_hexdigit()));
+        let objects = fs::canonicalize(f.repo.join(".git/objects")).unwrap();
+        let object = fs::canonicalize(objects.join(&oid[..2]).join(&oid[2..])).unwrap();
+        assert!(object.starts_with(&objects) && object.is_file());
+        // Git may mark its loose objects read-only on Windows. Only this exact
+        // owned fixture object is made writable for the missing-object fault.
+        #[expect(
+            clippy::permissions_set_readonly_false,
+            reason = "Windows-only owned loose object; never a developer repository"
+        )]
+        {
+            let mut permissions = fs::metadata(&object).unwrap().permissions();
+            permissions.set_readonly(false);
+            fs::set_permissions(&object, permissions).unwrap();
+        }
+        fs::remove_file(&object).unwrap();
+        let before = own_object_bytes(&f.repo);
+        let ledger = fs::read(f.home.join("dispatch-count")).unwrap();
+        let revision = store.load().unwrap().revision();
+        assert_eq!(
+            service.approve(&mut store, &approval).unwrap_err().0,
+            "git-inspection-required"
+        );
+        assert_eq!(
+            own_object_bytes(&f.repo),
+            before,
+            "candidate verification wrote/repaired Git objects"
+        );
+        assert!(!object.exists());
+        assert_eq!(store.load().unwrap().revision(), revision);
+        assert_eq!(
+            serde_json::to_value(&store.load().unwrap().integrations()[&request.id]).unwrap(),
+            serde_json::to_value(&prepared).unwrap()
+        );
+        assert_eq!(fs::read(f.home.join("dispatch-count")).unwrap(), ledger);
+        assert_eq!(
+            git(&f.repo, &["ls-tree", "-r", "-l", "-z", "HEAD"]),
+            source_before
+        );
+        assert_eq!(fs::read(f.repo.join("fixture.txt")).unwrap(), b"before\n");
+        println!("OPAQUE_MISSING_CANDIDATE_BLOCKED={}", f.root.display());
+        return;
+    }
+    let objects_before_approval = own_object_bytes(&f.repo);
+    service.approve(&mut store, &approval).unwrap();
+    assert_eq!(
+        own_object_bytes(&f.repo),
+        objects_before_approval,
+        "approval verification wrote Git objects"
+    );
     let apply = ApplicationRequest {
         schema_version: 1,
         id: "opaque-application".into(),
@@ -1031,8 +1230,102 @@ fn complete_snapshot_daemon_preparation_measurement() {
 }
 
 #[test]
+#[ignore = "explicit full snapshot, normal daemon API and Desktop polling; synthetic only"]
+fn complete_snapshot_daemon_desktop_preparation_measurement() {
+    execute_fixture(
+        Fixture::new(true),
+        false,
+        None,
+        Some(PreparationMeasurement::DaemonDesktop),
+    );
+}
+
+#[test]
+fn daemon_desktop_measurement_polling_uses_real_pages_without_runtime_calls() {
+    let f = Fixture::new(false);
+    let mut daemon = MeasurementDaemon::start(&f);
+    let start = Instant::now();
+    let bootstrap = loop {
+        if let Ok(value) = daemon.request(
+            Operation::Desktop {
+                request: Box::new(DesktopRequest::Bootstrap),
+            },
+            "poll-smoke-bootstrap",
+        ) {
+            break value;
+        }
+        assert!(start.elapsed() < Duration::from_secs(300));
+        assert!(daemon.child.try_wait().unwrap().is_none());
+        std::thread::sleep(Duration::from_millis(250));
+    };
+    let cursor: DaemonCursor = serde_json::from_value(bootstrap["eventCursor"].clone()).unwrap();
+    daemon
+        .request(
+            Operation::Desktop {
+                request: Box::new(DesktopRequest::SendMessage {
+                    command_id: "poll-smoke-message".into(),
+                    expected_revision: bootstrap["revision"].as_u64().unwrap(),
+                    conversation_id: "poll-smoke-conversation".into(),
+                    project_id: None,
+                    content: "A conversation message is not runtime authorization.".into(),
+                }),
+            },
+            "poll-smoke-send",
+        )
+        .unwrap();
+    let events = daemon
+        .request(
+            Operation::Events { cursor, limit: 128 },
+            "poll-smoke-events",
+        )
+        .unwrap();
+    assert!(
+        events["events"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|event| event["kind"] == "domain-change")
+    );
+    let snapshot = daemon
+        .request(Operation::Snapshot, "poll-smoke-snapshot")
+        .unwrap();
+    assert_eq!(snapshot["workerCount"], 0);
+    assert!(snapshot["activeWorkerId"].is_null());
+    let current = daemon
+        .request(
+            Operation::Desktop {
+                request: Box::new(DesktopRequest::Bootstrap),
+            },
+            "poll-smoke-event-bootstrap",
+        )
+        .unwrap();
+    assert_eq!(current["conversations"].as_array().unwrap().len(), 1);
+    let page = daemon
+        .request(
+            Operation::Desktop {
+                request: Box::new(DesktopRequest::Conversation {
+                    conversation_id: "poll-smoke-conversation".into(),
+                    after_ordinal: 0,
+                    limit: 16,
+                }),
+            },
+            "poll-smoke-conversation",
+        )
+        .unwrap();
+    assert_eq!(page["messages"].as_array().unwrap().len(), 1);
+    assert!(page["work"].as_array().unwrap().is_empty());
+    assert_eq!(fs::read_dir(&f.home).unwrap().count(), 0);
+    daemon.stop();
+}
+
+#[test]
 fn protected_change_after_approval_blocks_application_without_restoration() {
     execute(false, false, Some("protected-after-approval"))
+}
+
+#[test]
+fn missing_candidate_blob_blocks_approval_without_repair_or_git_writes() {
+    execute(false, false, Some("missing-candidate-blob"));
 }
 #[test]
 fn protected_target_change_after_approval_invalidates_before_application_without_restoration() {

@@ -222,12 +222,10 @@ impl IntegrationGit {
         let root = Path::new(&intent.worktree.path);
         if intent.worktree.preservation.is_some() {
             let tree = self.preserved_tree(intent, snapshot, true)?;
-            let result = object(
-                &self.executor,
-                root,
+            let result = super::object_identity::native_oid(
                 "commit",
+                tree.len(),
                 &commit_body(intent, &tree),
-                false,
             )?;
             return Ok((tree, result));
         }
@@ -296,45 +294,79 @@ impl IntegrationGit {
         }
         // Verify the immutable base once; unchanged blobs use their native OID
         // directly and never become UTF-8 content in the integration pipeline.
-        super::preservation::verify_base(
+        if write {
+            self.require_scope()?;
+        }
+        let base = super::preservation::verify_base_projection(
             &self.executor,
             Path::new(&intent.worktree.path),
             manifest,
         )?;
-        let mut files = manifest
-            .entries
-            .iter()
-            .map(|e| (e.path.clone(), e.git_oid.clone()))
-            .collect::<BTreeMap<_, _>>();
+        let root = Path::new(&intent.worktree.path);
+        let mut changes = BTreeMap::new();
+        let mut blobs = Vec::new();
         for file in &snapshot.files {
             if manifest.editable_paths.binary_search(&file.path).is_err() {
                 return Err(GitError::Scope);
             }
             match &file.worktree {
                 Some(content) => {
-                    files.insert(
-                        file.path.clone(),
-                        object(
-                            &self.executor,
-                            Path::new(&intent.worktree.path),
-                            "blob",
-                            content.content.as_bytes(),
-                            write,
-                        )?,
-                    );
+                    let body = content.content.as_bytes();
+                    let oid =
+                        super::object_identity::native_oid("blob", manifest.base_oid.len(), body)?;
+                    if manifest
+                        .entries
+                        .iter()
+                        .find(|e| e.path == file.path)
+                        .is_none_or(|e| e.git_oid != oid)
+                    {
+                        blobs.push((oid.clone(), body));
+                    }
+                    changes.insert(file.path.clone(), Some(oid));
                 }
                 None => {
-                    files.remove(&file.path);
+                    changes.insert(file.path.clone(), None);
                 }
             }
         }
-        write_oid_tree(
-            &self.executor,
-            Path::new(&intent.worktree.path),
-            &files,
-            0,
-            write,
-        )
+        let result = base.apply(&changes)?;
+        let changed = result.changed(&base);
+        let mut written = 0u64;
+        if write {
+            for (oid, body) in &blobs {
+                if object(&self.executor, root, "blob", body, true)? != *oid {
+                    return Err(GitError::Ownership);
+                }
+            }
+            // Children precede parents. Untouched objects were physically
+            // verified above and are reused, never rewritten per directory.
+            for (_, tree) in &changed {
+                if object(&self.executor, root, "tree", &tree.bytes, true)? != tree.oid {
+                    return Err(GitError::Ownership);
+                }
+                written += tree.bytes.len() as u64;
+            }
+        } else {
+            let objects = blobs
+                .iter()
+                .map(|(oid, bytes)| ("blob", oid.as_str(), *bytes))
+                .chain(
+                    changed
+                        .iter()
+                        .map(|(_, tree)| ("tree", tree.oid.as_str(), tree.bytes.as_slice())),
+                )
+                .collect::<Vec<_>>();
+            // Verification is effect-free. A calculated final OID cannot
+            // substitute for missing/corrupted candidate tree/blob objects.
+            super::object_identity::verify_objects(&self.executor, root, &objects)?;
+        }
+        crate::integration_diagnostics::git_tree_plan(
+            (result.trees.len() - changed.len()) as u64,
+            changed.len() as u64,
+            base.trees.values().map(|t| t.bytes.len() as u64).sum(),
+            written,
+        );
+        Ok(result.root().to_owned())
     }
     pub fn commit(&self, intent: &IntegrationIntent, tree: &str, result: &str) -> GitResult<()> {
         self.require_scope()?;
@@ -605,6 +637,7 @@ fn write_tree(
     object(executor, root, "tree", &body, write)
 }
 
+#[cfg(test)]
 fn write_oid_tree(
     executor: &GitExecutor,
     root: &Path,
@@ -679,6 +712,112 @@ mod diagnostics {
         thread,
         time::{Duration, Instant, SystemTime, UNIX_EPOCH},
     };
+
+    #[test]
+    #[ignore = "Explicit built keeper; serial owned-Job comparison on a synthetic many-directory base"]
+    fn measured_sparse_tree_planning_under_owned_job() {
+        let helper = PathBuf::from(
+            env::var_os("ORCHESTRIX_TREE_MEASUREMENT_HELPER").expect("explicit built own helper"),
+        );
+        assert!(helper.is_absolute() && helper.is_file());
+        let fixture = super::super::executor::MetadataFixture::new();
+        let root = fixture.repository("sparse-tree-measurement");
+        let original = object(&fixture.executor, &root, "blob", b"original\n", true).unwrap();
+        let edited = object(&fixture.executor, &root, "blob", b"edited\n", true).unwrap();
+        let mut files = (0..32)
+            .map(|i| (format!("dir{i:02}/nested/file.txt"), original.clone()))
+            .collect::<BTreeMap<_, _>>();
+        let tree = write_oid_tree(&fixture.executor, &root, &files, 0, true).unwrap();
+        let body = format!(
+            "tree {tree}\nauthor Fixture <fixture@orchestrix.invalid> 1 +0000\ncommitter Fixture <fixture@orchestrix.invalid> 1 +0000\n\nOwned sparse tree measurement\n"
+        );
+        let base_oid = object(&fixture.executor, &root, "commit", body.as_bytes(), true).unwrap();
+        fixture
+            .executor
+            .run(&root, &args(&["update-ref", "refs/heads/main", &base_oid]))
+            .unwrap()
+            .checked()
+            .unwrap();
+        fixture
+            .executor
+            .run(&root, &args(&["read-tree", &base_oid]))
+            .unwrap()
+            .checked()
+            .unwrap();
+        let manifest = super::super::preservation::plan(
+            &fixture.executor,
+            &root,
+            &base_oid,
+            &["dir00/nested/file.txt".into()],
+        )
+        .unwrap();
+        let changes = BTreeMap::from([("dir00/nested/file.txt".into(), Some(edited.clone()))]);
+        files.insert("dir00/nested/file.txt".into(), edited);
+        let binding = GuardianBinding::prepare(
+            &fixture.root.join("measurement.sqlite3"),
+            "sparse-tree-planning",
+            &helper,
+        )
+        .unwrap();
+        let mut guardian = Guardian::start(binding.clone(), &helper).unwrap();
+        let git = IntegrationGit::new(guardian.job().unwrap()).unwrap();
+        super::super::executor::test_timing::begin();
+        let started = Instant::now();
+        super::super::preservation::verify_base(&git.executor, &root, &manifest).unwrap();
+        let old = write_oid_tree(&git.executor, &root, &files, 0, true).unwrap();
+        let old_micros = started.elapsed().as_micros();
+        let old_samples = super::super::executor::test_timing::finish();
+        super::super::executor::test_timing::begin();
+        let started = Instant::now();
+        let base =
+            super::super::preservation::verify_base_projection(&git.executor, &root, &manifest)
+                .unwrap();
+        let projected = base.apply(&changes).unwrap();
+        let changed = projected.changed(&base);
+        for (_, tree) in &changed {
+            assert_eq!(
+                object(&git.executor, &root, "tree", &tree.bytes, true).unwrap(),
+                tree.oid
+            );
+        }
+        let new_micros = started.elapsed().as_micros();
+        let new_samples = super::super::executor::test_timing::finish();
+        drop(git);
+        drop(guardian);
+        let receipt = read_proof(&binding).unwrap();
+        assert_eq!(old, projected.root());
+        assert_eq!(changed.len(), 3);
+        assert_eq!(base.trees.len(), 65);
+        assert_eq!(receipt["body"]["localJobEmpty"], true);
+        let old_sample_values = serde_json::to_value(&old_samples).unwrap();
+        let new_sample_values = serde_json::to_value(&new_samples).unwrap();
+        let command_count = |values: &serde_json::Value| {
+            values
+                .as_array()
+                .unwrap()
+                .iter()
+                .filter(|sample| {
+                    sample["builtin"]
+                        .as_str()
+                        .is_some_and(|name| !name.starts_with("phase-"))
+                })
+                .count()
+        };
+        println!(
+            "OPAQUE_TREE_PLANNING_TIMING={}",
+            json!({
+                "scenario":"explicitly-synthetic-many-directories","baseFiles":32,"baseTrees":65,
+                "reusedTrees":projected.trees.len()-changed.len(),"rebuiltTrees":changed.len(),
+                "oldTreeBodyBytesWritten":projected.trees.values().map(|t|t.bytes.len() as u64).sum::<u64>(),
+                "newTreeBodyBytesWritten":changed.iter().map(|(_,t)|t.bytes.len() as u64).sum::<u64>(),
+                "baseTreeBodyBytesVerified":base.trees.values().map(|t|t.bytes.len() as u64).sum::<u64>(),
+                "oldGitCommands":command_count(&old_sample_values),"newGitCommands":command_count(&new_sample_values),
+                "oldMicros":old_micros,"newMicros":new_micros,"oldSamples":old_samples,"newSamples":new_samples,
+                "sameTree":old==projected.root(),"localJobEmpty":receipt["body"]["localJobEmpty"],"closureTrigger":receipt["body"]["closureTrigger"],
+                "note":"Both paths retain the new full base/object verification. This synthetic owned-Job comparison is not the Desktop/full-snapshot latency proof."
+            })
+        );
+    }
 
     #[derive(serde::Serialize, PartialEq, Eq)]
     struct Stamp {

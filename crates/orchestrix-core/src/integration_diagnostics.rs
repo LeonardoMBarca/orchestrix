@@ -120,6 +120,10 @@ struct Counters {
     git_close_micros: u64,
     git_input_bytes: u64,
     git_stdout_bytes: u64,
+    tree_objects_reused: u64,
+    tree_objects_rebuilt: u64,
+    tree_object_bytes_verified: u64,
+    tree_object_bytes_written: u64,
     capture_file_bytes: u64,
     store_loads: u64,
     store_load_micros: u64,
@@ -149,6 +153,18 @@ impl Counters {
             git_stdout_bytes: self
                 .git_stdout_bytes
                 .saturating_sub(before.git_stdout_bytes),
+            tree_objects_reused: self
+                .tree_objects_reused
+                .saturating_sub(before.tree_objects_reused),
+            tree_objects_rebuilt: self
+                .tree_objects_rebuilt
+                .saturating_sub(before.tree_objects_rebuilt),
+            tree_object_bytes_verified: self
+                .tree_object_bytes_verified
+                .saturating_sub(before.tree_object_bytes_verified),
+            tree_object_bytes_written: self
+                .tree_object_bytes_written
+                .saturating_sub(before.tree_object_bytes_written),
             capture_file_bytes: self
                 .capture_file_bytes
                 .saturating_sub(before.capture_file_bytes),
@@ -461,6 +477,16 @@ pub(crate) fn capture_bytes(bytes: usize) {
         c.capture_file_bytes = c.capture_file_bytes.saturating_add(bytes as u64);
     });
 }
+/// Completed local tree plan only; reuse/rebuild counts are not publication or
+/// authority. Byte counts distinguish verified existing bodies from new writes.
+pub(crate) fn git_tree_plan(reused: u64, rebuilt: u64, verified: u64, written: u64) {
+    update(|c| {
+        c.tree_objects_reused = c.tree_objects_reused.saturating_add(reused);
+        c.tree_objects_rebuilt = c.tree_objects_rebuilt.saturating_add(rebuilt);
+        c.tree_object_bytes_verified = c.tree_object_bytes_verified.saturating_add(verified);
+        c.tree_object_bytes_written = c.tree_object_bytes_written.saturating_add(written);
+    });
+}
 fn update(action: impl FnOnce(&mut Counters)) {
     let _ = ACTIVE.try_with(|slot| {
         if let Some(state) = slot.borrow().as_ref() {
@@ -498,6 +524,7 @@ mod tests {
             trace.measure(Phase::Check, Some(0), || {
                 let _timer = CounterTimer::start(CounterKind::StoreLoad);
                 capture_bytes(123);
+                git_tree_plan(80, 2, 4096, 192);
                 Ok(())
             })
         });
@@ -517,6 +544,12 @@ mod tests {
         assert_eq!(events.len(), 4);
         assert_eq!(events[2]["counters"]["captureFileBytes"], 123);
         assert_eq!(events[3]["counters"]["captureFileBytes"], 123);
+        for event in &events[2..=3] {
+            assert_eq!(event["counters"]["treeObjectsReused"], 80);
+            assert_eq!(event["counters"]["treeObjectsRebuilt"], 2);
+            assert_eq!(event["counters"]["treeObjectBytesVerified"], 4096);
+            assert_eq!(event["counters"]["treeObjectBytesWritten"], 192);
+        }
         assert_eq!(events[2]["parent"], events[0]["span"]);
         assert_eq!(events[3]["outcome"], "ok");
         assert!(
