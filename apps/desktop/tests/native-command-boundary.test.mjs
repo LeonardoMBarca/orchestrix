@@ -22,5 +22,8 @@ test('native handlers have generated permissions and the main window grants only
  const granted=capability.permissions.filter(value=>value.startsWith('allow-')).map(value=>value.slice(6).replaceAll('-','_')).sort();
  assert.deepEqual(granted,handlers,'the main window must grant exactly the restricted native handlers');
  assert.deepEqual(capability.windows,['main']);
- assert.deepEqual(capability.permissions.filter(value=>!value.startsWith('allow-')).sort(),['core:event:allow-listen','core:event:allow-unlisten']);
+ assert.deepEqual(capability.permissions.filter(value=>!value.startsWith('allow-')).sort(),['core:event:allow-listen','core:event:allow-unlisten','dialog:allow-message']);
+ assert.ok(!capability.permissions.includes('dialog:default'),'confirmation does not grant the full dialog bundle');
+ assert.ok(!capability.permissions.includes('dialog:allow-open'),'confirmation does not grant unrestricted file picking');
+ assert.ok(!capability.permissions.includes('dialog:allow-save'),'confirmation does not grant unrestricted saving');
 });
