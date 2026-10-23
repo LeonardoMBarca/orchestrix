@@ -324,10 +324,22 @@ impl OwnedProcess {
         if timeout > Duration::from_secs(1) {
             return Err(ProcessError::Arguments);
         }
+        let started = Instant::now();
         self.health()?;
         match self.events.recv_timeout(timeout) {
             Ok(value) => Ok(Some(value)),
-            Err(mpsc::RecvTimeoutError::Timeout | mpsc::RecvTimeoutError::Disconnected) => Ok(None),
+            Err(mpsc::RecvTimeoutError::Timeout) => Ok(None),
+            Err(mpsc::RecvTimeoutError::Disconnected) => {
+                // EOF does not imply the owned process tree has exited. A
+                // disconnected receiver returns immediately, so honor this
+                // call's remaining wait instead of spinning until OS closure.
+                let remaining = timeout.saturating_sub(started.elapsed());
+                if !remaining.is_zero() {
+                    thread::sleep(remaining);
+                }
+                self.health()?;
+                Ok(None)
+            }
         }
     }
     pub fn health(&self) -> Result<()> {
@@ -487,6 +499,7 @@ fn deliver(
 #[cfg(all(test, windows))]
 mod bulk_output_tests {
     use super::*;
+    use std::ffi::c_void;
     use std::process::{Command, Stdio};
 
     const CHILD: &str = "ORCHESTRIX_PROCESS_OUTPUT_CHILD";
@@ -495,6 +508,87 @@ mod bulk_output_tests {
     const INPUT_PAYLOAD: &[u8] = b"ORCHESTRIX_BULK_INPUT\n";
     const MIB: usize = 1_048_576;
     const INPUT_BYTES: usize = 65_536;
+
+    #[derive(Default)]
+    #[repr(C)]
+    struct ThreadFileTime {
+        low: u32,
+        high: u32,
+    }
+
+    #[link(name = "kernel32")]
+    unsafe extern "system" {
+        fn GetCurrentThread() -> *mut c_void;
+        fn GetThreadTimes(
+            thread: *mut c_void,
+            creation: *mut ThreadFileTime,
+            exit: *mut ThreadFileTime,
+            kernel: *mut ThreadFileTime,
+            user: *mut ThreadFileTime,
+        ) -> i32;
+        fn GetStdHandle(handle: u32) -> *mut c_void;
+        fn CloseHandle(handle: *mut c_void) -> i32;
+    }
+
+    fn thread_cpu_100ns() -> u64 {
+        let mut creation = ThreadFileTime::default();
+        let mut exit = ThreadFileTime::default();
+        let mut kernel = ThreadFileTime::default();
+        let mut user = ThreadFileTime::default();
+        // SAFETY: the pseudo-handle belongs to this thread and every output
+        // pointer names a live, correctly sized FILETIME value.
+        unsafe {
+            assert_ne!(
+                GetThreadTimes(
+                    GetCurrentThread(),
+                    &mut creation,
+                    &mut exit,
+                    &mut kernel,
+                    &mut user,
+                ),
+                0
+            );
+        }
+        let value = |time: ThreadFileTime| (u64::from(time.high) << 32) | u64::from(time.low);
+        value(kernel) + value(user)
+    }
+
+    fn close_child_output_and_wait_for_input() -> ! {
+        std::io::stdout().flush().unwrap();
+        std::io::stderr().flush().unwrap();
+        // SAFETY: this private fixture owns its two distinct inherited output
+        // handles. It performs no later writes and exits directly after the
+        // parent releases stdin, avoiding test-harness writes to closed handles.
+        unsafe {
+            let output = GetStdHandle(-11_i32 as u32);
+            let error = GetStdHandle(-12_i32 as u32);
+            assert!(!output.is_null() && output != -1_isize as *mut c_void);
+            assert!(!error.is_null() && error != -1_isize as *mut c_void);
+            assert_ne!(output, error);
+            assert_ne!(CloseHandle(output), 0);
+            assert_ne!(CloseHandle(error), 0);
+        }
+        let mut release = [0u8];
+        std::io::stdin().read_exact(&mut release).unwrap();
+        assert_eq!(release, [1]);
+        std::process::exit(0);
+    }
+
+    fn wait_for_disconnected_output(process: &OwnedProcess) -> Vec<ProcessEvent> {
+        let mut startup = Vec::new();
+        wait_for(|| {
+            loop {
+                match process.events.try_recv() {
+                    Ok(event) => startup.push(event),
+                    Err(mpsc::TryRecvError::Empty) => return false,
+                    Err(mpsc::TryRecvError::Disconnected) => break,
+                }
+            }
+            let streams = process.streams();
+            streams.stdout_closed && streams.stderr_closed
+        });
+        startup
+    }
 
     fn duplex_input() -> Vec<u8> {
         (0..INPUT_BYTES).map(|index| (index % 251) as u8).collect()
@@ -710,6 +804,9 @@ mod bulk_output_tests {
     #[ignore = "private owned process fixture; no shell, network or provider"]
     fn owned_output_child() {
         let scenario = std::env::var(CHILD).expect("owned child scenario");
+        if scenario == "closed-output-live" {
+            close_child_output_and_wait_for_input();
+        }
         if scenario == "linger" {
             loop {
                 thread::sleep(Duration::from_millis(50));
@@ -922,6 +1019,143 @@ mod bulk_output_tests {
                 Err(ProcessError::Io | ProcessError::Closed | ProcessError::Deadline)
             ));
         }
+    }
+
+    #[test]
+    fn disconnected_output_waits_without_claiming_owned_tree_exit() {
+        let scope = scope();
+        let mut process = OwnedProcess::spawn_identified_backpressured(
+            spec("closed-output-live", 0, Duration::from_secs(3), MIB as u64),
+            &scope,
+        )
+        .unwrap();
+        let startup = wait_for_disconnected_output(&process);
+        assert_eq!(process.health(), Ok(()));
+        let before = process.tree().unwrap();
+        assert!(
+            before.owned && before.active_processes > 0,
+            "fixture must still be alive: {before:?}; startup: {startup:?}"
+        );
+        assert_eq!(before.root_exit_code, None, "EOF is not process-tree exit");
+
+        let zero_started = Instant::now();
+        assert!(process.receive(Duration::ZERO).unwrap().is_none());
+        let zero_micros = zero_started.elapsed().as_micros();
+        let timeout = Duration::from_millis(5);
+        let started = Instant::now();
+        let cpu_before = thread_cpu_100ns();
+        let mut empty = 0u64;
+        let mut disconnected = 0u64;
+        let mut early = 0u64;
+        let mut minimum_wait = Duration::MAX;
+        let mut maximum_wait = Duration::ZERO;
+        while started.elapsed() < Duration::from_millis(250) {
+            let receive_started = Instant::now();
+            assert!(process.receive(timeout).unwrap().is_none());
+            let elapsed = receive_started.elapsed();
+            empty += 1;
+            if elapsed < timeout {
+                early += 1;
+            }
+            minimum_wait = minimum_wait.min(elapsed);
+            maximum_wait = maximum_wait.max(elapsed);
+            assert!(matches!(
+                process.events.try_recv(),
+                Err(mpsc::TryRecvError::Disconnected)
+            ));
+            disconnected += 1;
+            let tree = process.tree().unwrap();
+            assert!(tree.owned && tree.active_processes > 0);
+            assert_eq!(tree.root_exit_code, None);
+        }
+        let cpu_100ns = thread_cpu_100ns() - cpu_before;
+        let elapsed_micros = started.elapsed().as_micros();
+        let alive = process.tree().unwrap();
+        process.send(&[1], Duration::from_secs(1)).unwrap();
+        process.close_input();
+        wait_for(|| {
+            let tree = process.tree().unwrap();
+            tree.root_exit_code == Some(0) && tree.active_processes == 0
+        });
+        let closed = process.terminate(Duration::from_secs(3)).unwrap();
+        assert!(closed.owned && closed.active_processes == 0);
+        assert!(closed.root_exit_code.is_some());
+        assert_closed(&process.state);
+        drop(process);
+        assert_eq!(scope.active().unwrap(), 0);
+        println!(
+            "ORCHESTRIX_DISCONNECTED_RECEIVE={{\"requestedMicros\":{},\"elapsedMicros\":{elapsed_micros},\"threadCpu100ns\":{cpu_100ns},\"emptyReturns\":{empty},\"disconnectedObservations\":{disconnected},\"earlyReturns\":{early},\"minimumWaitMicros\":{},\"maximumWaitMicros\":{},\"zeroWaitMicros\":{zero_micros},\"rootStillAlive\":{},\"activeBeforeClose\":{},\"ownedTreeClosed\":true}}",
+            timeout.as_micros(),
+            minimum_wait.as_micros(),
+            maximum_wait.as_micros(),
+            alive.root_exit_code.is_none(),
+            alive.active_processes,
+        );
+        assert_eq!(
+            early, 0,
+            "a disconnected channel must honor the requested wait"
+        );
+        assert!(
+            zero_micros < 50_000,
+            "nonblocking receive must remain immediate"
+        );
+    }
+
+    #[test]
+    fn open_output_timeout_preserves_the_live_owned_tree() {
+        let scope = scope();
+        let mut process = OwnedProcess::spawn_identified_backpressured(
+            spec("linger", 0, Duration::from_secs(15), MIB as u64),
+            &scope,
+        )
+        .unwrap();
+        process.close_input();
+        let timeout = Duration::from_millis(25);
+        let started = Instant::now();
+        loop {
+            let receive_started = Instant::now();
+            if process.receive(timeout).unwrap().is_none() {
+                assert!(receive_started.elapsed() >= timeout);
+                break;
+            }
+            assert!(started.elapsed() < Duration::from_secs(3));
+        }
+        assert!(matches!(
+            process.events.try_recv(),
+            Err(mpsc::TryRecvError::Empty)
+        ));
+        let streams = process.streams();
+        assert!(!streams.stdout_closed && !streams.stderr_closed);
+        let tree = process.tree().unwrap();
+        assert!(tree.owned && tree.active_processes > 0 && tree.root_exit_code.is_none());
+        let closed = process.terminate(Duration::from_secs(3)).unwrap();
+        assert!(closed.owned && closed.active_processes == 0);
+        assert_closed(&process.state);
+    }
+
+    #[test]
+    fn disconnected_output_wait_rechecks_watchdog_health() {
+        let scope = scope();
+        let mut process = OwnedProcess::spawn_identified_backpressured(
+            spec("closed-output-live", 0, Duration::from_secs(1), MIB as u64),
+            &scope,
+        )
+        .unwrap();
+        let _startup = wait_for_disconnected_output(&process);
+        assert_eq!(process.health(), Ok(()));
+        let started = Instant::now();
+        assert!(matches!(
+            process.receive(Duration::from_secs(1)),
+            Err(ProcessError::Deadline)
+        ));
+        assert!(started.elapsed() >= Duration::from_secs(1));
+        assert!(matches!(
+            process.receive(Duration::ZERO),
+            Err(ProcessError::Deadline)
+        ));
+        let closed = process.terminate(Duration::from_secs(3)).unwrap();
+        assert!(closed.owned && closed.active_processes == 0);
+        assert_closed(&process.state);
     }
 
     #[test]
