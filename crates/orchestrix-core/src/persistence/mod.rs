@@ -182,6 +182,9 @@ impl Store {
     }
     /// One consistent SQLite read snapshot, never a resumed runtime.
     pub fn load(&self) -> StoreResult<SavedState> {
+        let _timing = crate::integration_diagnostics::CounterTimer::start(
+            crate::integration_diagnostics::CounterKind::StoreLoad,
+        );
         self.connection.execute_batch("BEGIN DEFERRED")?;
         let result = state::load(&self.connection);
         self.connection.execute_batch("ROLLBACK")?;
@@ -195,6 +198,9 @@ impl Store {
         request: &Request,
         fault: FaultPoint,
     ) -> StoreResult<Receipt> {
+        let _timing = crate::integration_diagnostics::CounterTimer::start(
+            crate::integration_diagnostics::CounterKind::StoreCommand,
+        );
         for id in [request.scope.as_str(), request.key.as_str()] {
             if crate::persistence_privacy::sanitize_text(id).map_err(StoreError::Privacy)? != id {
                 return Err(DomainError::InvalidReference.into());

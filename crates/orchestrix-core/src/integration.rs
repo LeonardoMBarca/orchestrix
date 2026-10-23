@@ -7,6 +7,7 @@ use crate::{
         integration::{ApplyFilesError, IntegrationGit},
     },
     git_records::{WorktreeIntent, content_hash},
+    integration_diagnostics::{Phase, PreparationResult, PreparationTrace},
     integration_records::*,
     persistence::{Command, Store},
     recovery_guardian::{Guardian, GuardianBinding, default_helper, read_proof},
@@ -16,10 +17,9 @@ use crate::{
 };
 use serde_json::{Value, json};
 use std::{
-    io::Write,
     path::Path,
     sync::Arc,
-    time::{Instant, SystemTime, UNIX_EPOCH},
+    time::{SystemTime, UNIX_EPOCH},
 };
 type Result<T> = std::result::Result<T, WorkerError>;
 
@@ -77,29 +77,60 @@ impl IntegrationService {
         cancel: &CancellationToken,
         mut checkpoint: impl FnMut(IntegrationCheckpoint),
     ) -> Result<IntegrationRecord> {
-        cancelled(cancel)?;
-        if input.schema_version != 1
-            || LocalRef::new(&input.id).is_err()
-            || LocalRef::new(&input.authorization_ref).is_err()
-            || input.checks.is_empty()
-            || input.checks.len() > 16
-            || !crate::worker_records::exact_safe(&json!(input), 1_048_576)
-        {
-            return Err(WorkerError("integration-request"));
-        }
+        let diagnostics = PreparationTrace::new(&input.id);
+        let result = diagnostics.measure(Phase::Request, None, || {
+            self.prepare_measured(store, input, cancel, &mut checkpoint, &diagnostics)
+        });
+        diagnostics.result(match result.as_ref().map(IntegrationRecord::status) {
+            Ok(IntegrationStatus::Prepared) => PreparationResult::Prepared,
+            Ok(IntegrationStatus::Blocked) => PreparationResult::Blocked,
+            Ok(IntegrationStatus::Uncertain) => PreparationResult::Uncertain,
+            Ok(_) => PreparationResult::Other,
+            Err(_) => PreparationResult::Error,
+        });
+        result
+    }
+    fn prepare_measured(
+        &self,
+        store: &mut Store,
+        input: &IntegrationRequest,
+        cancel: &CancellationToken,
+        checkpoint: &mut impl FnMut(IntegrationCheckpoint),
+        diagnostics: &PreparationTrace,
+    ) -> Result<IntegrationRecord> {
+        diagnostics.measure(Phase::ValidateRequest, None, || {
+            cancelled(cancel)?;
+            if input.schema_version != 1
+                || LocalRef::new(&input.id).is_err()
+                || LocalRef::new(&input.authorization_ref).is_err()
+                || input.checks.is_empty()
+                || input.checks.len() > 16
+                || !crate::worker_records::exact_safe(&json!(input), 1_048_576)
+            {
+                return Err(WorkerError("integration-request"));
+            }
+            Ok(())
+        })?;
         let request_hash = content_hash(json!(input).to_string().as_bytes());
-        if let Some(old) = store.load()?.integrations().get(&input.id) {
+        let previous = diagnostics.measure(Phase::LookupExisting, None, || -> Result<_> {
+            Ok(store.load()?.integrations().get(&input.id).cloned())
+        })?;
+        if let Some(old) = previous {
             if old.intent.request_hash != request_hash {
                 return Err(WorkerError("integration-id-conflict"));
             }
-            return Ok(old.clone());
+            return Ok(old);
         }
-        let source_worker = ManualWorker::inspect(store, &input.worker_id)?;
-        let _lease = crate::worker::lease(store)?.ok_or(WorkerError("worker-host-busy"))?;
+        let source_worker = diagnostics.measure(Phase::InspectSource, None, || {
+            ManualWorker::inspect(store, &input.worker_id)
+        })?;
+        let _lease = diagnostics
+            .measure(Phase::AcquireLease, None, || crate::worker::lease(store))?
+            .ok_or(WorkerError("worker-host-busy"))?;
         for check in &input.checks {
             check.validate().map_err(WorkerError)?;
         }
-        let state = store.load()?;
+        let state = diagnostics.measure(Phase::LoadState, None, || store.load())?;
         admission(&state, None)?;
         if source_worker.status() != WorkerStatus::Verified {
             return Err(WorkerError("verified-source-required"));
@@ -151,13 +182,15 @@ impl IntegrationService {
         {
             return Err(WorkerError("integration-directory-scope"));
         }
-        let target_state = git::integration::initial_target_with_preservation(
-            &GitExecutor::new()?,
-            &target,
-            &common,
-            &source.base_oid,
-            source.preservation.as_ref(),
-        )?;
+        let target_state = diagnostics.measure(Phase::InitialTarget, None, || {
+            git::integration::initial_target_with_preservation(
+                &GitExecutor::new()?,
+                &target,
+                &common,
+                &source.base_oid,
+                source.preservation.as_ref(),
+            )
+        })?;
         let hash = content_hash(input.id.as_bytes());
         let path = root.join(format!("run-integration-{}", &hash[..40]));
         git::paths::authorized_child(&root, &path, false)?;
@@ -209,38 +242,51 @@ impl IntegrationService {
             created_ms: now,
         };
         drop(state);
-        commit(
-            store,
-            &input.id,
-            Command::Integration(IntegrationCommand::Reserve(Box::new(IntegrationRecord {
-                intent,
-                observations: vec![],
-            }))),
-        )?;
+        diagnostics.measure(Phase::Reserve, None, || {
+            commit(
+                store,
+                &input.id,
+                Command::Integration(IntegrationCommand::Reserve(Box::new(IntegrationRecord {
+                    intent,
+                    observations: vec![],
+                }))),
+            )
+        })?;
         checkpoint(IntegrationCheckpoint::Reserved);
         let mut git_diagnostic = None;
         let outcome = (|| {
             cancelled(cancel)?;
-            let record = load_record(store, &input.id)?;
-            let helper = default_helper()?;
-            let binding = GuardianBinding::prepare(
-                store.path(),
-                &format!("integration-{}", &hash[..24]),
-                &helper,
-            )?;
-            observe(
-                store,
-                &input.id,
-                IntegrationStatus::Preparing,
-                json!({"guardian":binding,"effects":"git-and-checks-owned-v1"}),
-            )?;
-            let mut guardian = Guardian::start(binding.clone(), &helper)?;
-            let git = IntegrationGit::new(guardian.job()?)?;
-            if git.target(
+            let record =
+                diagnostics.measure(Phase::LoadIntent, None, || load_record(store, &input.id))?;
+            let (helper, binding) =
+                diagnostics.measure(Phase::PrepareSupervisor, None, || -> Result<_> {
+                    let helper = default_helper()?;
+                    let binding = GuardianBinding::prepare(
+                        store.path(),
+                        &format!("integration-{}", &hash[..24]),
+                        &helper,
+                    )?;
+                    Ok((helper, binding))
+                })?;
+            diagnostics.measure(Phase::RecordSupervisor, None, || {
+                observe(
+                    store,
+                    &input.id,
+                    IntegrationStatus::Preparing,
+                    json!({"guardian":binding,"effects":"git-and-checks-owned-v1"}),
+                )
+            })?;
+            let mut guardian = diagnostics.measure(Phase::StartSupervisor, None, || {
+                Guardian::start(binding.clone(), &helper)
+            })?;
+            let git = diagnostics.measure(Phase::CreateExecutor, None, || -> Result<_> {
+                Ok(IntegrationGit::new(guardian.job()?)?)
+            })?;
+            if diagnostics.measure(Phase::TargetInJob, None, || git.target(
                 &record.intent,
                 &record.intent.input_base,
                 &record.intent.input_base,
-            ).map_err(|error| {
+            )).map_err(|error| {
                 if record.intent.worktree.preservation.is_some() {
                     git_diagnostic = Some(json!({"phase":"target-before-materialization","classification":error.to_string()}));
                 }
@@ -249,10 +295,12 @@ impl IntegrationService {
             {
                 return Err(WorkerError("target-changed-before-integration"));
             }
-            let snapshot = git
-                .materialize(&record.intent, &source, || {
-                    checkpoint(IntegrationCheckpoint::BaseVerified);
-                    Ok(())
+            let snapshot = diagnostics
+                .measure(Phase::Materialize, None, || {
+                    git.materialize(&record.intent, &source, || {
+                        checkpoint(IntegrationCheckpoint::BaseVerified);
+                        Ok(())
+                    })
                 })
                 .map_err(|error| {
                     if record.intent.worktree.preservation.is_some() {
@@ -262,119 +310,167 @@ impl IntegrationService {
                     }
                     WorkerError::from(error)
                 })?;
-            observe(
-                store,
-                &input.id,
-                IntegrationStatus::Materialized,
-                json!({"snapshot":snapshot}),
-            )?;
+            diagnostics.measure(Phase::RecordMaterialized, None, || {
+                observe(
+                    store,
+                    &input.id,
+                    IntegrationStatus::Materialized,
+                    json!({"snapshot":snapshot}),
+                )
+            })?;
             checkpoint(IntegrationCheckpoint::Materialized);
             cancelled(cancel)?;
-            observe(
-                store,
-                &input.id,
-                IntegrationStatus::Checking,
-                json!({"snapshotRevision":snapshot.revision}),
-            )?;
-            let watch = orchestrix_process::watch::DirectoryWatch::start(Path::new(
-                &record.intent.worktree.path,
-            ))
-            .map_err(|_| WorkerError("integration-watch"))?;
+            diagnostics.measure(Phase::RecordChecking, None, || {
+                observe(
+                    store,
+                    &input.id,
+                    IntegrationStatus::Checking,
+                    json!({"snapshotRevision":snapshot.revision}),
+                )
+            })?;
+            let watch = diagnostics
+                .measure(Phase::StartWatch, None, || {
+                    orchestrix_process::watch::DirectoryWatch::start(Path::new(
+                        &record.intent.worktree.path,
+                    ))
+                })
+                .map_err(|_| WorkerError("integration-watch"))?;
             let mut reports = Vec::new();
-            for check in &record.intent.checks {
-                if git.inspect(&record.intent)?.revision != snapshot.revision
+            for (check_index, check) in record.intent.checks.iter().enumerate() {
+                if diagnostics
+                    .measure(Phase::InspectBeforeCheck, Some(check_index), || {
+                        git.inspect(&record.intent)
+                    })?
+                    .revision
+                    != snapshot.revision
                     || watch
                         .changed()
                         .map_err(|_| WorkerError("integration-watch"))?
                 {
                     return Err(WorkerError("combined-artifact-changed"));
                 }
-                let report = evaluate_in_scope(
-                    check,
-                    Path::new(&record.intent.worktree.path),
-                    &snapshot.revision,
-                    cancel,
-                    &guardian.job()?,
-                )
-                .map_err(WorkerError)?;
+                let check_scope = guardian.job()?;
+                let report = diagnostics
+                    .measure(Phase::Check, Some(check_index), || {
+                        evaluate_in_scope(
+                            check,
+                            Path::new(&record.intent.worktree.path),
+                            &snapshot.revision,
+                            cancel,
+                            &check_scope,
+                        )
+                    })
+                    .map_err(WorkerError)?;
                 let pass = report.result == EvaluationResult::Passed && report.exit_code == Some(0);
                 reports.push(report);
                 if !pass {
-                    drop(git);
-                    drop(guardian);
-                    let proof = read_proof(&binding)?;
-                    observe(
+                    diagnostics.measure::<_, WorkerError>(Phase::CloseJob, None, || {
+                        drop(git);
+                        drop(guardian);
+                        Ok(())
+                    })?;
+                    let proof =
+                        diagnostics.measure(Phase::ReadClosure, None, || read_proof(&binding))?;
+                    diagnostics.measure(Phase::RecordChecks,None,|| observe(
                         store,
                         &input.id,
                         IntegrationStatus::Blocked,
                         json!({"checks":reports,"snapshotRevision":snapshot.revision,"reason":"combined-check-failed","localClosureProof":proof}),
-                    )?;
+                    ))?;
                     return Ok(());
                 }
             }
-            if git.inspect(&record.intent)?.revision != snapshot.revision
+            if diagnostics
+                .measure(Phase::InspectAfterChecks, None, || {
+                    git.inspect(&record.intent)
+                })?
+                .revision
+                != snapshot.revision
                 || watch
                     .changed()
                     .map_err(|_| WorkerError("integration-watch"))?
             {
                 return Err(WorkerError("combined-artifact-changed"));
             }
-            observe(
-                store,
-                &input.id,
-                IntegrationStatus::Checked,
-                json!({"checks":reports,"snapshotRevision":snapshot.revision}),
-            )?;
+            diagnostics.measure(Phase::RecordChecks, None, || {
+                observe(
+                    store,
+                    &input.id,
+                    IntegrationStatus::Checked,
+                    json!({"checks":reports,"snapshotRevision":snapshot.revision}),
+                )
+            })?;
             checkpoint(IntegrationCheckpoint::Checked);
             cancelled(cancel)?;
-            let (tree, result) = git.plan_commit(&record.intent, &snapshot)?;
-            observe(
-                store,
-                &input.id,
-                IntegrationStatus::CommitPlanned,
-                json!({"treeRevision":tree,"resultRevision":result}),
-            )?;
-            if git.inspect(&record.intent)?.revision != snapshot.revision
+            let (tree, result) = diagnostics.measure(Phase::PlanCommit, None, || {
+                git.plan_commit(&record.intent, &snapshot)
+            })?;
+            diagnostics.measure(Phase::RecordCommitPlan, None, || {
+                observe(
+                    store,
+                    &input.id,
+                    IntegrationStatus::CommitPlanned,
+                    json!({"treeRevision":tree,"resultRevision":result}),
+                )
+            })?;
+            if diagnostics
+                .measure(Phase::InspectBeforeCommit, None, || {
+                    git.inspect(&record.intent)
+                })?
+                .revision
+                != snapshot.revision
                 || watch
                     .changed()
                     .map_err(|_| WorkerError("integration-watch"))?
             {
                 return Err(WorkerError("combined-artifact-changed"));
             }
-            git.commit(&record.intent, &tree, &result)?;
+            diagnostics.measure(Phase::WriteReference, None, || {
+                git.commit(&record.intent, &tree, &result)
+            })?;
             checkpoint(IntegrationCheckpoint::ResultRef);
-            drop(git);
-            drop(guardian);
-            let proof = read_proof(&binding)?;
-            observe(
-                store,
-                &input.id,
-                IntegrationStatus::Integrated,
-                json!({"treeRevision":tree,"resultRevision":result,"localClosureProof":proof}),
-            )?;
-            self.prepare_candidate(store, &input.id)?;
+            diagnostics.measure::<_, WorkerError>(Phase::CloseJob, None, || {
+                drop(git);
+                drop(guardian);
+                Ok(())
+            })?;
+            let proof = diagnostics.measure(Phase::ReadClosure, None, || read_proof(&binding))?;
+            diagnostics.measure(Phase::RecordIntegrated, None, || {
+                observe(
+                    store,
+                    &input.id,
+                    IntegrationStatus::Integrated,
+                    json!({"treeRevision":tree,"resultRevision":result,"localClosureProof":proof}),
+                )
+            })?;
+            diagnostics.measure(Phase::ConfirmCandidate, None, || {
+                self.prepare_candidate(store, &input.id)
+            })?;
             Ok(())
         })();
         if let Err(error) = outcome {
-            let current = load_record(store, &input.id)?;
+            let current =
+                diagnostics.measure(Phase::LoadIntent, None, || load_record(store, &input.id))?;
             if current.status().blocks_admission() {
                 let mut details = json!({"reason":error.0,"automaticRetry":false,"inspectionRequired":current.status()!=IntegrationStatus::Reserved,"effectsNotEntered":current.status()==IntegrationStatus::Reserved});
                 if let Some(diagnostic) = git_diagnostic {
                     details["gitDiagnostic"] = diagnostic;
                 }
-                observe(
-                    store,
-                    &input.id,
-                    if current.status() == IntegrationStatus::Reserved {
-                        IntegrationStatus::Blocked
-                    } else {
-                        IntegrationStatus::Uncertain
-                    },
-                    details,
-                )?;
+                diagnostics.measure(Phase::RecordFailure, None, || {
+                    observe(
+                        store,
+                        &input.id,
+                        if current.status() == IntegrationStatus::Reserved {
+                            IntegrationStatus::Blocked
+                        } else {
+                            IntegrationStatus::Uncertain
+                        },
+                        details,
+                    )
+                })?;
             }
         }
-        load_record(store, &input.id)
+        diagnostics.measure(Phase::ReadResult, None, || load_record(store, &input.id))
     }
     fn prepare_candidate(&self, store: &mut Store, id: &str) -> Result<()> {
         let record = load_record(store, id)?;
@@ -434,9 +530,10 @@ impl IntegrationService {
         load_record(store, &input.integration_id)
     }
     fn validate_prepared(&self, record: &IntegrationRecord) -> Result<()> {
-        let mut diagnostics = PreparedValidationDiagnostics::new(
+        let mut diagnostics = PreparedValidationDiagnostics::for_record(
             std::env::var_os("ORCHESTRIX_INTEGRATION_DIAGNOSTICS")
                 .is_some_and(|value| value == "1"),
+            &record.intent.id,
         );
         let git =
             diagnostics.measure(PreparedValidationPhase::ReadOnly, IntegrationGit::read_only)?;
@@ -906,11 +1003,21 @@ enum PreparedValidationPhase {
 /// Private, opt-in diagnostics: no record contents, paths or provider data.
 struct PreparedValidationDiagnostics {
     remaining: u8,
+    trace: PreparationTrace,
 }
 impl PreparedValidationDiagnostics {
+    #[cfg(test)]
     fn new(enabled: bool) -> Self {
+        Self::for_record(enabled, "unit-prepared-validation")
+    }
+    fn for_record(enabled: bool, operation: &str) -> Self {
         Self {
             remaining: if enabled { 5 } else { 0 },
+            trace: if enabled {
+                PreparationTrace::new(operation)
+            } else {
+                PreparationTrace::disabled()
+            },
         }
     }
     fn measure<T>(
@@ -921,15 +1028,19 @@ impl PreparedValidationDiagnostics {
         if self.remaining == 0 {
             return action();
         }
-        let started = Instant::now();
-        let result = action();
-        let elapsed_ms = started.elapsed().as_millis().try_into().unwrap_or(u64::MAX);
-        if let Some(line) = self.line(phase, result.as_ref().err(), elapsed_ms) {
-            // A diagnostic sink failure must not change the operation's result.
-            let _ = std::io::stderr().lock().write_all(line.as_bytes());
-        }
-        result
+        self.remaining -= 1;
+        let phase = match phase {
+            PreparedValidationPhase::ReadOnly => Phase::ValidateReadOnly,
+            PreparedValidationPhase::Inspect => Phase::ValidateInspect,
+            PreparedValidationPhase::VerifyCommit => Phase::ValidateCommit,
+            PreparedValidationPhase::VerifySnapshotTree => Phase::ValidateTree,
+            PreparedValidationPhase::Target => Phase::ValidateTarget,
+        };
+        self.trace.measure(phase, None, action)
     }
+    // Keep the historical static format's sanitization regression without
+    // retaining a potentially blocking stderr sink in production.
+    #[cfg(test)]
     fn line(
         &mut self,
         phase: PreparedValidationPhase,

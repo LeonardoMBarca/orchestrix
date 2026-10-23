@@ -13,6 +13,7 @@ pub mod evaluator;
 pub mod git;
 pub mod git_records;
 pub mod integration;
+mod integration_diagnostics;
 pub mod integration_records;
 pub mod mechanical;
 pub mod persistence;

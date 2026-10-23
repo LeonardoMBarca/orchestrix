@@ -189,6 +189,17 @@ impl Guardian {
 }
 impl Drop for Guardian {
     fn drop(&mut self) {
+        let _ = crate::integration_diagnostics::measure(
+            crate::integration_diagnostics::Phase::CloseJob,
+            || {
+                self.close_on_drop();
+                Ok::<(), ()>(())
+            },
+        );
+    }
+}
+impl Guardian {
+    fn close_on_drop(&mut self) {
         let _ = write_new(&self.binding.directory.join("finish"), b"finish");
         let begin = Instant::now();
         while begin.elapsed() < Duration::from_secs(5) {

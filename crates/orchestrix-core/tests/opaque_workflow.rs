@@ -1,6 +1,8 @@
 //! Complete mixed trees, real Git/SQLite/processes; only the runtime is synthetic.
 #![cfg(windows)]
 use orchestrix_core::{
+    daemon::{API_VERSION, Client, Operation, Request},
+    desktop::DesktopRequest,
     evaluator::CheckSpec,
     git::inspect_repository_with_editable,
     git_records::content_hash,
@@ -15,12 +17,13 @@ use orchestrix_core::{
     worker::{ManualTaskRequest, ManualWorker, WorkerCheckpoint},
     worker_records::WorkerStatus,
 };
-use serde_json::json;
+use serde_json::{Value, json};
 use std::{
     fs,
+    io::Write,
     os::windows::process::CommandExt,
     path::{Path, PathBuf},
-    process::{Command, Stdio},
+    process::{Child, Command, Stdio},
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 
@@ -185,10 +188,223 @@ impl Fixture {
 }
 fn execute(document: bool, correction: bool, fault: Option<&str>) {
     let f = Fixture::new(document);
-    execute_fixture(f, correction, fault);
+    execute_fixture(f, correction, fault, None);
 }
-fn execute_fixture(f: Fixture, correction: bool, fault: Option<&str>) {
+#[derive(Clone, Copy, Debug)]
+enum PreparationMeasurement {
+    Direct,
+    Daemon,
+}
+
+struct MeasurementDaemon {
+    child: Child,
+    client: Client,
+    clock: Instant,
+    rpc_log: fs::File,
+    sequence: u64,
+}
+impl MeasurementDaemon {
+    fn start(f: &Fixture) -> Self {
+        let child = Command::new(env!("CARGO_BIN_EXE_orchestrix"))
+            .creation_flags(0x0800_0000)
+            .args(["daemon", "--database"])
+            .arg(&f.db)
+            .stdin(Stdio::null())
+            .stdout(fs::File::create_new(f.root.join("measurement-daemon.stdout.log")).unwrap())
+            .stderr(fs::File::create_new(f.root.join("measurement-daemon.stderr.log")).unwrap())
+            .spawn()
+            .unwrap();
+        Self {
+            child,
+            client: Client::new(&f.db).unwrap(),
+            clock: Instant::now(),
+            rpc_log: fs::File::create_new(f.root.join("measurement-rpc.jsonl")).unwrap(),
+            sequence: 0,
+        }
+    }
+    fn request(&mut self, operation: Operation, label: &'static str) -> Result<Value, String> {
+        self.sequence += 1;
+        let sequence = self.sequence;
+        let span = Instant::now();
+        writeln!(
+            self.rpc_log,
+            "{}",
+            json!({"schemaVersion":1,"sequence":sequence,
+            "phase":label,"event":"begin","elapsedMicros":self.clock.elapsed().as_micros()})
+        )
+        .unwrap();
+        self.rpc_log.flush().unwrap();
+        let result = self
+            .client
+            .request(&Request {
+                api_version: API_VERSION,
+                operation,
+            })
+            .and_then(|response| {
+                if response.ok {
+                    Ok(response.result)
+                } else {
+                    Err(response.error.unwrap_or_else(|| "daemon-rejected".into()))
+                }
+            });
+        writeln!(
+            self.rpc_log,
+            "{}",
+            json!({"schemaVersion":1,"sequence":sequence,
+            "phase":label,"event":"end","elapsedMicros":self.clock.elapsed().as_micros(),
+            "spanMicros":span.elapsed().as_micros(),"ok":result.is_ok(),
+            "error":result.as_ref().err()})
+        )
+        .unwrap();
+        self.rpc_log.flush().unwrap();
+        result
+    }
+    fn stop(mut self) {
+        let snapshot = self
+            .request(Operation::Snapshot, "shutdown-snapshot")
+            .unwrap();
+        assert!(snapshot["activeWorkerId"].is_null());
+        assert!(snapshot["activeOperationKind"].is_null());
+        self.request(
+            Operation::Shutdown {
+                command_id: "measurement-shutdown".into(),
+            },
+            "shutdown",
+        )
+        .unwrap();
+        let start = Instant::now();
+        loop {
+            if let Some(status) = self.child.try_wait().unwrap() {
+                assert!(status.success(), "own measurement daemon exit {status}");
+                break;
+            }
+            assert!(
+                start.elapsed() < Duration::from_secs(25),
+                "own daemon shutdown deadline"
+            );
+            std::thread::sleep(Duration::from_millis(25));
+        }
+    }
+}
+impl Drop for MeasurementDaemon {
+    fn drop(&mut self) {
+        // This handle belongs only to the child created by this test. Keep all
+        // fixture data, and never terminate by executable name or discover PID.
+        if self.child.try_wait().ok().flatten().is_none() {
+            let _ = self.child.kill();
+            let _ = self.child.wait();
+        }
+    }
+}
+
+fn measure_daemon_preparation(f: &Fixture, request: &IntegrationRequest) -> IntegrationRecord {
+    let startup = Instant::now();
+    let mut daemon = MeasurementDaemon::start(f);
+    loop {
+        if daemon
+            .request(Operation::Snapshot, "startup-snapshot")
+            .is_ok()
+        {
+            break;
+        }
+        assert!(
+            daemon.child.try_wait().unwrap().is_none(),
+            "own daemon exited during startup"
+        );
+        assert!(
+            startup.elapsed() < Duration::from_secs(300),
+            "measurement startup deadline"
+        );
+        std::thread::sleep(Duration::from_millis(250));
+    }
+    let startup_ms = startup.elapsed().as_millis();
+    daemon
+        .request(
+            Operation::Resume {
+                command_id: "measurement-resume".into(),
+            },
+            "resume",
+        )
+        .unwrap();
+    let bootstrap = daemon
+        .request(
+            Operation::Desktop {
+                request: Box::new(DesktopRequest::Bootstrap),
+            },
+            "bootstrap-revision",
+        )
+        .unwrap();
+    let operation = Operation::PrepareIntegration {
+        command_id: "measurement-prepare".into(),
+        expected_revision: bootstrap["revision"].as_u64().unwrap(),
+        request: Box::new(request.clone()),
+    };
+    let fingerprint = content_hash(&serde_json::to_vec(&operation).unwrap());
+    fs::write(
+        f.root.join("measurement-prepare-request.json"),
+        serde_json::to_vec_pretty(&operation).unwrap(),
+    )
+    .unwrap();
+    let start = Instant::now();
+    // A missing response never generates another preparation operation. Only
+    // the exact original receipt identity is queried below.
+    let acknowledgement = daemon.request(operation, "prepare-submit");
+    let mut poll_count = 0_u64;
+    let outcome = loop {
+        assert!(
+            daemon.child.try_wait().unwrap().is_none(),
+            "own daemon exited during preparation"
+        );
+        poll_count += 1;
+        let _snapshot = daemon.request(Operation::Snapshot, "poll-snapshot");
+        if let Ok(receipt) = daemon.request(
+            Operation::CommandReceipt {
+                command_id: "measurement-prepare".into(),
+                fingerprint: fingerprint.clone(),
+            },
+            "poll-command-receipt",
+        ) && !receipt["receipt"]["outcome"].is_null()
+        {
+            break receipt["receipt"]["outcome"].clone();
+        }
+        // An outer observation guard covers unbounded pre-Job work and the
+        // unchanged 300-second owned Job. It does not alter a production budget.
+        assert!(
+            start.elapsed() < Duration::from_secs(600),
+            "preparation observation deadline"
+        );
+        std::thread::sleep(Duration::from_millis(1200));
+    };
+    let request_envelope_ms = start.elapsed().as_millis();
+    let inspection = daemon
+        .request(
+            Operation::InspectIntegration {
+                integration_id: request.id.clone(),
+            },
+            "historical-integration-inspection",
+        )
+        .unwrap();
+    fs::write(f.root.join("daemon-preparation-measurement.json"),
+        serde_json::to_vec_pretty(&json!({"schemaVersion":1,
+            "startupMs":startup_ms,"requestEnvelopeMs":request_envelope_ms,
+            "commandId":"measurement-prepare","fingerprint":fingerprint,
+            "acknowledgement":acknowledgement,"outcome":outcome,
+            "pollCount":poll_count,"pollIntervalMs":1200,
+            "clientProfile":"Snapshot plus CommandReceipt; not the complete Desktop event/bootstrap profile",
+            "inspection":inspection,"providerCalled":false})).unwrap()).unwrap();
+    daemon.stop();
+    let reopened = Store::open(&f.db).unwrap();
+    reopened.load().unwrap().integrations()[&request.id].clone()
+}
+
+fn execute_fixture(
+    f: Fixture,
+    correction: bool,
+    fault: Option<&str>,
+    measurement: Option<PreparationMeasurement>,
+) {
     let document = f.document;
+    println!("OPAQUE_FIXTURE={}", f.root.display());
     let cancel = CancellationToken::new();
     let all = Instant::now();
     let source_before = git(&f.repo, &["ls-tree", "-r", "-l", "-z", "HEAD"]);
@@ -376,31 +592,76 @@ fn execute_fixture(f: Fixture, correction: bool, fault: Option<&str>) {
         target_directory: f.repo.clone(),
         checks: task.checks.clone(),
     };
-    let prepared = service
-        .prepare_with_checkpoint(&mut store, &request, &cancel, |point| {
-            let elapsed = start.elapsed().as_millis();
-            println!("OPAQUE_INTEGRATION_PHASE={point:?} elapsedMs={elapsed}");
-            integration_phases.push((format!("{point:?}"), elapsed));
-            if point == IntegrationCheckpoint::BaseVerified
-                && fault == Some("protected-during-materialization")
-            {
-                let directories = fs::read_dir(&integration_effect_root)
-                    .unwrap()
-                    .map(|entry| entry.unwrap().path())
-                    .filter(|path| path.is_dir())
-                    .collect::<Vec<_>>();
-                assert_eq!(directories.len(), 1);
-                let protected = directories[0].join("image.bin");
-                fs::write(&protected, [0, 1, 254, 0, 3]).unwrap();
-                protected_during_materialization = Some(protected);
-            }
-        })
-        .unwrap();
+    let prepared = if matches!(measurement, Some(PreparationMeasurement::Daemon)) {
+        drop(store);
+        let record = measure_daemon_preparation(&f, &request);
+        // The daemon has stopped and its ownership lease has closed before the
+        // diagnostic reopens SQLite. There is no concurrent second Store owner.
+        store = Store::open(&f.db).unwrap();
+        record
+    } else {
+        service
+            .prepare_with_checkpoint(&mut store, &request, &cancel, |point| {
+                let elapsed = start.elapsed().as_millis();
+                println!("OPAQUE_INTEGRATION_PHASE={point:?} elapsedMs={elapsed}");
+                integration_phases.push((format!("{point:?}"), elapsed));
+                if point == IntegrationCheckpoint::BaseVerified
+                    && fault == Some("protected-during-materialization")
+                {
+                    let directories = fs::read_dir(&integration_effect_root)
+                        .unwrap()
+                        .map(|entry| entry.unwrap().path())
+                        .filter(|path| path.is_dir())
+                        .collect::<Vec<_>>();
+                    assert_eq!(directories.len(), 1);
+                    let protected = directories[0].join("image.bin");
+                    fs::write(&protected, [0, 1, 254, 0, 3]).unwrap();
+                    protected_during_materialization = Some(protected);
+                }
+            })
+            .unwrap()
+    };
     fs::write(f.root.join("stage-progress.json"), serde_json::to_vec_pretty(&json!({"workerMs":worker_ms,"workerPhases":worker_phases,"integrationMs":start.elapsed().as_millis(),"integrationPhases":integration_phases,"status":prepared.status(),"lastObservation":prepared.observations.last()})).unwrap()).unwrap();
     println!(
         "OPAQUE_INTEGRATION_PREPARE_MS={}",
         start.elapsed().as_millis()
     );
+    if let Some(path) = measurement {
+        assert!(document && !correction && fault.is_none());
+        let unchanged = git(&f.repo, &["ls-tree", "-r", "-l", "-z", "HEAD"]) == source_before;
+        let evidence = json!({
+            "schemaVersion":1,
+            "scope":"synthetic complete-snapshot preparation measurement; not native UI or provider evidence",
+            "path":format!("{path:?}"),"fixture":f.root,"database":f.db,
+            "base":f.base,"editablePaths":f.editable,
+            "workerId":final_worker.intent.id,"reviewId":review.intent.id,
+            "artifactRevision":final_artifact.revision,
+            "workerMs":worker_ms,"workerPhases":worker_phases,
+            "integrationPathMs":start.elapsed().as_millis(),
+            "integrationPhases":integration_phases,"integration":prepared,
+            "sourceTreeUnchanged":unchanged,
+            "traceDirectory":std::env::var_os("ORCHESTRIX_INTEGRATION_DIAGNOSTICS_DIRECTORY")
+                .map(|value| value.to_string_lossy().into_owned()),
+            "applied":false,"providerCalled":false
+        });
+        fs::write(
+            f.root.join("preparation-measurement.json"),
+            serde_json::to_vec_pretty(&evidence).unwrap(),
+        )
+        .unwrap();
+        println!("OPAQUE_PREPARATION_MEASUREMENT={}", f.root.display());
+        assert!(unchanged);
+        assert_eq!(
+            prepared.status(),
+            IntegrationStatus::Prepared,
+            "{}",
+            prepared.summary()
+        );
+        assert!(prepared.candidate_revision().is_some());
+        assert!(prepared.detail("approval").is_none());
+        assert!(prepared.detail("application").is_none());
+        return;
+    }
     if fault == Some("protected-during-materialization") {
         assert_eq!(prepared.status(), IntegrationStatus::Uncertain);
         let diagnostic = prepared.detail("gitDiagnostic").unwrap();
@@ -694,12 +955,34 @@ fn thousand_preserved_entries_survive_persistence_review_application_and_reopen(
         .unwrap()
         .trim()
         .into();
-    execute_fixture(f, false, None);
+    execute_fixture(f, false, None, None);
 }
 #[test]
 #[ignore = "explicit complete local snapshot, no provider access"]
 fn complete_orchestrix_snapshot_offline() {
     execute(true, false, None)
+}
+
+#[test]
+#[ignore = "explicit complete local snapshot preparation measurement; no provider access"]
+fn complete_snapshot_direct_preparation_measurement() {
+    execute_fixture(
+        Fixture::new(true),
+        false,
+        None,
+        Some(PreparationMeasurement::Direct),
+    );
+}
+
+#[test]
+#[ignore = "explicit complete local snapshot daemon preparation measurement; no provider access"]
+fn complete_snapshot_daemon_preparation_measurement() {
+    execute_fixture(
+        Fixture::new(true),
+        false,
+        None,
+        Some(PreparationMeasurement::Daemon),
+    );
 }
 
 #[test]

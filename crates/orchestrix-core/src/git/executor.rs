@@ -76,7 +76,10 @@ fn scoped_run(
             pending_input = None;
         }
         match process.receive(Duration::from_millis(5)) {
-            Ok(Some(ProcessEvent::Stdout(bytes))) => stdout.extend(bytes),
+            Ok(Some(ProcessEvent::Stdout(bytes))) => {
+                crate::integration_diagnostics::git_bytes(0, bytes.len());
+                stdout.extend(bytes);
+            }
             Ok(Some(ProcessEvent::Stderr(_))) | Ok(None) => {}
             Err(error) => return Err(scoped_io_error(error)),
         }
@@ -85,7 +88,10 @@ fn scoped_run(
         // Job queries; neither the queue nor byte/deadline budgets are enlarged.
         for _ in 0..64 {
             match process.receive(Duration::ZERO).map_err(scoped_io_error)? {
-                Some(ProcessEvent::Stdout(bytes)) => stdout.extend(bytes),
+                Some(ProcessEvent::Stdout(bytes)) => {
+                    crate::integration_diagnostics::git_bytes(0, bytes.len());
+                    stdout.extend(bytes);
+                }
                 Some(ProcessEvent::Stderr(_)) => {}
                 None => break,
             }
@@ -104,7 +110,10 @@ fn scoped_run(
                     .receive(Duration::from_millis(1))
                     .map_err(scoped_io_error)?
                 {
-                    Some(ProcessEvent::Stdout(bytes)) => stdout.extend(bytes),
+                    Some(ProcessEvent::Stdout(bytes)) => {
+                        crate::integration_diagnostics::git_bytes(0, bytes.len());
+                        stdout.extend(bytes);
+                    }
                     Some(ProcessEvent::Stderr(_)) => {}
                     None => break,
                 }
@@ -460,6 +469,10 @@ impl GitExecutor {
             use std::os::windows::process::CommandExt;
             command.creation_flags(0x0800_0000);
         }
+        let _transport_timing = crate::integration_diagnostics::CounterTimer::start(
+            crate::integration_diagnostics::CounterKind::GitTransport,
+        );
+        crate::integration_diagnostics::git_bytes(input.map_or(0, <[u8]>::len), 0);
         if let Some(scope) = &self.scope {
             return scoped_run(command, scope, input, deadline, limit);
         }
@@ -505,6 +518,7 @@ impl GitExecutor {
                         return Err(GitError::OutputLimit);
                     }
                     if !is_stderr {
+                        crate::integration_diagnostics::git_bytes(0, bytes.len());
                         result.extend_from_slice(&bytes);
                     }
                 }

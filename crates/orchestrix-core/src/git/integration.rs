@@ -134,7 +134,10 @@ impl IntegrationGit {
         {
             return Err(GitError::Unsupported);
         }
-        let just_verified_base = self.service().create_integration_owned(&intent.worktree)?;
+        let just_verified_base = crate::integration_diagnostics::measure(
+            crate::integration_diagnostics::Phase::MaterializeBase,
+            || self.service().create_integration_owned(&intent.worktree),
+        )?;
         // A fresh v2 completion already follows the full coherent base check.
         // Replayed/existing work still requires the original empty-artifact
         // inspection. Every edited file is checked against its base below, and
@@ -190,7 +193,10 @@ impl IntegrationGit {
                 fs::remove_file(&path)?;
             }
         }
-        let snapshot = self.inspect(intent)?;
+        let snapshot = crate::integration_diagnostics::measure(
+            crate::integration_diagnostics::Phase::MaterializeCapture,
+            || self.inspect(intent),
+        )?;
         if snapshot.exclusions != source.exclusions
             || snapshot
                 .files

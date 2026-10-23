@@ -273,6 +273,7 @@ fn read_working(root: &Path, relative: &str, maximum: usize) -> GitResult<Option
     file.by_ref()
         .take(maximum as u64 + 1)
         .read_to_end(&mut bytes)?;
+    crate::integration_diagnostics::capture_bytes(bytes.len());
     #[cfg(all(test, windows))]
     {
         if let Some(timing) = &mut timing {
@@ -342,6 +343,7 @@ fn read_preserved(root: &Path, relative: &str) -> GitResult<Option<WorkingFile>>
         #[cfg(all(test, windows))]
         let mut read_timing = TimingCall::phase("phase-capture-preserved-read");
         let n = file.read(&mut buffer)?;
+        crate::integration_diagnostics::capture_bytes(n);
         #[cfg(all(test, windows))]
         {
             if let Some(timing) = &mut read_timing {
