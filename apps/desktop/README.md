@@ -10,6 +10,8 @@ worktree available for inspection. Legacy textual tasks remain supported.
 
 Production Tauri/React client of the local daemon. The HTML study in `prototypes/desktop` remains the approved visual/interaction reference; it is not the runtime engine.
 
+Runtime review/correction and recovery confirmations await the native dialog result before sending a command. Cancel, a dialog error, or an overlapping confirmation grants no authorization. The window has only the dialog message permission; file access still requires the restricted native picker grants. Technical review acceptance remains separate from candidate approval and application.
+
 ## Development
 
 Windows x64/MSVC is the current validation target. Rust/Core and WebView2 must already be available. Dependency downloads and installations require explicit authorization under the repository guide.
