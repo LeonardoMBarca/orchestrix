@@ -112,6 +112,12 @@ impl Phase {
 struct Counters {
     git_process_attempts: u64,
     git_transport_micros: u64,
+    // Subphases of the owned transport only. Legacy transport has the total
+    // above, not an observed zero-cost spawn/tree/close.
+    git_spawn_micros: u64,
+    git_tree_queries: u64,
+    git_tree_micros: u64,
+    git_close_micros: u64,
     git_input_bytes: u64,
     git_stdout_bytes: u64,
     capture_file_bytes: u64,
@@ -129,6 +135,16 @@ impl Counters {
             git_transport_micros: self
                 .git_transport_micros
                 .saturating_sub(before.git_transport_micros),
+            git_spawn_micros: self
+                .git_spawn_micros
+                .saturating_sub(before.git_spawn_micros),
+            git_tree_queries: self
+                .git_tree_queries
+                .saturating_sub(before.git_tree_queries),
+            git_tree_micros: self.git_tree_micros.saturating_sub(before.git_tree_micros),
+            git_close_micros: self
+                .git_close_micros
+                .saturating_sub(before.git_close_micros),
             git_input_bytes: self.git_input_bytes.saturating_sub(before.git_input_bytes),
             git_stdout_bytes: self
                 .git_stdout_bytes
@@ -384,6 +400,9 @@ impl Drop for Span {
 
 pub(crate) enum CounterKind {
     GitTransport,
+    GitSpawn,
+    GitTree,
+    GitClose,
     StoreLoad,
     StoreCommand,
 }
@@ -398,11 +417,15 @@ impl CounterTimer {
         if let Some(state) = &state {
             let mut inner = state.borrow_mut();
             let count = match kind {
-                CounterKind::GitTransport => &mut inner.counters.git_process_attempts,
-                CounterKind::StoreLoad => &mut inner.counters.store_loads,
-                CounterKind::StoreCommand => &mut inner.counters.store_commands,
+                CounterKind::GitTransport => Some(&mut inner.counters.git_process_attempts),
+                CounterKind::GitTree => Some(&mut inner.counters.git_tree_queries),
+                CounterKind::StoreLoad => Some(&mut inner.counters.store_loads),
+                CounterKind::StoreCommand => Some(&mut inner.counters.store_commands),
+                CounterKind::GitSpawn | CounterKind::GitClose => None,
             };
-            *count = count.saturating_add(1);
+            if let Some(count) = count {
+                *count = count.saturating_add(1);
+            }
         }
         Self {
             state,
@@ -417,6 +440,9 @@ impl Drop for CounterTimer {
             let mut inner = state.borrow_mut();
             let value = match self.kind {
                 CounterKind::GitTransport => &mut inner.counters.git_transport_micros,
+                CounterKind::GitSpawn => &mut inner.counters.git_spawn_micros,
+                CounterKind::GitTree => &mut inner.counters.git_tree_micros,
+                CounterKind::GitClose => &mut inner.counters.git_close_micros,
                 CounterKind::StoreLoad => &mut inner.counters.store_load_micros,
                 CounterKind::StoreCommand => &mut inner.counters.store_command_micros,
             };

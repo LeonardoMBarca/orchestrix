@@ -1041,8 +1041,13 @@ mod diagnostics {
             }
         });
         super::super::executor::test_timing::begin();
+        let trace = crate::integration_diagnostics::PreparationTrace::new(&intent.id);
         let started = Instant::now();
-        let result = git.inspect(&intent);
+        let result = trace.measure(
+            crate::integration_diagnostics::Phase::ValidateInspect,
+            None,
+            || git.inspect(&intent),
+        );
         let inspect_micros = started.elapsed().as_micros();
         let samples = super::super::executor::test_timing::finish();
         let (lock, wake) = &*completed;

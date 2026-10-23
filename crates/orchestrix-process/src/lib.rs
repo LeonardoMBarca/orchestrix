@@ -106,6 +106,10 @@ struct PumpState {
     stop_output: AtomicBool,
     #[cfg(test)]
     queue_full: AtomicBool,
+    #[cfg(test)]
+    queue_full_count: AtomicU64,
+    #[cfg(test)]
+    queue_full_wait_micros: AtomicU64,
 }
 impl PumpState {
     fn fail(&self, error: ProcessError) {
@@ -221,6 +225,10 @@ impl OwnedProcess {
             stop_output: AtomicBool::new(false),
             #[cfg(test)]
             queue_full: AtomicBool::new(false),
+            #[cfg(test)]
+            queue_full_count: AtomicU64::new(0),
+            #[cfg(test)]
+            queue_full_wait_micros: AtomicU64::new(0),
         });
         let (events_tx, events) = mpsc::sync_channel(128);
         pump(
@@ -444,7 +452,10 @@ fn deliver(
             Ok(()) => return true,
             Err(mpsc::TrySendError::Full(pending)) => {
                 #[cfg(test)]
-                state.queue_full.store(true, Ordering::Release);
+                {
+                    state.queue_full.store(true, Ordering::Release);
+                    state.queue_full_count.fetch_add(1, Ordering::Relaxed);
+                }
                 if matches!(delivery, OutputDelivery::FailFast) {
                     state.fail(ProcessError::Budget);
                     return false;
@@ -453,7 +464,13 @@ fn deliver(
                 // Only the output reader waits here. The independent watchdog
                 // and all control operations remain runnable; cancellation is
                 // checked again without waiting for the consumer to drain.
+                #[cfg(test)]
+                let wait_started = Instant::now();
                 thread::sleep(Duration::from_millis(1));
+                #[cfg(test)]
+                state
+                    .queue_full_wait_micros
+                    .fetch_add(wait_started.elapsed().as_micros() as u64, Ordering::Relaxed);
             }
             Err(mpsc::TrySendError::Disconnected(_)) => {
                 state.fail(if matches!(delivery, OutputDelivery::FailFast) {
@@ -549,6 +566,147 @@ mod bulk_output_tests {
     }
 
     #[test]
+    #[ignore = "explicit installed Git entrypoints; owned --version processes only"]
+    fn installed_git_entrypoints_have_equivalent_bounded_owned_version_output() {
+        let executable = |key| {
+            let path = PathBuf::from(std::env::var_os(key).expect("explicit Git executable"));
+            assert!(path.is_absolute() && path.is_file());
+            assert!(!std::fs::symlink_metadata(&path).unwrap().is_symlink());
+            path.canonicalize().unwrap()
+        };
+        let wrapper = executable("ORCHESTRIX_GIT_ENTRYPOINT_WRAPPER");
+        let native = executable("ORCHESTRIX_GIT_ENTRYPOINT_NATIVE");
+        assert_ne!(wrapper, native, "comparison requires distinct entrypoints");
+        let cwd = std::env::current_dir().unwrap().canonicalize().unwrap();
+        let mut environment = [
+            "PATH",
+            "SystemRoot",
+            "WINDIR",
+            "SystemDrive",
+            "TEMP",
+            "TMP",
+            "COMSPEC",
+            "PATHEXT",
+        ]
+        .into_iter()
+        .filter_map(|key| std::env::var_os(key).map(|value| (OsString::from(key), value)))
+        .collect::<Vec<_>>();
+        for (key, value) in [
+            ("GIT_CONFIG_NOSYSTEM", "1"),
+            ("GIT_CONFIG_GLOBAL", "NUL"),
+            ("GIT_ATTR_NOSYSTEM", "1"),
+            ("GIT_OPTIONAL_LOCKS", "0"),
+            ("GIT_TERMINAL_PROMPT", "0"),
+            ("GIT_NO_REPLACE_OBJECTS", "1"),
+        ] {
+            environment.push((key.into(), value.into()));
+        }
+        let mut expected_output: Option<Vec<u8>> = None;
+        for sample in 0..4 {
+            // Interleave and alternate the first role rather than running two batches.
+            let roles = if sample % 2 == 0 {
+                [("wrapper", &wrapper), ("native", &native)]
+            } else {
+                [("native", &native), ("wrapper", &wrapper)]
+            };
+            for (role, executable) in roles {
+                let scope = scope();
+                let total_started = Instant::now();
+                let spawn_started = Instant::now();
+                let mut process = OwnedProcess::spawn_identified_backpressured(
+                    SpawnSpec {
+                        executable: executable.clone(),
+                        arguments: vec!["--version".into()],
+                        cwd: cwd.clone(),
+                        environment: environment.clone(),
+                        limits: ProcessLimits {
+                            lifetime: Duration::from_secs(15),
+                            max_output_bytes: 8 * MIB as u64,
+                            max_write_bytes: INPUT_BYTES,
+                        },
+                    },
+                    &scope,
+                )
+                .unwrap();
+                let spawn_micros = spawn_started.elapsed().as_micros();
+                process.close_input();
+                let drain_started = Instant::now();
+                let mut receive_micros = 0;
+                let mut tree_micros = 0;
+                let mut tree_queries = 0;
+                let mut output = Vec::new();
+                let mut error = Vec::new();
+                loop {
+                    let receive_started = Instant::now();
+                    let event = process.receive(Duration::from_millis(5)).unwrap();
+                    receive_micros += receive_started.elapsed().as_micros();
+                    if let Some(event) = event {
+                        match event {
+                            ProcessEvent::Stdout(bytes) => output.extend(bytes),
+                            ProcessEvent::Stderr(bytes) => error.extend(bytes),
+                        }
+                    }
+                    let tree_started = Instant::now();
+                    let tree = process.tree().unwrap();
+                    tree_micros += tree_started.elapsed().as_micros();
+                    tree_queries += 1;
+                    let streams = process.streams();
+                    if tree.root_exit_code.is_some()
+                        && tree.active_processes == 0
+                        && streams.stdin_closed
+                        && streams.stdout_closed
+                        && streams.stderr_closed
+                    {
+                        assert!(tree.owned);
+                        assert_eq!(tree.root_exit_code, Some(0));
+                        while let Some(event) = process.receive(Duration::ZERO).unwrap() {
+                            match event {
+                                ProcessEvent::Stdout(bytes) => output.extend(bytes),
+                                ProcessEvent::Stderr(bytes) => error.extend(bytes),
+                            }
+                        }
+                        break;
+                    }
+                    assert!(total_started.elapsed() < Duration::from_secs(15));
+                }
+                let drain_micros = drain_started.elapsed().as_micros();
+                assert!(output.starts_with(b"git version "));
+                assert!(
+                    error.is_empty(),
+                    "--version must not emit diagnostic output"
+                );
+                if let Some(expected) = &expected_output {
+                    assert_eq!(&output, expected, "all eight outputs must match exactly");
+                } else {
+                    expected_output = Some(output.clone());
+                }
+                assert_eq!(process.health(), Ok(()));
+                let state = Arc::clone(&process.state);
+                let close_started = Instant::now();
+                let closed_tree = process.terminate(Duration::from_secs(3)).unwrap();
+                assert!(closed_tree.owned && closed_tree.active_processes == 0);
+                assert_closed(&state);
+                let terminate_micros = close_started.elapsed().as_micros();
+                let drop_started = Instant::now();
+                drop(process);
+                let drop_micros = drop_started.elapsed().as_micros();
+                assert_eq!(scope.active().unwrap(), 0);
+                println!(
+                    "ORCHESTRIX_GIT_ENTRYPOINT_TIMING={{\"role\":\"{role}\",\"sample\":{sample},\"spawnMicros\":{spawn_micros},\"drainMicros\":{drain_micros},\"receiveMicros\":{receive_micros},\"treeObservationMicros\":{tree_micros},\"treeQueries\":{tree_queries},\"terminateMicros\":{terminate_micros},\"dropMicros\":{drop_micros},\"totalMicros\":{},\"stdoutBytes\":{},\"stderrBytes\":{},\"queueFullCount\":{},\"queueFullWaitMicros\":{}}}",
+                    total_started.elapsed().as_micros(),
+                    output.len(),
+                    error.len(),
+                    state.queue_full_count.load(Ordering::Relaxed),
+                    state.queue_full_wait_micros.load(Ordering::Relaxed),
+                );
+            }
+        }
+        println!(
+            "ORCHESTRIX_GIT_ENTRYPOINT_EQUALITY={{\"samples\":8,\"exactStdoutEqual\":true,\"stderrEmpty\":true}}"
+        );
+    }
+
+    #[test]
     #[ignore = "private owned process fixture; no shell, network or provider"]
     fn owned_output_child() {
         let scenario = std::env::var(CHILD).expect("owned child scenario");
@@ -626,11 +784,14 @@ mod bulk_output_tests {
     #[test]
     fn pending_input_allows_draining_full_duplex_bulk_output_without_repeating_writes() {
         let scope = scope();
+        let total_started = Instant::now();
+        let spawn_started = Instant::now();
         let mut process = OwnedProcess::spawn_identified_backpressured(
             spec("duplex", 4 * MIB, Duration::from_secs(15), 8 * MIB as u64),
             &scope,
         )
         .unwrap();
+        let spawn_micros = spawn_started.elapsed().as_micros();
         assert!(matches!(
             process.begin_send(&[]),
             Err(ProcessError::Arguments)
@@ -641,13 +802,21 @@ mod bulk_output_tests {
         ));
         let input = duplex_input();
         let mut pending = Some(process.begin_send(&input).unwrap());
+        let queue_ready_started = Instant::now();
         wait_for(|| process.state.queue_full.load(Ordering::Acquire));
+        let queue_ready_micros = queue_ready_started.elapsed().as_micros();
         assert_eq!(pending.as_mut().unwrap().try_complete(), Ok(None));
         let started = Instant::now();
+        let mut receive_micros = 0;
+        let mut tree_micros = 0;
+        let mut tree_queries = 0;
         let mut output = Vec::new();
         let mut error = Vec::new();
         loop {
-            if let Some(event) = process.receive(Duration::from_millis(5)).unwrap() {
+            let receive_started = Instant::now();
+            let event = process.receive(Duration::from_millis(5)).unwrap();
+            receive_micros += receive_started.elapsed().as_micros();
+            if let Some(event) = event {
                 match event {
                     ProcessEvent::Stdout(bytes) => output.extend(bytes),
                     ProcessEvent::Stderr(bytes) => error.extend(bytes),
@@ -661,7 +830,10 @@ mod bulk_output_tests {
                 process.close_input();
             }
             let streams = process.streams();
+            let tree_started = Instant::now();
             let tree = process.tree().unwrap();
+            tree_micros += tree_started.elapsed().as_micros();
+            tree_queries += 1;
             if pending.is_none()
                 && tree.root_exit_code == Some(0)
                 && tree.active_processes == 0
@@ -679,6 +851,7 @@ mod bulk_output_tests {
             }
             assert!(started.elapsed() < Duration::from_secs(10));
         }
+        let drain_micros = started.elapsed().as_micros();
         let offset = output
             .windows(PAYLOAD.len())
             .position(|window| window == PAYLOAD)
@@ -700,8 +873,23 @@ mod bulk_output_tests {
         assert_eq!(&output[offset + 4 * MIB + INPUT_PAYLOAD.len()..], input);
         assert!(error.is_empty());
         assert_eq!(process.health(), Ok(()));
+        let state = Arc::clone(&process.state);
+        let close_started = Instant::now();
         assert!(process.terminate(Duration::from_secs(3)).unwrap().owned);
         assert_closed(&process.state);
+        let terminate_micros = close_started.elapsed().as_micros();
+        let drop_started = Instant::now();
+        drop(process);
+        let drop_micros = drop_started.elapsed().as_micros();
+        assert_eq!(scope.active().unwrap(), 0);
+        println!(
+            "ORCHESTRIX_BULK_TIMING={{\"scenario\":\"duplex\",\"spawnMicros\":{spawn_micros},\"queueReadyMicros\":{queue_ready_micros},\"drainMicros\":{drain_micros},\"receiveMicros\":{receive_micros},\"treeObservationMicros\":{tree_micros},\"treeQueries\":{tree_queries},\"terminateMicros\":{terminate_micros},\"dropMicros\":{drop_micros},\"totalMicros\":{},\"stdoutBytes\":{},\"stderrBytes\":{},\"queueFullCount\":{},\"queueFullWaitMicros\":{}}}",
+            total_started.elapsed().as_micros(),
+            output.len(),
+            error.len(),
+            state.queue_full_count.load(Ordering::Relaxed),
+            state.queue_full_wait_micros.load(Ordering::Relaxed),
+        );
     }
 
     #[test]

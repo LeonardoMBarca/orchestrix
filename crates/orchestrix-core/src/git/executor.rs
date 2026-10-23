@@ -37,25 +37,29 @@ fn scoped_run(
     deadline: Duration,
     limit: usize,
 ) -> GitResult<GitOutput> {
+    use crate::integration_diagnostics::{CounterKind, CounterTimer};
     use orchestrix_process::{OwnedProcess, ProcessEvent, ProcessLimits, SpawnSpec};
-    let mut process = OwnedProcess::spawn_identified_backpressured(
-        SpawnSpec {
-            executable: PathBuf::from(command.get_program()),
-            arguments: command.get_args().map(OsString::from).collect(),
-            cwd: command.get_current_dir().ok_or(GitError::Path)?.into(),
-            environment: command
-                .get_envs()
-                .filter_map(|(k, v)| v.map(|v| (k.into(), v.into())))
-                .collect(),
-            limits: ProcessLimits {
-                lifetime: deadline,
-                max_output_bytes: limit as u64,
-                max_write_bytes: 1_048_576,
+    let mut process = {
+        let _spawn_timing = CounterTimer::start(CounterKind::GitSpawn);
+        OwnedProcess::spawn_identified_backpressured(
+            SpawnSpec {
+                executable: PathBuf::from(command.get_program()),
+                arguments: command.get_args().map(OsString::from).collect(),
+                cwd: command.get_current_dir().ok_or(GitError::Path)?.into(),
+                environment: command
+                    .get_envs()
+                    .filter_map(|(k, v)| v.map(|v| (k.into(), v.into())))
+                    .collect(),
+                limits: ProcessLimits {
+                    lifetime: deadline,
+                    max_output_bytes: limit as u64,
+                    max_write_bytes: 1_048_576,
+                },
             },
-        },
-        scope,
-    )
-    .map_err(|_| GitError::Ownership)?;
+            scope,
+        )
+        .map_err(|_| GitError::Ownership)?
+    };
     // Git's batch protocol may produce a large blob before reading the next
     // request. Do not await a completed pipe write while its output queue needs
     // this same consumer: retain one bounded write ticket and drain both sides.
@@ -96,7 +100,10 @@ fn scoped_run(
                 None => break,
             }
         }
-        let tree = process.tree().map_err(|_| GitError::Ownership)?;
+        let tree = {
+            let _tree_timing = CounterTimer::start(CounterKind::GitTree);
+            process.tree().map_err(|_| GitError::Ownership)?
+        };
         let streams = process.streams();
         if let Some(code) = tree.root_exit_code
             && tree.owned
@@ -119,6 +126,7 @@ fn scoped_run(
                 }
             }
             process.health().map_err(scoped_io_error)?;
+            let _close_timing = CounterTimer::start(CounterKind::GitClose);
             let stopped = process
                 .terminate(Duration::from_secs(3))
                 .map_err(|_| GitError::Ownership)?;
@@ -131,6 +139,8 @@ fn scoped_run(
             {
                 return Err(GitError::Ownership);
             }
+            // Include the same normal RAII cleanup in the close counter.
+            drop(process);
             return Ok(GitOutput {
                 stdout,
                 status: code as i32,

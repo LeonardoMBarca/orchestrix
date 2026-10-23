@@ -1025,6 +1025,17 @@ pub fn capture_with_observer<F: FnOnce() -> GitResult<()>>(
     limits: CaptureLimits,
     between: F,
 ) -> GitResult<CapturedArtifact> {
+    capture_with_fences(executor, root, intent, limits, between, || Ok(()))
+}
+
+fn capture_with_fences(
+    executor: &GitExecutor,
+    root: &Path,
+    intent: &WorktreeIntent,
+    limits: CaptureLimits,
+    between: impl FnOnce() -> GitResult<()>,
+    after_assembly: impl FnOnce() -> GitResult<()>,
+) -> GitResult<CapturedArtifact> {
     limits.validate()?;
     if !intent.validate() {
         return Err(GitError::Path);
@@ -1058,9 +1069,12 @@ pub fn capture_with_observer<F: FnOnce() -> GitResult<()>>(
         return Err(GitError::Ownership);
     }
     between()?;
-    let second = observe()?;
-    if first != second {
-        return Err(GitError::InconsistentCapture);
+    if intent.preservation.is_none() {
+        // Preserve the legacy v1 observation sequence and artifact semantics.
+        let second = observe()?;
+        if first != second {
+            return Err(GitError::InconsistentCapture);
+        }
     }
     let mut cache = BTreeMap::new();
     let mut read_bytes = 0;
@@ -1132,8 +1146,14 @@ pub fn capture_with_observer<F: FnOnce() -> GitResult<()>>(
                 && first.untracked.contains(path),
         });
     }
-    // The immutable-object reads above must not widen the accepted observation
-    // interval: a final read also catches writes during patch/manifest assembly.
+    after_assembly()?;
+    // For v2, this is the second complete mutable observation, bracketing both
+    // the original files and all native-object reads/delta assembly above. The
+    // earlier interior observation added no independent authority: every field
+    // it compared is still compared against the first at this closing fence.
+    // Never reuse this observation across captures/checks or replace hashes by
+    // watch silence. This is coherent sampling, not an atomic hostile-writer
+    // snapshot; existing sticky watches cover supervised transient mutations.
     if observe()? != first {
         return Err(GitError::InconsistentCapture);
     }
@@ -1193,6 +1213,10 @@ pub fn capture_with_observer<F: FnOnce() -> GitResult<()>>(
     }
     Ok(artifact)
 }
+
+#[cfg(all(test, windows))]
+#[path = "capture_fence_tests.rs"]
+mod fence_tests;
 
 #[cfg(test)]
 mod metadata_batch_tests {

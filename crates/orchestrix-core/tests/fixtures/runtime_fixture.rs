@@ -52,8 +52,35 @@ A Context Pack selects the content supplied by Orchestrix. It is not a read sand
     }
     if args.first().map(String::as_str) == Some("--mutate-restore-fixture-check") {
         let before = std::fs::read("fixture.txt").unwrap();
+        let modified = std::fs::metadata("fixture.txt")
+            .unwrap()
+            .modified()
+            .unwrap();
         std::fs::write("fixture.txt", "changed-by-check\n").unwrap();
-        std::fs::write("fixture.txt", before).unwrap();
+        std::fs::write("fixture.txt", &before).unwrap();
+        if args.get(1).map(String::as_str) == Some("--restore-metadata") {
+            std::fs::File::options()
+                .write(true)
+                .open("fixture.txt")
+                .unwrap()
+                .set_modified(modified)
+                .unwrap();
+            let bytes_restored = std::fs::read("fixture.txt").unwrap() == before;
+            let time_restored = std::fs::metadata("fixture.txt")
+                .unwrap()
+                .modified()
+                .unwrap()
+                == modified;
+            assert!(bytes_restored && time_restored);
+            if let Some(marker) = args.get(2) {
+                std::fs::write(
+                    marker,
+                    json!({"bytesRestored":bytes_restored,"modifiedTimeRestored":time_restored})
+                        .to_string(),
+                )
+                .unwrap();
+            }
+        }
         return;
     }
     if args.first().map(String::as_str) == Some("--check-hang") {

@@ -582,7 +582,7 @@ fn execute_fixture(
     let start = Instant::now();
     let service = IntegrationService::new();
     let mut integration_phases = Vec::new();
-    let request = IntegrationRequest {
+    let mut request = IntegrationRequest {
         schema_version: 1,
         id: "opaque-integration".into(),
         worker_id: final_worker.intent.id.clone(),
@@ -592,6 +592,15 @@ fn execute_fixture(
         target_directory: f.repo.clone(),
         checks: task.checks.clone(),
     };
+    let restored_marker = f.home.join("integration-check-restored.json");
+    if fault == Some("integration-transient-check") {
+        request.checks[0].arguments = vec![
+            "--mutate-restore-fixture-check".into(),
+            "--restore-metadata".into(),
+            restored_marker.to_str().unwrap().into(),
+        ];
+        request.checks[0].authorization_ref = "explicit-transient-check-test".into();
+    }
     let prepared = if matches!(measurement, Some(PreparationMeasurement::Daemon)) {
         drop(store);
         let record = measure_daemon_preparation(&f, &request);
@@ -660,6 +669,42 @@ fn execute_fixture(
         assert!(prepared.candidate_revision().is_some());
         assert!(prepared.detail("approval").is_none());
         assert!(prepared.detail("application").is_none());
+        return;
+    }
+    if fault == Some("integration-transient-check") {
+        assert_eq!(prepared.status(), IntegrationStatus::Uncertain);
+        assert_eq!(
+            prepared.detail("reason"),
+            Some(&json!("combined-artifact-changed"))
+        );
+        assert!(prepared.candidate_revision().is_none());
+        let marker: Value = serde_json::from_slice(&fs::read(&restored_marker).unwrap()).unwrap();
+        assert_eq!(
+            marker,
+            json!({"bytesRestored":true,"modifiedTimeRestored":true})
+        );
+        assert_eq!(
+            fs::read(Path::new(&prepared.intent.worktree.path).join("fixture.txt")).unwrap(),
+            b"after\n"
+        );
+        assert_eq!(
+            git(&f.repo, &["ls-tree", "-r", "-l", "-z", "HEAD"]),
+            source_before
+        );
+        let ledger = fs::read(f.home.join("dispatch-count")).unwrap();
+        drop(store);
+        let mut reopened = Store::open(&f.db).unwrap();
+        let replay = service.prepare(&mut reopened, &request, &cancel).unwrap();
+        assert_eq!(
+            serde_json::to_value(&replay).unwrap(),
+            serde_json::to_value(&prepared).unwrap()
+        );
+        assert_eq!(fs::read(f.home.join("dispatch-count")).unwrap(), ledger);
+        assert_eq!(
+            reopened.load().unwrap().captured_artifacts()
+                [&(final_artifact.id.clone(), final_artifact.revision.clone())],
+            final_artifact
+        );
         return;
     }
     if fault == Some("protected-during-materialization") {
@@ -996,6 +1041,10 @@ fn protected_target_change_after_approval_invalidates_before_application_without
 #[test]
 fn protected_change_after_fresh_base_verification_blocks_materialization_without_restoration() {
     execute(false, false, Some("protected-during-materialization"))
+}
+#[test]
+fn integration_check_restoring_bytes_and_timestamp_still_invalidates_without_replay() {
+    execute(false, false, Some("integration-transient-check"))
 }
 #[test]
 fn mixed_base_crash_after_target_effect_reconciles_without_reapplying() {
