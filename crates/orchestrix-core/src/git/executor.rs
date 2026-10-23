@@ -519,7 +519,7 @@ impl GitExecutor {
                 reap_bounded(&mut child);
                 return Err(GitError::Deadline);
             }
-            match receiver.recv_timeout(Duration::from_millis(5)) {
+            match receive_pipe(&receiver, Duration::from_millis(5)) {
                 Ok(Pipe::Data(is_stderr, bytes)) => {
                     count = count.saturating_add(bytes.len());
                     if count > limit {
@@ -1303,6 +1303,23 @@ enum Pipe {
     InputClosed,
     Error,
 }
+fn receive_pipe(
+    receiver: &mpsc::Receiver<Pipe>,
+    timeout: Duration,
+) -> Result<Pipe, mpsc::RecvTimeoutError> {
+    let started = Instant::now();
+    let received = receiver.recv_timeout(timeout);
+    if matches!(&received, Err(mpsc::RecvTimeoutError::Disconnected)) {
+        // The readers may reach EOF before the child exits. A disconnected
+        // channel has no remaining sender to wake this wait, so avoid spinning
+        // try_wait while preserving the caller's existing polling interval.
+        let remaining = timeout.saturating_sub(started.elapsed());
+        if !remaining.is_zero() {
+            thread::sleep(remaining);
+        }
+    }
+    received
+}
 fn drain(mut pipe: impl Read + Send + 'static, stderr: bool, sender: mpsc::SyncSender<Pipe>) {
     thread::spawn(move || {
         let mut bytes = [0u8; 8192];
@@ -1328,6 +1345,75 @@ fn drain(mut pipe: impl Read + Send + 'static, stderr: bool, sender: mpsc::SyncS
         }
     });
 }
+
+#[cfg(test)]
+mod pipe_wait_tests {
+    use super::*;
+
+    #[test]
+    fn disconnected_pipe_waits_without_synthesizing_closed_events() {
+        let (sender, receiver) = mpsc::sync_channel(8);
+        sender.send(Pipe::Data(false, b"out".to_vec())).unwrap();
+        sender.send(Pipe::Data(true, b"err".to_vec())).unwrap();
+        sender.send(Pipe::Closed).unwrap();
+        sender.send(Pipe::Closed).unwrap();
+        sender.send(Pipe::InputClosed).unwrap();
+        drop(sender);
+        for (is_stderr, expected) in [(false, b"out".as_slice()), (true, b"err".as_slice())] {
+            assert!(matches!(
+                receive_pipe(&receiver, Duration::ZERO),
+                Ok(Pipe::Data(stream, bytes)) if stream == is_stderr && bytes.as_slice() == expected
+            ));
+        }
+        for _ in 0..2 {
+            assert!(matches!(
+                receive_pipe(&receiver, Duration::ZERO),
+                Ok(Pipe::Closed)
+            ));
+        }
+        assert!(matches!(
+            receive_pipe(&receiver, Duration::ZERO),
+            Ok(Pipe::InputClosed)
+        ));
+        let timeout = Duration::from_millis(5);
+        let started = Instant::now();
+        assert!(matches!(
+            receive_pipe(&receiver, timeout),
+            Err(mpsc::RecvTimeoutError::Disconnected)
+        ));
+        assert!(started.elapsed() >= timeout);
+    }
+
+    #[test]
+    fn open_pipe_timeout_remains_distinct_from_disconnection() {
+        let (sender, receiver) = mpsc::sync_channel(1);
+        let timeout = Duration::from_millis(5);
+        let started = Instant::now();
+        assert!(matches!(
+            receive_pipe(&receiver, timeout),
+            Err(mpsc::RecvTimeoutError::Timeout)
+        ));
+        assert!(started.elapsed() >= timeout);
+        sender.send(Pipe::Closed).unwrap();
+        assert!(matches!(
+            receive_pipe(&receiver, Duration::ZERO),
+            Ok(Pipe::Closed)
+        ));
+    }
+
+    #[test]
+    fn zero_pipe_wait_does_not_wait_for_a_disconnected_sender() {
+        let (sender, receiver) = mpsc::sync_channel(1);
+        drop(sender);
+        let started = Instant::now();
+        assert!(matches!(
+            receive_pipe(&receiver, Duration::ZERO),
+            Err(mpsc::RecvTimeoutError::Disconnected)
+        ));
+        assert!(started.elapsed() < Duration::from_millis(50));
+    }
+}
+
 fn reap_bounded(child: &mut std::process::Child) {
     for _ in 0..20 {
         if child.try_wait().ok().flatten().is_some() {
