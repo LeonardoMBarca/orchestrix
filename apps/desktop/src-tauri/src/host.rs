@@ -1964,8 +1964,6 @@ impl Host {
         {
             return Err(err("task-budget"));
         }
-        let binding = self.preparation_binding(&draft.connection_id, draft.connection_revision)?;
-        let (snapshot, settings, settings_fingerprint) = self.preparation_settings()?;
         let (repository, worktrees, context_files, checks) = {
             let editor = self.editor.lock().map_err(|_| "editor-lock")?;
             let repository = editor.directory(&draft.repository_grant)?;
@@ -1995,17 +1993,17 @@ impl Host {
                 if check.timeout_seconds == 0 || check.timeout_seconds > 90 {
                     return Err(err("check-timeout"));
                 }
-                checks.push(CheckSpec {
+                let mut spec = CheckSpec {
                     id: check.id.clone(),
                     executable: executable.clone(),
                     arguments: check.args.clone(),
                     authorization_ref: id("check-consent"),
                     authorized: true,
                     timeout_ms: check.timeout_seconds * 1000,
-                    executable_sha256: Some(sha(
-                        &fs::read(executable).map_err(|_| "check-executable-unavailable")?
-                    )),
-                });
+                    executable_sha256: None,
+                };
+                spec.executable_sha256 = Some(spec.preflight_executable()?);
+                checks.push(spec);
             }
             (repository, worktrees, context_files, checks)
         };
@@ -2016,6 +2014,8 @@ impl Host {
         {
             return Err(err("repository-worktree-database-separation"));
         }
+        let binding = self.preparation_binding(&draft.connection_id, draft.connection_revision)?;
+        let (snapshot, settings, settings_fingerprint) = self.preparation_settings()?;
         // UI inspection grants no authority. Reinspect the complete snapshot
         // before any authenticated metadata and pin the observed base exactly.
         let report: orchestrix_core::git::RepositoryPreflight =
@@ -2640,6 +2640,71 @@ mod tests {
             .unwrap();
         assert_eq!(created["affectedIntegrations"], json!(["candidate-one"]));
         assert_eq!(observed.lock().unwrap().len(), 3);
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn oversized_check_blocks_preparation_before_any_daemon_operation() {
+        let root = directory();
+        let repository = root.join("repository");
+        let worktrees = root.join("worktrees");
+        fs::create_dir(&repository).unwrap();
+        fs::create_dir(&worktrees).unwrap();
+        let executable = root.join("oversized-check.exe");
+        let file = fs::File::create(&executable).unwrap();
+        file.set_len(64 * 1_048_576 + 1).unwrap();
+        drop(file);
+        let mut host = Host::new(root.clone()).unwrap();
+        let calls = Arc::new(Mutex::new(0));
+        let observed = calls.clone();
+        host.test_transport = Some(Arc::new(move |_| {
+            *observed.lock().unwrap() += 1;
+            Err("preparation-must-block-locally".into())
+        }));
+        let mut editor = host.editor.lock().unwrap();
+        let repository_grant = editor.grant_dialog_selection(repository).unwrap().id;
+        let worktree_grant = editor.grant_dialog_selection(worktrees.clone()).unwrap().id;
+        let executable_grant = editor
+            .grant_dialog_selection(executable.clone())
+            .unwrap()
+            .id;
+        drop(editor);
+        let draft = TaskDraft {
+            editable_paths: Some(vec!["document.md".into()]),
+            conversation_id: "conversation-one".into(),
+            project_id: None,
+            repository_grant,
+            worktree_grant,
+            connection_id: "connection-one".into(),
+            connection_revision: Some(1),
+            objective: "Document context ownership".into(),
+            acceptance_criteria: vec!["Preserve existing content".into()],
+            context_files: Vec::new(),
+            checks: vec![CheckDraft {
+                id: "bounded-check".into(),
+                executable: executable_grant,
+                args: vec!["--verify".into()],
+                timeout_seconds: 5,
+            }],
+            strategy: "balanced".into(),
+            preset: String::new(),
+            model: String::new(),
+            effort: String::new(),
+            correction_budget: 1,
+            fallback: "compatible".into(),
+            allow_metadata_read: true,
+            mode: None,
+            profile: None,
+        };
+        let error = host
+            .handle(HostRequest::PrepareTask {
+                draft: Box::new(draft),
+            })
+            .unwrap_err();
+        assert_eq!(error, "check-executable-size");
+        assert_eq!(*calls.lock().unwrap(), 0);
+        assert_eq!(fs::read_dir(worktrees).unwrap().count(), 0);
+        assert_eq!(fs::metadata(executable).unwrap().len(), 64 * 1_048_576 + 1);
         fs::remove_dir_all(root).unwrap();
     }
 

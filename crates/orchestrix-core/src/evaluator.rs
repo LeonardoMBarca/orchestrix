@@ -11,6 +11,8 @@ use std::{
     time::{Duration, Instant},
 };
 
+const MAX_CHECK_EXECUTABLE_BYTES: u64 = 64 * 1_048_576;
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct CheckSpec {
@@ -80,6 +82,35 @@ impl CheckSpec {
         }
         Ok(())
     }
+
+    /// Read-only admission preflight; never starts the command. This applies
+    /// the evaluator's existing byte limit and optional pin without changing
+    /// structural validation or the meaning of historical CheckSpec values.
+    /// Evaluation repeats the same check immediately before launching.
+    pub fn preflight_executable(&self) -> Result<String, &'static str> {
+        self.validate()?;
+        let file = std::fs::File::open(&self.executable).map_err(|_| "check-path")?;
+        if file.metadata().map_err(|_| "check-path")?.len() > MAX_CHECK_EXECUTABLE_BYTES {
+            return Err("check-executable-size");
+        }
+        let mut binary = Vec::new();
+        file.take(MAX_CHECK_EXECUTABLE_BYTES + 1)
+            .read_to_end(&mut binary)
+            .map_err(|_| "check-path")?;
+        // Retain the bounded read guard if the file grows after metadata.
+        if binary.len() as u64 > MAX_CHECK_EXECUTABLE_BYTES {
+            return Err("check-executable-size");
+        }
+        let executable_hash = content_hash(&binary);
+        if self
+            .executable_sha256
+            .as_ref()
+            .is_some_and(|expected| expected != &executable_hash)
+        {
+            return Err("check-executable-changed");
+        }
+        Ok(executable_hash)
+    }
 }
 /// Observe an authorized process only. The caller must independently bind bytes/checks to an artifact.
 pub fn evaluate(
@@ -125,23 +156,7 @@ fn evaluate_owned<F: FnOnce()>(
     scope: Option<&orchestrix_process::named_job::JobScope>,
     started: F,
 ) -> Result<CheckReport, &'static str> {
-    spec.validate()?;
-    let file = std::fs::File::open(&spec.executable).map_err(|_| "check-path")?;
-    let mut binary = Vec::new();
-    file.take(64 * 1_048_576 + 1)
-        .read_to_end(&mut binary)
-        .map_err(|_| "check-path")?;
-    if binary.len() > 64 * 1_048_576 {
-        return Err("check-executable-size");
-    }
-    let executable_hash = content_hash(&binary);
-    if spec
-        .executable_sha256
-        .as_ref()
-        .is_some_and(|s| s != &executable_hash)
-    {
-        return Err("check-executable-changed");
-    }
+    let executable_hash = spec.preflight_executable()?;
     let command_hash = content_hash(
         serde_json::to_value(spec)
             .map_err(|_| "check-spec")?

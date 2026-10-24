@@ -263,19 +263,33 @@ fn forced_cancel_crash_and_lost_reply_remain_uncertain_without_retry() {
         let mut adapter = fixture.connect(scenario);
         let token = CancellationToken::new();
         let trigger = token.clone();
-        let thread = std::thread::spawn(move || {
-            std::thread::sleep(Duration::from_millis(100));
-            trigger.cancel();
-        });
         let report = adapter
-            .execute(execution("attempt"), &token, |_, _| Ok(()))
+            .execute(execution("attempt"), &token, |event, _| {
+                // Exercise forced cancellation only after this fixture's real
+                // start observation. A wall-clock cancellation could race the
+                // request or hide the other scenarios' protocol/auth faults.
+                if scenario == "ignore-interrupt" && event["type"] == "attempt.start-observed" {
+                    trigger.cancel();
+                }
+                Ok(())
+            })
             .unwrap();
-        thread.join().unwrap();
         assert!(report.fault.is_some(), "{scenario}");
         let snapshot = RuntimeObserver::restore_checkpoint(&report.observer_checkpoint)
             .unwrap()
             .snapshot();
         assert_eq!(snapshot["terminalConfirmed"], false, "{scenario}");
+        if scenario == "ignore-interrupt" {
+            assert!(token.is_cancelled());
+            assert_eq!(snapshot["startObserved"], true);
+            assert!(
+                snapshot["events"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .any(|event| { event["type"] == "attempt.interrupt-requested" })
+            );
+        }
         if scenario.starts_with("contradictory-") {
             assert_eq!(report.fault.as_ref().unwrap().code(), "ownership");
         }

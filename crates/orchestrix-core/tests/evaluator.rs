@@ -126,3 +126,97 @@ fn unknown_authority_or_changed_pinned_executable_never_launches() {
         "check-executable-changed"
     );
 }
+
+#[test]
+fn oversized_executable_is_rejected_by_preflight_without_reinterpreting_legacy_spec() {
+    let directory = Directory::new();
+    let executable = directory.0.join("oversized-check.exe");
+    let file = fs::File::create(&executable).unwrap();
+    file.set_len(64 * 1_048_576 + 1).unwrap();
+    drop(file);
+    let mut input = spec("--check-secret");
+    input.executable = executable;
+    input.executable_sha256 = Some("a".repeat(64));
+    // Historical structural validation never claimed a current executable
+    // size/hash observation. Its serialized representation stays unchanged.
+    input.validate().unwrap();
+    let historical = serde_json::to_string(&input).unwrap();
+    let restored: CheckSpec = serde_json::from_str(&historical).unwrap();
+    restored.validate().unwrap();
+    assert_eq!(serde_json::to_string(&restored).unwrap(), historical);
+    assert_eq!(
+        restored.preflight_executable().unwrap_err(),
+        "check-executable-size"
+    );
+    assert_eq!(
+        evaluate(
+            &restored,
+            &directory.0,
+            &"a".repeat(64),
+            &CancellationToken::new()
+        )
+        .unwrap_err(),
+        "check-executable-size"
+    );
+    restored.validate().unwrap();
+    assert_eq!(serde_json::to_string(&restored).unwrap(), historical);
+    assert_eq!(
+        fs::metadata(&restored.executable).unwrap().len(),
+        64 * 1_048_576 + 1
+    );
+}
+
+#[test]
+fn same_size_change_after_preflight_is_refused_by_preflight_and_evaluation() {
+    let directory = Directory::new();
+    let executable = directory.0.join("bounded-byte-input.exe");
+    fs::write(&executable, b"before\n").unwrap();
+    let mut input = spec("--check-secret");
+    input.executable = executable;
+    let pin = input.preflight_executable().unwrap();
+    assert_eq!(pin, orchestrix_core::git_records::content_hash(b"before\n"));
+    input.executable_sha256 = Some(pin);
+    fs::write(&input.executable, b"edited\n").unwrap();
+    assert_eq!(fs::metadata(&input.executable).unwrap().len(), 7);
+    input.validate().unwrap();
+    assert_eq!(
+        input.preflight_executable().unwrap_err(),
+        "check-executable-changed"
+    );
+    assert_eq!(
+        evaluate(
+            &input,
+            &directory.0,
+            &"a".repeat(64),
+            &CancellationToken::new()
+        )
+        .unwrap_err(),
+        "check-executable-changed"
+    );
+    assert_eq!(fs::read(&input.executable).unwrap(), b"edited\n");
+}
+
+#[test]
+fn executable_preflight_pin_is_rechecked_and_retained_by_a_normal_check() {
+    let directory = Directory::new();
+    fs::write(directory.0.join("fixture.txt"), "after\n").unwrap();
+    let mut input = spec("--check-fixture");
+    input.arguments.push("after\n".into());
+    let pin = input.preflight_executable().unwrap();
+    input.executable_sha256 = Some(pin.clone());
+    let report = evaluate(
+        &input,
+        &directory.0,
+        &"a".repeat(64),
+        &CancellationToken::new(),
+    )
+    .unwrap();
+    assert_eq!(report.result, EvaluationResult::Passed);
+    assert_eq!(report.exit_code, Some(0));
+    assert_eq!(report.executable_hash, pin);
+    assert!(report.tree_confirmed && report.streams_closed);
+    assert_eq!(
+        fs::read(directory.0.join("fixture.txt")).unwrap(),
+        b"after\n"
+    );
+}

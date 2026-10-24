@@ -1171,6 +1171,90 @@ fn project_scripts_are_not_authorized_by_discovery_or_check_configuration_alone(
 }
 
 #[test]
+fn check_executable_preflight_blocks_before_metadata_reservation_and_owned_processes() {
+    let fixture = Fixture::new();
+    let oversized = fixture.root.join("oversized-check.exe");
+    let file = fs::File::create(&oversized).unwrap();
+    file.set_len(64 * 1_048_576 + 1).unwrap();
+    drop(file);
+    let changed = fixture.root.join("changed-check.exe");
+    fs::write(&changed, b"before\n").unwrap();
+    let mut changed_check = check(&[]);
+    changed_check.executable = changed;
+    changed_check.executable_sha256 = Some(changed_check.preflight_executable().unwrap());
+    fs::write(&changed_check.executable, b"edited\n").unwrap();
+    let mut oversized_check = check(&[]);
+    oversized_check.executable = oversized;
+    let before_index = fs::read(fixture.repository.join(".git/index")).unwrap();
+    let before_status = git(&fixture.repository, &["status", "--porcelain=v1", "-z"]).stdout;
+    let mut store = fixture.store();
+    let before_revision = store.load().unwrap().revision();
+    let before_events = store.event_count().unwrap();
+    for (id, spec, reason) in [
+        (
+            "oversized-check-preflight",
+            oversized_check,
+            "check-executable-size",
+        ),
+        (
+            "changed-check-preflight",
+            changed_check,
+            "check-executable-changed",
+        ),
+    ] {
+        let mut request = fixture.request(id);
+        request.checks = vec![spec];
+        let error = ManualWorker::run(
+            &mut store,
+            &request,
+            fixture.launch("success"),
+            &CancellationToken::new(),
+        )
+        .unwrap_err();
+        assert_eq!(error.0, reason, "{id}");
+        assert!(!fixture.home.join("metadata-reads").exists(), "{id}");
+        assert!(!fixture.home.join("dispatch-count").exists(), "{id}");
+        assert_eq!(fixture.thread_count(), 0, "{id}");
+        assert_eq!(
+            fs::read_dir(&fixture.authorized).unwrap().count(),
+            0,
+            "{id}"
+        );
+        let state = store.load().unwrap();
+        assert_eq!(state.revision(), before_revision, "{id}");
+        assert!(state.workers().is_empty(), "{id}");
+        assert!(state.runs().is_empty(), "{id}");
+        assert!(state.worktrees().is_empty(), "{id}");
+        assert!(state.captured_artifacts().is_empty(), "{id}");
+        assert_eq!(store.event_count().unwrap(), before_events, "{id}");
+        assert!(
+            fs::read_dir(&fixture.root).unwrap().all(|entry| !entry
+                .unwrap()
+                .file_name()
+                .to_string_lossy()
+                .starts_with("orchestrix-supervisor-")),
+            "{id}"
+        );
+    }
+    drop(store);
+    let reopened = fixture.store();
+    let state = reopened.load().unwrap();
+    assert_eq!(state.revision(), before_revision);
+    assert!(state.workers().is_empty());
+    assert!(state.runs().is_empty());
+    assert!(state.worktrees().is_empty());
+    assert_eq!(reopened.event_count().unwrap(), before_events);
+    assert_eq!(
+        fs::read(fixture.repository.join(".git/index")).unwrap(),
+        before_index
+    );
+    assert_eq!(
+        git(&fixture.repository, &["status", "--porcelain=v1", "-z"]).stdout,
+        before_status
+    );
+}
+
+#[test]
 fn cancelling_an_authorized_check_terminates_its_job_and_cannot_mark_green() {
     let fixture = Fixture::new();
     let marker = fixture.home.join("check-started");

@@ -304,7 +304,7 @@ impl ManualWorker {
         }
         let mut check_ids = std::collections::BTreeSet::new();
         for check in &input.checks {
-            check.validate().map_err(WorkerError)?;
+            check.preflight_executable().map_err(WorkerError)?;
             if !check_ids.insert(&check.id) {
                 return Err(WorkerError("duplicate-check"));
             }

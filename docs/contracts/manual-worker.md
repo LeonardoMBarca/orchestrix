@@ -107,6 +107,18 @@ On a runtime fault, the adapter can also return an opaque, bounded `adapterDiagn
 
 The task manifest explicitly authorizes each executable, argv, timeout and authorization reference. Checks run in the owned worktree with sanitized environment, no shell wrapping or script discovery. Executable hashes and canonical command hashes, cwd, timeout, bounded sanitized stdout/stderr, exit code and process-tree/stream evidence are retained. Optional executable hash pinning rejects changed binaries. A configured command's authority does not extend to other discovered scripts.
 
+`CheckSpec::preflight_executable` performs the same read-only executable check
+used immediately before evaluation: structural authorization/path validation,
+the existing **64 MiB** executable bound and optional exact SHA-256 pin. The
+Desktop calls it before repository/provider preparation and pins its result;
+new worker admissions repeat it before metadata, reservation, worktree or owned
+process creation. Evaluation repeats it at launch, so preflight is not a lasting
+guarantee against later changes. An incompatible executable is rejected without
+starting it or increasing the bound. Structural `validate`, serialized specs,
+historical restoration and command replay retain their previous meaning; this
+current-file observation does not reinterpret an old check or make an uncertain
+attempt verified.
+
 After confirmed runtime success, the worker captures and publishes the exact OX-006 artifact. Other terminal/uncertain outcomes preserve capture when safe but do not publish a successful task result. Every check is bracketed by exact captures. Persistent change notifications cover both worktree and common Git admin directory, including index/refs; write-and-restore invalidates evidence. The initial conservative profile rejects **any write** there during verification, including ignored build outputs. Authorized build tools must explicitly direct outputs elsewhere; this watch is not a filesystem sandbox. Sequential captures and watch checks also cover the final durable result write.
 
 Passed checks produce Verified, pending independent review. Checks stop at the first failure/cancellation or invalidated artifact and record omitted command IDs and reasons. Failed checks produce NeedsWork; missing checks produce NoChecks. Neither missing nor failed tests produce a green result. Mutation changes the affected check report to Invalidated even if its process exited zero. Later inspection recaptures Verified artifacts and withdraws their current positive status on changed/uninspectable bytes while retaining historical facts. Independent review, final integration/application and delivery remain OX-013/OX-014; a worker result never marks the Task Completed or the Run Delivered.
