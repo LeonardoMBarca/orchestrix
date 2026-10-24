@@ -670,6 +670,324 @@ fn remote_control_status_with_any_execution_identity_or_invalid_params_fails_clo
     }
 }
 #[test]
+fn skills_changed_global_is_only_information_without_queries_or_attempt_evidence() {
+    for scenario in ["skills-changed-global", "skills-changed-canary"] {
+        let fixture = Fixture::new();
+        let mut adapter = fixture.connect(scenario);
+        let descriptor = adapter.metadata().descriptor.as_json().clone();
+        let controls = adapter.metadata().controls.clone();
+        let mut events = Vec::new();
+        let report = adapter
+            .execute(
+                execution("skills-info"),
+                &CancellationToken::new(),
+                |event, _| {
+                    events.push(event.clone());
+                    Ok(())
+                },
+            )
+            .unwrap();
+        assert_eq!(report.fault, None, "{scenario}");
+        assert_eq!(report.adapter_diagnostic, None);
+        assert_eq!(report.dispatch, "sent");
+        assert_eq!(*adapter.metadata().descriptor.as_json(), descriptor);
+        assert_eq!(adapter.metadata().controls, controls);
+        let snapshot = RuntimeObserver::restore_checkpoint(&report.observer_checkpoint)
+            .unwrap()
+            .snapshot();
+        assert_eq!(snapshot["terminalConfirmed"], true);
+        assert_eq!(snapshot["terminal"]["outcome"], "completed");
+        for kind in ["attempt.start-observed", "attempt.terminal-observed"] {
+            assert_eq!(
+                events.iter().filter(|event| event["type"] == kind).count(),
+                1,
+                "{scenario}: {kind}"
+            );
+        }
+        let normalized = serde_json::to_string(&json!({
+            "events":events,"observer":report.observer_checkpoint
+        }))
+        .unwrap();
+        for private in [
+            "skills/changed",
+            "do-not-persist-skill-path",
+            "do-not-persist-skill-content",
+            "do-not-adopt-skill-model",
+            "do-not-adopt-skill-effort",
+        ] {
+            assert!(!normalized.contains(private), "{scenario}: {private}");
+        }
+        let methods =
+            std::fs::read_to_string(fixture.home.join("skills-changed-request-methods")).unwrap();
+        assert_eq!(
+            methods.lines().collect::<Vec<_>>(),
+            [
+                "initialize",
+                "account/read",
+                "account/rateLimits/read",
+                "config/read",
+                "model/list",
+                "thread/start",
+                "turn/start"
+            ]
+        );
+        assert_eq!(
+            std::fs::read_to_string(fixture.home.join("dispatch-count")).unwrap(),
+            "1"
+        );
+        assert_eq!(report.tree.unwrap().active_processes, 0);
+        assert!(report.streams.stdin_closed);
+        assert!(report.streams.stdout_closed);
+        assert!(report.streams.stderr_closed);
+    }
+}
+#[test]
+fn skills_changed_without_real_terminal_does_not_impersonate_completion() {
+    let fixture = Fixture::new();
+    let mut adapter = fixture.connect("skills-changed-no-terminal");
+    let mut events = Vec::new();
+    let report = adapter
+        .execute(
+            execution("skills-no-terminal"),
+            &CancellationToken::new(),
+            |event, _| {
+                events.push(event.clone());
+                Ok(())
+            },
+        )
+        .unwrap();
+    assert_eq!(report.fault.as_ref().unwrap().code(), "crash");
+    assert_eq!(report.dispatch, "sent");
+    let snapshot = RuntimeObserver::restore_checkpoint(&report.observer_checkpoint)
+        .unwrap()
+        .snapshot();
+    assert_eq!(snapshot["startObserved"], false);
+    assert_eq!(snapshot["terminalConfirmed"], false);
+    assert_eq!(snapshot["outcome"], "unknown");
+    assert!(events.iter().all(|event| {
+        !matches!(
+            event["type"].as_str(),
+            Some("attempt.start-observed" | "attempt.terminal-observed")
+        )
+    }));
+    let methods =
+        std::fs::read_to_string(fixture.home.join("skills-changed-request-methods")).unwrap();
+    assert!(!methods.lines().any(|method| method == "skills/list"));
+    assert_eq!(
+        methods
+            .lines()
+            .filter(|method| *method == "turn/start")
+            .count(),
+        1
+    );
+    let tree = report.tree.unwrap();
+    assert_eq!(tree.root_exit_code, Some(23));
+    assert_eq!(tree.active_processes, 0);
+    assert!(report.streams.stdin_closed);
+    assert!(report.streams.stdout_closed);
+    assert!(report.streams.stderr_closed);
+}
+#[test]
+fn skills_changed_with_any_execution_identity_or_invalid_params_fails_closed() {
+    for (scenario, params_shape, thread_id, nested_thread, turn_id, nested_turn) in [
+        (
+            "skills-changed-thread",
+            "object",
+            "string",
+            "absent",
+            "absent",
+            "absent",
+        ),
+        (
+            "skills-changed-thread-foreign",
+            "object",
+            "string",
+            "absent",
+            "absent",
+            "absent",
+        ),
+        (
+            "skills-changed-thread-null",
+            "object",
+            "null",
+            "absent",
+            "absent",
+            "absent",
+        ),
+        (
+            "skills-changed-nested-thread",
+            "object",
+            "absent",
+            "string",
+            "absent",
+            "absent",
+        ),
+        (
+            "skills-changed-nested-thread-foreign",
+            "object",
+            "absent",
+            "string",
+            "absent",
+            "absent",
+        ),
+        (
+            "skills-changed-nested-thread-null",
+            "object",
+            "absent",
+            "absent",
+            "absent",
+            "absent",
+        ),
+        (
+            "skills-changed-turn",
+            "object",
+            "absent",
+            "absent",
+            "string",
+            "absent",
+        ),
+        (
+            "skills-changed-turn-foreign",
+            "object",
+            "absent",
+            "absent",
+            "string",
+            "absent",
+        ),
+        (
+            "skills-changed-turn-null",
+            "object",
+            "absent",
+            "absent",
+            "null",
+            "absent",
+        ),
+        (
+            "skills-changed-nested-turn",
+            "object",
+            "absent",
+            "absent",
+            "absent",
+            "string",
+        ),
+        (
+            "skills-changed-nested-turn-foreign",
+            "object",
+            "absent",
+            "absent",
+            "absent",
+            "string",
+        ),
+        (
+            "skills-changed-nested-turn-null",
+            "object",
+            "absent",
+            "absent",
+            "absent",
+            "absent",
+        ),
+        (
+            "skills-changed-contradictory-thread",
+            "object",
+            "string",
+            "string",
+            "absent",
+            "absent",
+        ),
+        (
+            "skills-changed-contradictory-turn",
+            "object",
+            "absent",
+            "absent",
+            "string",
+            "string",
+        ),
+        (
+            "skills-changed-array",
+            "array",
+            "absent",
+            "absent",
+            "absent",
+            "absent",
+        ),
+        (
+            "skills-changed-null",
+            "null",
+            "absent",
+            "absent",
+            "absent",
+            "absent",
+        ),
+        (
+            "skills-changed-string",
+            "string",
+            "absent",
+            "absent",
+            "absent",
+            "absent",
+        ),
+    ] {
+        let fixture = Fixture::new();
+        let mut adapter = fixture.connect(scenario);
+        let report = adapter
+            .execute(
+                execution("skills-contradiction"),
+                &CancellationToken::new(),
+                |_, _| Ok(()),
+            )
+            .unwrap();
+        assert_eq!(
+            report.fault.as_ref().unwrap().code(),
+            "ownership",
+            "{scenario}"
+        );
+        assert_eq!(report.dispatch, "sent");
+        let snapshot = RuntimeObserver::restore_checkpoint(&report.observer_checkpoint)
+            .unwrap()
+            .snapshot();
+        assert_eq!(snapshot["startObserved"], false, "{scenario}");
+        assert_eq!(snapshot["terminalConfirmed"], false, "{scenario}");
+        let diagnostic = report.adapter_diagnostic.unwrap();
+        assert_eq!(diagnostic["stage"], "notification");
+        assert_eq!(diagnostic["reason"], "global-scope");
+        assert_eq!(
+            diagnostic["methodSha256"],
+            "4781880021f88b798d54dd94cc42c068b5cf66286ad7d4d22dbee38cb418a01e"
+        );
+        assert_eq!(diagnostic["paramsShape"], params_shape, "{scenario}");
+        for (field, expected) in [
+            ("threadId", thread_id),
+            ("thread.id", nested_thread),
+            ("turnId", turn_id),
+            ("turn.id", nested_turn),
+        ] {
+            assert_eq!(
+                diagnostic["identityShapes"][field], expected,
+                "{scenario}: {field}"
+            );
+        }
+        for private in [
+            "skills/changed",
+            "private-foreign-thread",
+            "private-foreign-turn",
+            "do-not-persist-skill-content",
+        ] {
+            assert!(!diagnostic.to_string().contains(private));
+        }
+        let methods =
+            std::fs::read_to_string(fixture.home.join("skills-changed-request-methods")).unwrap();
+        assert!(!methods.lines().any(|method| method == "skills/list"));
+        assert_eq!(
+            methods
+                .lines()
+                .filter(|method| *method == "turn/start")
+                .count(),
+            1
+        );
+        assert_eq!(report.tree.unwrap().active_processes, 0);
+    }
+}
+#[test]
 fn owns_descendant_after_root_exit_and_never_terminates_unrelated_process() {
     struct Unrelated(std::process::Child);
     impl Drop for Unrelated {

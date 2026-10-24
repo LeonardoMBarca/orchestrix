@@ -190,6 +190,16 @@ A Context Pack selects the content supplied by Orchestrix. It is not a read sand
         }
         let id = request["id"].clone();
         let params = &request["params"];
+        // Synthetic-only audit: retain method names, never request bodies, so
+        // skills invalidation cannot silently start another metadata query.
+        if scenario.starts_with("skills-changed-") {
+            let mut methods = std::fs::OpenOptions::new()
+                .create(true)
+                .append(true)
+                .open(auth_home.join("skills-changed-request-methods"))
+                .unwrap();
+            writeln!(methods, "{method}").unwrap();
+        }
         // Explicit opt-in in an owned synthetic home only. This fixture is not
         // a production adapter/logger and never handles provider credentials.
         // Preserve the exact received JSON bytes for Context Pack provenance.
@@ -371,6 +381,58 @@ A Context Pack selects the content supplied by Orchestrix. It is not a read sand
                         _ => panic!("unknown remote status fixture"),
                     }
                     send(json!({"method":"remoteControl/status/changed","params":params}));
+                }
+                if scenario.starts_with("skills-changed-") {
+                    // Pinned SkillsChangedNotification is an object without
+                    // execution identities. Other values exercise closed
+                    // global-scope rejection, even when an ID matches.
+                    let mut params = json!({});
+                    match scenario {
+                        "skills-changed-global" => {}
+                        "skills-changed-canary" | "skills-changed-no-terminal" => {
+                            params = json!({"status":"completed","ordinaryUsageAllowed":false,"path":"do-not-persist-skill-path","content":"do-not-persist-skill-content","model":"do-not-adopt-skill-model","reasoningEffort":"do-not-adopt-skill-effort"})
+                        }
+                        "skills-changed-thread" => params["threadId"] = json!(thread),
+                        "skills-changed-thread-foreign" => {
+                            params["threadId"] = json!("private-foreign-thread")
+                        }
+                        "skills-changed-thread-null" => params["threadId"] = Value::Null,
+                        "skills-changed-nested-thread" => params["thread"] = json!({"id":thread}),
+                        "skills-changed-nested-thread-foreign" => {
+                            params["thread"] = json!({"id":"private-foreign-thread"})
+                        }
+                        "skills-changed-nested-thread-null" => params["thread"] = Value::Null,
+                        "skills-changed-turn" => params["turnId"] = json!(turn_id),
+                        "skills-changed-turn-foreign" => {
+                            params["turnId"] = json!("private-foreign-turn")
+                        }
+                        "skills-changed-turn-null" => params["turnId"] = Value::Null,
+                        "skills-changed-nested-turn" => params["turn"] = json!({"id":turn_id}),
+                        "skills-changed-nested-turn-foreign" => {
+                            params["turn"] = json!({"id":"private-foreign-turn"})
+                        }
+                        "skills-changed-nested-turn-null" => params["turn"] = Value::Null,
+                        "skills-changed-contradictory-thread" => {
+                            params["threadId"] = json!(thread);
+                            params["thread"] = json!({"id":"private-foreign-thread"});
+                        }
+                        "skills-changed-contradictory-turn" => {
+                            params["turnId"] = json!(turn_id);
+                            params["turn"] = json!({"id":"private-foreign-turn"});
+                        }
+                        "skills-changed-array" => params = json!(["do-not-persist-skill-content"]),
+                        "skills-changed-null" => params = Value::Null,
+                        "skills-changed-string" => params = json!("do-not-persist-skill-content"),
+                        _ => panic!("unknown skills changed fixture"),
+                    }
+                    send(json!({"method":"skills/changed","params":params}));
+                    if scenario == "skills-changed-no-terminal" {
+                        // A misleading status on global metadata is not a
+                        // start or terminal observation for this attempt.
+                        // Exit deliberately before either real notification,
+                        // without racing timeout escalation against pipe EOF.
+                        std::process::exit(23);
+                    }
                 }
                 if scenario.starts_with("warning-") {
                     let mut params = json!({"message":"do-not-persist-provider-message"});

@@ -15,6 +15,19 @@ use std::time::{Duration, Instant};
 /// Inspected protocol revisions; another version requires schema inspection and validation.
 pub const SUPPORTED_CODEX_VERSIONS: [&str; 2] = ["0.162.0-alpha.2", "0.162.0-alpha.17.2"];
 const SYNTHETIC_VERSION: &str = "synthetic-rust-1";
+
+fn global_metadata_notification(version: &str, method: &str) -> bool {
+    matches!(
+        method,
+        "account/updated"
+            | "account/rateLimits/updated"
+            | "configWarning"
+            | "deprecationNotice"
+            | "windows/worldWritableWarning"
+            | "remoteControl/status/changed"
+    ) || (method == "skills/changed" && matches!(version, "0.162.0-alpha.17.2" | SYNTHETIC_VERSION))
+}
+
 pub fn neutral_effort(version: &str, native: &str) -> Option<&'static str> {
     if !SUPPORTED_CODEX_VERSIONS.contains(&version) && version != SYNTHETIC_VERSION {
         return None;
@@ -922,18 +935,13 @@ impl CodexAdapter {
             // Global metadata is not evidence of this attempt's execution. The
             // transport still bounds its frames/bytes; never adopt its contents
             // as an auth, quota, configuration or terminal observation here.
-            if matches!(
-                method,
-                "account/updated"
-                    | "account/rateLimits/updated"
-                    | "configWarning"
-                    | "deprecationNotice"
-                    | "windows/worldWritableWarning"
-                    | "remoteControl/status/changed"
-            ) {
+            if global_metadata_notification(&self.launch.version, method) {
                 // The pinned remote-control status is global, with no thread
                 // or turn identities. Its remote identifiers/content are never
                 // adopted or retained, and no remote-control command is sent.
+                // On alpha.17.2, skills/changed is only a local skill-cache
+                // invalidation. This adapter has no skills/list cache to
+                // refresh: discard it without another RPC or any new authority.
                 if !params.is_object()
                     || params.get("threadId").is_some()
                     || params.get("thread").is_some()
@@ -1668,4 +1676,25 @@ fn verify_binary_version(launch: &RuntimeLaunch, cancel: &CancellationToken) -> 
         return Err(RuntimeError::new("version", "not-sent"));
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{SYNTHETIC_VERSION, global_metadata_notification};
+
+    #[test]
+    fn skills_invalidation_is_limited_to_the_inspected_profile() {
+        for version in ["0.162.0-alpha.17.2", SYNTHETIC_VERSION] {
+            assert!(global_metadata_notification(version, "skills/changed"));
+        }
+        for version in ["0.162.0-alpha.2", "0.162.0-alpha.18", "unknown"] {
+            assert!(!global_metadata_notification(version, "skills/changed"));
+        }
+        for version in ["0.162.0-alpha.2", "0.162.0-alpha.17.2", SYNTHETIC_VERSION] {
+            for method in ["account/updated", "remoteControl/status/changed"] {
+                assert!(global_metadata_notification(version, method));
+            }
+            assert!(!global_metadata_notification(version, "skills/unknown"));
+        }
+    }
 }
