@@ -6,6 +6,14 @@ Atualizado em **24 de outubro de 2026**. Este registro acompanha entregas e evid
 
 ## Incremento atual — OX-017, base completa e delta autorizado
 
+### Opt-in recebido; execução não iniciada por indisponibilidade nativa — 24/10
+
+O responsável autorizou **READY-r3/a8987606** pelo pedido `call_7164df4e153345b0955a0a6435a24a02`, sem ampliar seus limites. Nova conferência local conservou fonte, quatro binários, banco exclusivo de QA, árvore/histórico/índice do alvo e checkout principal. Preflight compartilhado **compatible/complete/applicationEligible**, **584 arquivos/54.451.461 B**, **583 protegidos**, em **18.032 ms**. Nenhum runtime ou Store foi aberto; a inspeção do repositório não chamou modelo.
+
+Computer Use falhou antes de listar apps: **native pipe is unavailable / os error 2**. Repetição leve e reset/reinicialização previstos na skill não recuperaram o componente; não houve interação alternativa. **Zero metadata, passes ou turnos; janela de 30 min e cadeia de revisão ainda não iniciadas.** Aplicativo/daemon não foram abertos, nenhum worker novo foi criado e o NeedsWork antigo permanece intacto. Foi solicitada somente a reativação do Computer Use, sem pedir renovação do opt-in não consumido.
+
+Checkpoint executável: `artifacts/dogfooding/criteria-v2-real-proposal-1792860362698-4ccb503a/authorized-run-1792870322990/CHECKPOINT.json`, authorization.json, native-availability.json e LOCAL-PREFLIGHT.json (SHA-256 **b2b1949d5eda3c2a6da1ab211c17ea2bee66e8a12d9323b106a96f9a96cd79a8**). Quando a ferramenta estiver disponível: conferir novamente escopo/hashes/estado local, abrir o Desktop normal congelado, preservar a conexão histórica única e criar novo projeto/conversa/comandos pela janela. Antes da primeira leitura, registrar início/reserva do orçamento; depois seguir os cinco critérios e limites de READY-r3. Não repetir inferência por API nem tratar esse preflight como prova real. OX-017 continua parcial; checkpoint documental local, sem push.
+
 ### Critérios auditados e checker v2 congelado — 24/10
 
 **Auditoria e substituto offline concluídos; nova prova real aguarda opt-in.** A [matriz](research/ox-017-criteria-checker-audit.md) confronta READY/prévia/Context Pack, fonte antiga e delta preservado. As palavras `workspace`/`context` e o teto de 120 no título eram exigências adicionais não apresentadas. O padrão de segurança exigia tokens que não demonstravam o significado: os trechos auditados negam certificação de segurança pela preservação. Essa análise local não aprova o documento nem substitui uma revisão independente. O worker antigo continua **NeedsWork**, com os mesmos bytes/hashes, sem execução do novo checker sobre sua tentativa.
