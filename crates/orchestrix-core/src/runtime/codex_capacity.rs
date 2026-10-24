@@ -135,9 +135,10 @@ pub(super) fn normalize(
     let mut buckets = Vec::new();
     let mut legacy = None;
     let mut view = "not-reported";
-    // Quantitative fields are pinned by the retained generated alpha.17.2 schema.
+    // Quantitative fields are pinned by the retained generated alpha.17.2 and
+    // 0.164.0-alpha.11.1 schemas; no new RPC or estimated capability is added.
     // The older supported executable keeps its strict qualitative permission only.
-    if synthetic || version == "0.162.0-alpha.17.2" {
+    if synthetic || matches!(version, "0.162.0-alpha.17.2" | "0.164.0-alpha.11.1") {
         if !value.get("rateLimits").is_some_and(Value::is_object) {
             issues.push("legacy-bucket-not-reported".into());
         }
@@ -209,6 +210,38 @@ mod tests {
         let result = normalize(&v, "connection", 1, "0.162.0-alpha.17.2", 1_000, false);
         result.validate().unwrap();
         result
+    }
+    #[test]
+    fn schema_0164_preserves_window_semantics_and_older_qualitative_profile() {
+        let raw = json!({"ordinaryUsageAllowed":false,"rateLimits":{"primary":{"usedPercent":0,"windowDurationMins":300,"resetsAt":2000},"secondary":{"usedPercent":75,"windowDurationMins":10080}},"rateLimitsByLimitId":null});
+        let old = normalize(&raw, "connection", 1, "0.162.0-alpha.17.2", 1000, false);
+        let new = normalize(&raw, "connection", 1, "0.164.0-alpha.11.1", 1000, false);
+        new.validate().unwrap();
+        assert_eq!(new.usage_allowed(), Some(false));
+        assert_eq!(
+            serde_json::to_value(&new.buckets).unwrap(),
+            serde_json::to_value(&old.buckets).unwrap()
+        );
+        assert_eq!(
+            new.buckets[0].windows[0]
+                .remaining_percent
+                .as_ref()
+                .unwrap()
+                .value,
+            100
+        );
+        let qualitative = normalize(&raw, "connection", 1, "0.162.0-alpha.2", 1000, false);
+        assert!(qualitative.buckets.is_empty());
+        assert_eq!(qualitative.usage_allowed(), Some(false));
+        let mut missing = raw.clone();
+        missing
+            .as_object_mut()
+            .unwrap()
+            .remove("ordinaryUsageAllowed");
+        assert_eq!(
+            normalize(&missing, "connection", 1, "0.164.0-alpha.11.1", 1000, false).usage_allowed(),
+            None
+        );
     }
     #[test]
     fn capacity_permission_zero_absence_null_and_invalid_remain_distinct() {

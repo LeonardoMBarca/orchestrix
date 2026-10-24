@@ -7,7 +7,8 @@ pub mod refresh;
 mod rpc;
 pub use codex::{
     AttemptExecution, CodexAdapter, RuntimeLaunch, RuntimeMetadata, RuntimeModelPresentation,
-    RuntimeReport, SUPPORTED_CODEX_VERSIONS, SessionBinding, native_effort, neutral_effort,
+    RuntimeReport, SUPPORTED_CODEX_VERSIONS, SUPPORTED_STRUCTURED_CODEX_VERSIONS, SessionBinding,
+    native_effort, neutral_effort,
 };
 pub use metadata::{
     CodexMetadataService, ManualRefreshClock, MetadataRead, RefreshClock, SystemRefreshClock,

@@ -1,0 +1,497 @@
+{
+  "schemaVersion": 1,
+  "recordedOn": "2026-10-24",
+  "scope": "public-schema-export-and-offline-adapter-qualification",
+  "platform": "windows-x86_64",
+  "baselineRuntimeVersion": "0.162.0-alpha.17.2",
+  "candidateRuntimeVersion": "0.164.0-alpha.11.1",
+  "officialDocumentation": "https://learn.chatgpt.com/docs/app-server",
+  "binaries": [
+    {
+      "distribution": "vscode-extension",
+      "bytes": 354661168,
+      "sha256": "4fd2f057bad603bf53dc202457ffd0c3591de62e867a8b01e73816e3fbce5a73"
+    },
+    {
+      "distribution": "desktop-bundled",
+      "bytes": 354661168,
+      "sha256": "1103e9e09c71fa2cd0afd6d8f3b9a2d63174fe8efd7cb5bd09f1cb14ef58a098"
+    }
+  ],
+  "exports": [
+    {
+      "mode": "stable",
+      "command": [
+        "app-server",
+        "generate-json-schema",
+        "--out",
+        "<output>"
+      ],
+      "filesPerBinary": 320,
+      "bothBinariesByteIdenticalByPath": true,
+      "inventorySha256": "92711d9496b4e8d29e923fd0dd9fb587e08e4dabe0b374f6532314ea9ac57f73",
+      "localReceipt": "artifacts/codex-0164-qualification-1792879429143/EXPORT.json",
+      "receiptSha256": "38ab92bfea9a8fe0303c048149c4ba916600a7445aa4bcfc9c5dc97157f867b2",
+      "rootBundleSha256": "4bf71076f0865b1387cdc18b53e244ab5f69ff299d7ed86e48bb0ece58bc5559",
+      "v2BundleSha256": "8fe0d6335768743b8388dfdbe95fef85303524093e2dffc301704555e73e718f"
+    },
+    {
+      "mode": "experimental-export-only",
+      "command": [
+        "app-server",
+        "generate-json-schema",
+        "--experimental",
+        "--out",
+        "<output>"
+      ],
+      "filesPerBinary": 458,
+      "bothBinariesByteIdenticalByPath": true,
+      "inventorySha256": "f9a014254ed7f90e9640d478acd4ea426088fae34e9a69305bcad524e2729a60",
+      "localReceipt": "artifacts/codex-0164-qualification-experimental-1792879467621/EXPORT.json",
+      "receiptSha256": "184f1bf797f51718fd5e856d86e867cc586877f16296d837e3dcb40000592e1c",
+      "rootBundleSha256": "b3cc4f4d1a5ea4f6b51c86ce78d0ac9c9ca7148f7aeaa6ccdd8111980dd3e8d6",
+      "v2BundleSha256": "3b9df7cbe5659538e7162e1f8fdadcad42badc08bfeac2fe617ede44ca057b12"
+    }
+  ],
+  "comparison": {
+    "schemasCompared": 32,
+    "criticalDefinitionsCompared": 13,
+    "allPreviouslyConsumedFieldsPresentInStable": true,
+    "criticalDefinitionsStructurallyIdentical": true,
+    "criticalDefinitions": [
+      "SandboxPolicy",
+      "ThreadStatus",
+      "Turn",
+      "ReasoningEffort",
+      "ApprovalsReviewer",
+      "AskForApproval",
+      "CodexErrorInfo",
+      "MessagePhase",
+      "SandboxMode",
+      "SandboxWorkspaceWrite",
+      "RateLimitSnapshot",
+      "RateLimitWindow",
+      "RateLimitReachedType"
+    ],
+    "localAudit": "artifacts/codex-0164-qualification-experimental-1792879467621/schema-audit.json",
+    "auditSha256": "c8a96a6f13c16c975396822bd127cd81c645a903cefc5f49f19970a5a398998d",
+    "auditSummarySha256": "af86b43fbaa4d365bbaaa138c693cf2a6195492ddb98f00059a170b6dc6ac42c",
+    "baselineRootBundleSha256": "c7338bc0830b61fb07ba35325d4fbeb8207a919e53468c664dda5803aacb6c8e",
+    "baselineV2BundleSha256": "6f622f94329e648ffcee48be34b78a35da19e55598fd71241dbb08508195c46d",
+    "rateLimitsResponse": {
+      "path": "v2/GetAccountRateLimitsResponse.json",
+      "baselineSha256": "cb9655e68130116f634ed9353e45b336492e6069a6628f424d1cd52e54eda0e0",
+      "candidateStableAndExperimentalSha256": "9c0def7f8ab2396122af939dffbf01b34b8d66082fe4129dd20917bfd4313fdc",
+      "consumedShapePreserved": true,
+      "planTypeEnumAdditions": [
+        "sci",
+        "sci_plus"
+      ]
+    },
+    "modelListResponse": {
+      "path": "v2/ModelListResponse.json",
+      "baselineAndCandidateSha256": "2fb387a2ed258fc74258828ea342d68f89ce4e8e22cd0329ca59d2b423f9108b"
+    }
+  },
+  "adapterGuards": {
+    "experimentalApi": false,
+    "exactVersionQualificationRequired": true,
+    "unsupportedAccountModalitiesRemainRejected": [
+      "API",
+      "AmazonBedrock",
+      "GCP"
+    ],
+    "workspaceRouting": {
+      "purpose": "opaque-binding-fence-only",
+      "fields": [
+        "chatgptAccountId",
+        "backendOrigin",
+        "accountRoutingOverride"
+      ],
+      "overrideWireValues": [
+        "NO_CONSTRAINT",
+        "us",
+        "us_cr"
+      ],
+      "maxBytesPerValue": 512,
+      "legacyFingerprintProjectionPreserved": true,
+      "volatileCapacityExcludedFromFingerprint": true,
+      "immutableIdentityOrBillingAuthority": false
+    },
+    "threadReadStateChanged": {
+      "purpose": "validated-informational-notification-only",
+      "validates": [
+        "thread-ownership",
+        "top-level-alias-rejection",
+        "revision",
+        "first-unread-position"
+      ],
+      "historicalUnreadTurnIsNotActiveTurn": true,
+      "grantsExecutionOrTerminalAuthority": false
+    },
+    "ordinaryUsageAllowedMustBeExplicitlyTrueForExecution": true,
+    "effortIsNonemptyStringNotClosedEnum": true,
+    "currentTimeReadImplemented": false
+  },
+  "performedEffects": {
+    "emptyHomeAndCwdForExports": true,
+    "authenticatedMetadataReads": 0,
+    "inferenceTurns": 0,
+    "loginOrCredentialChanges": false,
+    "installations": false,
+    "providerCalls": false
+  },
+  "verification": {
+    "status": "passed-offline-combined",
+    "combinedRegressionResult": {
+      "localReceipt": "artifacts/codex-0164-verification-1792882083429/VERIFICATION.json",
+      "receiptSha256": "72ce9c100f4a5fae4169b4e967b11f6403ea835ad99014a07ad44b6ce17da486",
+      "sourceFiles": [
+        {
+          "path": "crates/orchestrix-core/src/runtime/codex.rs",
+          "sha256": "0e766c0cbd3b75091d16d41c204d8b81490acc68a45b208b7825df71af8eb076"
+        },
+        {
+          "path": "crates/orchestrix-core/src/runtime/codex_capacity.rs",
+          "sha256": "3573adbde683bc11943868d3a39afbb8de7e023913bc9c0ba0a7a96000083e6d"
+        },
+        {
+          "path": "crates/orchestrix-core/src/runtime/rpc.rs",
+          "sha256": "58b71c34620a9213fe73547b716174cce7deca18800fd0ac53acbbdf46dd69e9"
+        },
+        {
+          "path": "crates/orchestrix-core/src/runtime/mod.rs",
+          "sha256": "f8d3bdb4e8eede712ca5f281979bce65cfd403644e2ee0b8a28f82cdddf10eea"
+        },
+        {
+          "path": "crates/orchestrix-core/src/connections.rs",
+          "sha256": "424cdf3efab5a195cef6d7b03fd302a38edbf2ffe081dad26973a32a8be6c03b"
+        },
+        {
+          "path": "apps/desktop/src-tauri/src/connection_discovery.rs",
+          "sha256": "45ac0e77c68cffb6ff5d3d70b1bbabd7e0d88734980167a8eff4716a3e375452"
+        },
+        {
+          "path": "crates/orchestrix-core/tests/fixtures/runtime_fixture.rs",
+          "sha256": "f74fc119300c1fb04ebdd44f9bee542f300b5431901fb128a4c46aa02d84f463"
+        },
+        {
+          "path": "crates/orchestrix-core/tests/runtime_0164.rs",
+          "sha256": "ce65b400bba9e3840c462f08a2e958fb33002437b0aa7bd6cfc485cf8afa9c14"
+        }
+      ],
+      "commands": [
+        {
+          "label": "format",
+          "arguments": [
+            "--edition",
+            "2024",
+            "--check",
+            "crates/orchestrix-core/src/runtime/codex.rs",
+            "crates/orchestrix-core/src/runtime/codex_capacity.rs",
+            "crates/orchestrix-core/src/runtime/rpc.rs",
+            "crates/orchestrix-core/src/runtime/mod.rs",
+            "crates/orchestrix-core/src/connections.rs",
+            "apps/desktop/src-tauri/src/connection_discovery.rs",
+            "crates/orchestrix-core/tests/fixtures/runtime_fixture.rs",
+            "crates/orchestrix-core/tests/runtime_0164.rs"
+          ],
+          "exitCode": 0,
+          "elapsedMs": 10405,
+          "stdoutSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "label": "workspace-check",
+          "arguments": [
+            "check",
+            "--workspace",
+            "--all-targets",
+            "--all-features",
+            "--locked",
+            "--offline"
+          ],
+          "exitCode": 0,
+          "elapsedMs": 17520,
+          "stdoutSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "stderrSha256": "097e3d97573681a0cd442b61b2fcb32aa52d0020630f99bd70bf595d2607abe4"
+        },
+        {
+          "label": "runtime-lib",
+          "arguments": [
+            "test",
+            "-p",
+            "orchestrix-core",
+            "--lib",
+            "runtime::",
+            "--locked",
+            "--offline",
+            "--",
+            "--test-threads=1"
+          ],
+          "exitCode": 0,
+          "elapsedMs": 7693,
+          "stdoutSha256": "16192905dbcba0b13ac746a4381d54e1bc55f026554ef4e08e1f2716b58e86ae",
+          "stderrSha256": "80a8c3583e634784988f36f7a8b94fc0a80050a7164ccf4940371d0ce05f75c1",
+          "passed": 10,
+          "failed": 0,
+          "ignored": 0
+        },
+        {
+          "label": "runtime-0164",
+          "arguments": [
+            "test",
+            "-p",
+            "orchestrix-core",
+            "--release",
+            "--test",
+            "runtime_0164",
+            "--locked",
+            "--offline",
+            "--",
+            "--test-threads=1"
+          ],
+          "exitCode": 0,
+          "elapsedMs": 594055,
+          "stdoutSha256": "3e18d10ccc61476cb63ac68f8971fa3a672fd61b5ad5c218970f05ace05b2877",
+          "stderrSha256": "464f3d112d7436b375304a8eeed33ea4030c4348d9e1a77d084832fd3afeb3ad",
+          "passed": 9,
+          "failed": 0,
+          "ignored": 0
+        },
+        {
+          "label": "runtime-production",
+          "arguments": [
+            "test",
+            "-p",
+            "orchestrix-core",
+            "--release",
+            "--test",
+            "runtime_production",
+            "--locked",
+            "--offline",
+            "--",
+            "--test-threads=1"
+          ],
+          "exitCode": 0,
+          "elapsedMs": 73365,
+          "stdoutSha256": "b046e620bbc51d575a3b431fa5a66758d47182cfc93b10e3eb9a3de2b8466c7c",
+          "stderrSha256": "6dcb69b541f4f1351ba088a6d200795350936df5f4a75e5b030302e00aea8382",
+          "passed": 28,
+          "failed": 0,
+          "ignored": 1
+        },
+        {
+          "label": "connections",
+          "arguments": [
+            "test",
+            "-p",
+            "orchestrix-core",
+            "--test",
+            "connections",
+            "--locked",
+            "--offline",
+            "--",
+            "--test-threads=1"
+          ],
+          "exitCode": 0,
+          "elapsedMs": 121752,
+          "stdoutSha256": "d363989dcf9d64f601885e3e53d64e6310711c06ad5578290c8d7e1056d63274",
+          "stderrSha256": "59df6c71c32b2c52ac3651adb048eeb1fd5cfc1cd3ee692b512a0ffc01b177f3",
+          "passed": 8,
+          "failed": 0,
+          "ignored": 2
+        },
+        {
+          "label": "review",
+          "arguments": [
+            "test",
+            "-p",
+            "orchestrix-core",
+            "--test",
+            "review_pipeline",
+            "--locked",
+            "--offline",
+            "--",
+            "--test-threads=1"
+          ],
+          "exitCode": 0,
+          "elapsedMs": 1007013,
+          "stdoutSha256": "d0d5bb9b4391bfa962f24c1d12d4957713cac9a6bf51543de9670bc4f8af1748",
+          "stderrSha256": "4735fbaf7ac88fb25ac9351f71bd28e2906cb745c497bdfc1909db1d07db1a87",
+          "passed": 4,
+          "failed": 0,
+          "ignored": 0
+        },
+        {
+          "label": "check-admission",
+          "arguments": [
+            "test",
+            "-p",
+            "orchestrix-core",
+            "--test",
+            "manual_worker",
+            "check_executable_preflight_blocks_before_metadata_reservation_and_owned_processes",
+            "--locked",
+            "--offline",
+            "--",
+            "--exact",
+            "--test-threads=1"
+          ],
+          "exitCode": 0,
+          "elapsedMs": 14263,
+          "stdoutSha256": "dfed9e70e5044ef4dc6541ab53c9e0a588c9442a4bda128d0f434727cb9073e9",
+          "stderrSha256": "ce189bbbb692c55340eb78da1decbb83c96ce12fcc4c8637e997102de296016c",
+          "passed": 1,
+          "failed": 0,
+          "ignored": 0
+        },
+        {
+          "label": "desktop-lib",
+          "arguments": [
+            "test",
+            "-p",
+            "orchestrix-desktop",
+            "--lib",
+            "--locked",
+            "--offline",
+            "--",
+            "--test-threads=1"
+          ],
+          "exitCode": 0,
+          "elapsedMs": 75594,
+          "stdoutSha256": "d706a472d2e07af6ebcf177a583d61f74dd15523bbedf6d64917f71235a561d2",
+          "stderrSha256": "ed3d0ddbd8a19d91d5e74da6b7bc3ddc49a2c0dfbd46c902012727d8f9797a46",
+          "passed": 22,
+          "failed": 0,
+          "ignored": 0
+        },
+        {
+          "label": "clippy",
+          "arguments": [
+            "clippy",
+            "--workspace",
+            "--all-targets",
+            "--all-features",
+            "--locked",
+            "--offline",
+            "--",
+            "-D",
+            "warnings"
+          ],
+          "exitCode": 0,
+          "elapsedMs": 62014,
+          "stdoutSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "stderrSha256": "ca19a1e43f2cf4a0e71aaf64fe102d859bc480a64e8292ee5bfc749ac198036d"
+        },
+        {
+          "label": "examples",
+          "arguments": [
+            "build",
+            "--workspace",
+            "--examples",
+            "--locked",
+            "--offline"
+          ],
+          "exitCode": 0,
+          "elapsedMs": 6424,
+          "stdoutSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "stderrSha256": "79877e42d98d72b3351865e9aa8682db2ecb6ba24151a62cc1480327dc355f58"
+        },
+        {
+          "label": "conformance",
+          "arguments": [
+            "export-conformance.mjs",
+            "--check"
+          ],
+          "exitCode": 0,
+          "elapsedMs": 4925,
+          "stdoutSha256": "3c7bd524e2140695ee3c607e7233f97b179c51893effc2cb9b9aa9efd81805fe",
+          "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "label": "rust-boundary",
+          "arguments": [
+            "--test",
+            "--test-concurrency=1",
+            "tests/rust-core.spec.mjs"
+          ],
+          "exitCode": 0,
+          "elapsedMs": 20819,
+          "stdoutSha256": "8ed32f51855225a60b94c08562998dcb68ee8dc0f002625cc891168c9a7ccc6b",
+          "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        }
+      ]
+    },
+    "intermediateFailure": {
+      "suite": "runtime_0164-debug",
+      "passed": 8,
+      "total": 9,
+      "failure": "connect-timeout-500ms",
+      "isolatedCasePassed": true,
+      "cause": "not-diagnosed",
+      "serialReleaseProcessTargets": "runtime_0164 9/9; runtime_production 28/28 plus one authenticated test ignored; limits and assertions unchanged"
+    },
+    "authenticatedQualification": "not-performed",
+    "notes": "Static export/audit evidence does not certify execution equivalence, effective permissions, account identity, billing, entitlement, resume or independent review. Prior live allowances do not transfer automatically.",
+    "initialFixtureIntegration": {
+      "passed": 6,
+      "total": 9,
+      "limitations": "New positive fixture scenarios initially did not edit; per-process counter was incorrectly expected to span a restart. Fixture editing and use of existing durable dispatch ledger corrected; original after-byte assertions preserved. Subsequent focused debug run passed 9/9."
+    },
+    "conformance": {
+      "cases": 245,
+      "regenerated": false
+    }
+  },
+  "normalBuild": {
+    "localReceipt": "artifacts/codex-0164-normal-1792884189147/BUILD.json",
+    "receiptSha256": "17cbe99f6906170dace937be1604ec43e40c43f9cf3218e1d7e28b04f97e414c",
+    "sourceFingerprint": "d4ce87711d47d283acec3b903f0698a276239b141bf5a207a09e64a1aabea504",
+    "sourceFiles": 234,
+    "identifier": "dev.orchestrix.codex-0164-proof-1792884189147",
+    "binaries": [
+      {
+        "role": "core",
+        "bytes": 12261888,
+        "sha256": "ce803d31fba621ede8bba7d7b89c0766648d0cbc3bc6228ab41dd6949865c594"
+      },
+      {
+        "role": "supervisor",
+        "bytes": 2002432,
+        "sha256": "cb95f443550993135225d45f50331ac393815d3be20e0670f8d6e45ec242ea5e"
+      },
+      {
+        "role": "desktop",
+        "bytes": 21970432,
+        "sha256": "acc4f29350a24739607d1e9ddc7f62e1aaba5fca6680b1da6931e5b94d954234"
+      }
+    ],
+    "frontendTests": 76,
+    "typecheck": true,
+    "frontendBuild": true,
+    "nativeBuild": true,
+    "testFixtures": false,
+    "opened": false,
+    "installed": false,
+    "bundled": false,
+    "bundleWarning": "599.42 kB chunk exceeds unchanged 500 kB warning",
+    "commands": [
+      {
+        "label": "normal-core-release",
+        "exitCode": 0,
+        "elapsedMs": 667
+      },
+      {
+        "label": "frontend-tests",
+        "exitCode": 0,
+        "elapsedMs": 55090
+      },
+      {
+        "label": "normal-desktop",
+        "exitCode": 0,
+        "elapsedMs": 58674
+      }
+    ]
+  }
+}

@@ -12,7 +12,8 @@ const MAX_CANDIDATES: usize = 16;
 const MAX_PATH_ENTRIES: usize = 64;
 // Parser compatibility in Core is broader than the production profile accepted
 // for this Desktop increment. Older harness compatibility is not a live gate.
-pub const SUPPORTED_VERSIONS: &[&str] = &["0.162.0-alpha.17.2"];
+pub const SUPPORTED_VERSIONS: &[&str] =
+    orchestrix_core::runtime::SUPPORTED_STRUCTURED_CODEX_VERSIONS;
 
 #[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -246,6 +247,13 @@ mod tests {
         );
         assert_eq!(parse_version("codex-cli 1\ncredential-data"), None);
         assert_eq!(parse_version("different-tool 1"), None);
+        assert_eq!(
+            parse_version("codex-cli 0.164.0-alpha.11.1\n"),
+            Some("0.164.0-alpha.11.1")
+        );
+        assert!(SUPPORTED_VERSIONS.contains(&"0.164.0-alpha.11.1"));
+        assert!(!SUPPORTED_VERSIONS.contains(&"0.164.0-alpha.12"));
+        assert!(!SUPPORTED_VERSIONS.contains(&"0.162.0-alpha.2"));
     }
     #[test]
     fn retained_candidates_expire_and_kind_is_enforced() {

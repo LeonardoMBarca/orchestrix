@@ -13,7 +13,14 @@ use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
 /// Inspected protocol revisions; another version requires schema inspection and validation.
-pub const SUPPORTED_CODEX_VERSIONS: [&str; 2] = ["0.162.0-alpha.2", "0.162.0-alpha.17.2"];
+pub const SUPPORTED_CODEX_VERSIONS: [&str; 3] = [
+    "0.162.0-alpha.2",
+    "0.162.0-alpha.17.2",
+    "0.164.0-alpha.11.1",
+];
+/// Inspected stable outputSchema/agentMessage profiles; not proof of account entitlement.
+pub const SUPPORTED_STRUCTURED_CODEX_VERSIONS: &[&str] =
+    &["0.162.0-alpha.17.2", "0.164.0-alpha.11.1"];
 const SYNTHETIC_VERSION: &str = "synthetic-rust-1";
 
 fn global_metadata_notification(version: &str, method: &str) -> bool {
@@ -25,7 +32,39 @@ fn global_metadata_notification(version: &str, method: &str) -> bool {
             | "deprecationNotice"
             | "windows/worldWritableWarning"
             | "remoteControl/status/changed"
-    ) || (method == "skills/changed" && matches!(version, "0.162.0-alpha.17.2" | SYNTHETIC_VERSION))
+    ) || (method == "skills/changed"
+        && matches!(
+            version,
+            "0.162.0-alpha.17.2" | "0.164.0-alpha.11.1" | SYNTHETIC_VERSION
+        ))
+}
+
+fn read_state_profile(version: &str) -> bool {
+    matches!(version, "0.164.0-alpha.11.1" | SYNTHETIC_VERSION)
+}
+
+fn valid_read_state(params: &Value, thread: &str) -> bool {
+    if !params.is_object()
+        || params["threadId"] != thread
+        || ["thread", "turn", "turnId"]
+            .iter()
+            .any(|key| params.get(*key).is_some())
+    {
+        return false;
+    }
+    let state = &params["readState"];
+    if !state.is_object() || !native(state["revision"].as_str()) {
+        return false;
+    }
+    match state.get("firstUnread") {
+        None | Some(Value::Null) => true,
+        Some(position) if position.is_object() => match position["type"].as_str() {
+            Some("threadStart") => position.get("turnId").is_none(),
+            Some("turn") => native(position["turnId"].as_str()),
+            _ => false,
+        },
+        _ => false,
+    }
 }
 
 pub fn neutral_effort(version: &str, native: &str) -> Option<&'static str> {
@@ -112,7 +151,7 @@ impl RuntimeLaunch {
     }
     /// The structured-result schema was inspected on this pinned native profile.
     pub fn structured_results_supported(&self) -> bool {
-        self.is_synthetic() || self.version == "0.162.0-alpha.17.2"
+        self.is_synthetic() || SUPPORTED_STRUCTURED_CODEX_VERSIONS.contains(&self.version.as_str())
     }
     pub fn cwd(&self) -> &Path {
         &self.cwd
@@ -276,7 +315,8 @@ impl RuntimeMetadata {
             && self.synthetic == other.synthetic
     }
     /// Opaque account/read observation fence, not proof of provider account identity.
-    /// The supported schema exposes labels (email/plan), not an immutable account ID.
+    /// Routing fields in 0.164 are an additional observation fence, not proof of
+    /// immutable identity, independent quota or backend billing guarantees.
     pub fn observation_fingerprint(&self) -> &str {
         &self.account_fingerprint
     }
@@ -903,6 +943,29 @@ impl CodexAdapter {
                 )
             })?;
             let params = &message["params"];
+            if method == "thread/readState/changed" && read_state_profile(&self.launch.version) {
+                if !valid_read_state(params, &native_thread) {
+                    let code = if params.is_object()
+                        && params["threadId"] == native_thread
+                        && ["thread", "turn", "turnId"]
+                            .iter()
+                            .all(|key| params.get(*key).is_none())
+                    {
+                        "protocol"
+                    } else {
+                        "ownership"
+                    };
+                    return Err(diagnosed(
+                        RuntimeError::new(code, "unknown"),
+                        S::Notification,
+                        R::ThreadMetadataScope,
+                        Some(&message),
+                    ));
+                }
+                // A read cursor may reference an older turn. It establishes no
+                // active execution, terminal, configuration or permission fact.
+                continue;
+            }
             // Both pinned v2 metadata notifications have a nullable threadId.
             // Their contents grant no execution/capability/control evidence.
             // A warning without a target is also safely discarded as info;
@@ -1181,26 +1244,8 @@ fn discover(
     if account["account"]["type"] != "chatgpt" || account["requiresOpenaiAuth"] != true {
         return Err(RuntimeError::new("authentication", "not-sent"));
     }
-    let email = account["account"]["email"]
-        .as_str()
-        .filter(|text| !text.is_empty());
-    // The pinned account/read schema has no immutable account ID. An email is
-    // only an observation fence; never infer an independent account/quota from it.
-    let fixture_identity = launch
-        .is_synthetic()
-        .then(|| account["account"]["accountId"].as_str())
-        .flatten();
-    if email.is_none() && fixture_identity.is_none() {
-        return Err(RuntimeError::new("ownership", "not-sent"));
-    }
-    let account_fingerprint = format!(
-        "{:x}",
-        Sha256::digest(
-            json!({"email":email,"id":fixture_identity,"plan":account["account"]["planType"]})
-                .to_string()
-                .as_bytes()
-        )
-    );
+    let account_fingerprint =
+        account_observation_fingerprint(&account, &launch.version, launch.is_synthetic())?;
     let quota = rpc.request(
         "account/rateLimits/read",
         json!({"supportsLunaReserve":false,"excludeResetCreditDetails":true}),
@@ -1414,6 +1459,49 @@ fn discover(
         mcp_names,
         ready,
     })
+}
+fn account_observation_fingerprint(
+    account: &Value,
+    version: &str,
+    synthetic: bool,
+) -> RuntimeResult<String> {
+    let email = account["account"]["email"]
+        .as_str()
+        .filter(|text| !text.is_empty());
+    let fixture_identity = synthetic
+        .then(|| account["account"]["accountId"].as_str())
+        .flatten();
+    if email.is_none() && fixture_identity.is_none() {
+        return Err(RuntimeError::new("ownership", "not-sent"));
+    }
+    // Keep older profiles' exact projection/hash semantics. Native fixture-only
+    // accountId is never adopted from an actual provider response.
+    let mut projection =
+        json!({"email":email,"id":fixture_identity,"plan":account["account"]["planType"]});
+    if version == "0.164.0-alpha.11.1" || (synthetic && account.get("workspaceRouting").is_some()) {
+        let routing = match account.get("workspaceRouting") {
+            None | Some(Value::Null) => Value::Null,
+            Some(routing)
+                if routing.is_object()
+                    && native(routing["chatgptAccountId"].as_str())
+                    && native(routing["backendOrigin"].as_str())
+                    && matches!(
+                        routing["accountRoutingOverride"].as_str(),
+                        Some("NO_CONSTRAINT" | "us" | "us_cr")
+                    ) =>
+            {
+                json!({"chatgptAccountId":routing["chatgptAccountId"],"backendOrigin":routing["backendOrigin"],"accountRoutingOverride":routing["accountRoutingOverride"]})
+            }
+            _ => return Err(RuntimeError::new("protocol", "not-sent")),
+        };
+        // Not an origin allowlist or a source of billing/entitlement authority.
+        // Only this opaque hash leaves the adapter, never the routing/ID values.
+        projection["workspaceRouting"] = routing;
+    }
+    Ok(format!(
+        "{:x}",
+        Sha256::digest(projection.to_string().as_bytes())
+    ))
 }
 fn validate_configuration(
     value: &Value,
@@ -1680,11 +1768,20 @@ fn verify_binary_version(launch: &RuntimeLaunch, cancel: &CancellationToken) -> 
 
 #[cfg(test)]
 mod tests {
-    use super::{SYNTHETIC_VERSION, global_metadata_notification};
+    use super::{
+        SYNTHETIC_VERSION, account_observation_fingerprint, global_metadata_notification,
+        read_state_profile, valid_read_state,
+    };
+    use serde_json::json;
+    use sha2::{Digest, Sha256};
 
     #[test]
     fn skills_invalidation_is_limited_to_the_inspected_profile() {
-        for version in ["0.162.0-alpha.17.2", SYNTHETIC_VERSION] {
+        for version in [
+            "0.162.0-alpha.17.2",
+            "0.164.0-alpha.11.1",
+            SYNTHETIC_VERSION,
+        ] {
             assert!(global_metadata_notification(version, "skills/changed"));
         }
         for version in ["0.162.0-alpha.2", "0.162.0-alpha.18", "unknown"] {
@@ -1695,6 +1792,103 @@ mod tests {
                 assert!(global_metadata_notification(version, method));
             }
             assert!(!global_metadata_notification(version, "skills/unknown"));
+        }
+    }
+    #[test]
+    fn read_state_shape_and_version_cannot_establish_execution_or_alias_scope() {
+        assert!(read_state_profile("0.164.0-alpha.11.1"));
+        for v in [
+            "0.162.0-alpha.2",
+            "0.162.0-alpha.17.2",
+            "0.164.0-alpha.12",
+            "unknown",
+        ] {
+            assert!(!read_state_profile(v));
+        }
+        let valid = json!({"threadId":"own-thread","readState":{"revision":"opaque-revision","firstUnread":{"type":"turn","turnId":"older-turn"}}});
+        assert!(valid_read_state(&valid, "own-thread"));
+        for key in ["thread", "turn", "turnId"] {
+            let mut bad = valid.clone();
+            bad[key] = serde_json::Value::Null;
+            assert!(!valid_read_state(&bad, "own-thread"));
+        }
+        assert!(!valid_read_state(&valid, "foreign"));
+        for state in [
+            json!({}),
+            json!({"revision":42}),
+            json!({"revision":""}),
+            json!({"revision":"r","firstUnread":false}),
+            json!({"revision":"r","firstUnread":{"type":"turn"}}),
+            json!({"revision":"r","firstUnread":{"type":"threadStart","turnId":"old"}}),
+        ] {
+            let mut bad = valid.clone();
+            bad["readState"] = state;
+            assert!(!valid_read_state(&bad, "own-thread"));
+        }
+        for position in [serde_json::Value::Null, json!({"type":"threadStart"})] {
+            let mut value = valid.clone();
+            value["readState"]["firstUnread"] = position;
+            assert!(valid_read_state(&value, "own-thread"));
+        }
+    }
+    #[test]
+    fn routing_fence_is_bounded_optional_versioned_and_not_quota_or_billing_authority() {
+        let base = json!({"account":{"type":"chatgpt","email":"synthetic@example.invalid","planType":"pro"}});
+        let old = account_observation_fingerprint(&base, "0.162.0-alpha.17.2", false).unwrap();
+        let old_projection = json!({"email":"synthetic@example.invalid","id":null,"plan":"pro"});
+        assert_eq!(
+            old,
+            format!(
+                "{:x}",
+                Sha256::digest(old_projection.to_string().as_bytes())
+            )
+        );
+        let mut routed = base.clone();
+        routed["workspaceRouting"] = json!({"chatgptAccountId":"workspace-one","backendOrigin":"https://chatgpt.com/backend-api/","accountRoutingOverride":"NO_CONSTRAINT"});
+        assert_eq!(
+            old,
+            account_observation_fingerprint(&routed, "0.162.0-alpha.17.2", false).unwrap()
+        );
+        let current =
+            account_observation_fingerprint(&routed, "0.164.0-alpha.11.1", false).unwrap();
+        for (key, value) in [
+            ("chatgptAccountId", "workspace-two"),
+            ("backendOrigin", "https://example.invalid/changed"),
+            ("accountRoutingOverride", "us"),
+        ] {
+            let mut different = routed.clone();
+            different["workspaceRouting"][key] = json!(value);
+            assert_ne!(
+                current,
+                account_observation_fingerprint(&different, "0.164.0-alpha.11.1", false).unwrap()
+            );
+        }
+        let mut volatile = routed.clone();
+        volatile["ordinaryUsageAllowed"] = json!(false);
+        volatile["workspaceRouting"]["usedPercent"] = json!(99);
+        assert_eq!(
+            current,
+            account_observation_fingerprint(&volatile, "0.164.0-alpha.11.1", false).unwrap()
+        );
+        assert_ne!(
+            current,
+            account_observation_fingerprint(&base, "0.164.0-alpha.11.1", false).unwrap()
+        );
+        let mut null = base.clone();
+        null["workspaceRouting"] = serde_json::Value::Null;
+        assert_eq!(
+            account_observation_fingerprint(&base, "0.164.0-alpha.11.1", false).unwrap(),
+            account_observation_fingerprint(&null, "0.164.0-alpha.11.1", false).unwrap()
+        );
+        for routing in [
+            json!(false),
+            json!({}),
+            json!({"chatgptAccountId":"x","backendOrigin":"y","accountRoutingOverride":"unknown"}),
+            json!({"chatgptAccountId":"x".repeat(513),"backendOrigin":"y","accountRoutingOverride":"us"}),
+        ] {
+            let mut bad = base.clone();
+            bad["workspaceRouting"] = routing;
+            assert!(account_observation_fingerprint(&bad, "0.164.0-alpha.11.1", false).is_err());
         }
     }
 }

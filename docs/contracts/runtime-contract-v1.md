@@ -18,6 +18,8 @@ The normalized execution descriptor/events retain v1.1 and the existing conforma
 
 Discovery can return metadata-only negative/unknown permission observations, after successful account identification but before inspecting configuration/catalog. Their descriptor marks uninspected billing/capabilities/catalog unknown/partial; no executable adapter exists for that result. `CodexAdapter::connect` still requires explicit ordinary usage permission plus all existing authentication, subscription routing, permissions and version guards. A lease/reset guard also runs immediately before `turn/start`. Optional malformed telemetry is an explicit partial observation, not a fabricated balance or a new execution threshold. Consumption never enters the authentication fingerprint. This extension does not regenerate normalized conformance expectations.
 
+The exact Codex `0.164.0-alpha.11.1` stable schema preserves the consumed capacity fields/units. Its [offline qualification](../research/codex-0164-offline-qualification.md) enables the same mapping without another RPC, normalized wire revision, migration or rehashing of old diagnostics. Static schemas and synthetic observations do not prove values exposed by a real account on that version.
+
 ## Descriptor and capabilities
 
 `normalizeRuntimeDescriptor()` retains:

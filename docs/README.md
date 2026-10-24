@@ -14,6 +14,7 @@ Start with current status and the permitted ticket, then the specifications and 
 | [Desktop study](../prototypes/desktop/README.md) | Existing UI study and browser/direct-HTML workflows; not the production Desktop. |
 | [Native Desktop](../apps/desktop/README.md) | Tauri/React application, restricted native bridge, local daemon and Windows validation/remaining gates. |
 | [OX-017 criteria/checker audit](./research/ox-017-criteria-checker-audit.md) | Preserved NeedsWork evidence, explicit structural profile, mandatory semantic review and the frozen next-proof boundary. |
+| [Codex 0.164 offline qualification](./research/codex-0164-offline-qualification.md) | Installed schema comparison, exact adapter profile and synthetic regression evidence; separate from authenticated acceptance or dogfooding. |
 | [Local technical reference library](./research/REFERENCE_REPOSITORIES.md) | Official sources, licenses, pinned commits and component paths. Clones are outside Orchestrix in `../orchestrix-references/`; no competitor code is incorporated. |
 
 Current status takes precedence over older reports' “next” or “pending” statements. [Portable runtime input acceptance](./research/portable-runtime-input-increment.md) records scoped OX-003 completion after the earlier Rust/adapter reports; [the pilot decision](./design/d1-pilot.md#piloto-reportado-pelo-responsável--1210) records the human D1 retest. Remaining production/provider gates are tracked in status and backlog rather than inferred from historical test totals.

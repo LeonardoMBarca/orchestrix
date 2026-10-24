@@ -200,6 +200,14 @@ A Context Pack selects the content supplied by Orchestrix. It is not a read sand
                 .unwrap();
             writeln!(methods, "{method}").unwrap();
         }
+        if scenario.starts_with("profile-0164-") {
+            let mut methods = std::fs::OpenOptions::new()
+                .create(true)
+                .append(true)
+                .open(auth_home.join("profile-0164-request-methods"))
+                .unwrap();
+            writeln!(methods, "{method}").unwrap();
+        }
         // Explicit opt-in in an owned synthetic home only. This fixture is not
         // a production adapter/logger and never handles provider credentials.
         // Preserve the exact received JSON bytes for Context Pack provenance.
@@ -244,9 +252,30 @@ A Context Pack selects the content supplied by Orchestrix. It is not a read sand
                 }
                 send(json!({"id":id,"result":{"userAgent":"orchestrix-rust-fixture/1"}}))
             }
-            "account/read" => send(
-                json!({"id":id,"result":{"account":if scenario == "auth-failure" || (scenario=="connection-metadata"&&auth_home.join("connection-auth-invalid").exists()) {Value::Null} else {json!({"type":if scenario == "api" {"apiKey"} else {"chatgpt"},"accountId":if scenario == "connection-metadata" {std::fs::read_to_string(auth_home.join("connection-identity")).unwrap_or_else(|_|"synthetic-identity".into())} else if scenario == "wrong-account" {"different-fixture-identity".into()} else {"synthetic-identity".into()},"planType":"pro"})},"requiresOpenaiAuth":true}}),
-            ),
+            "account/read" => {
+                let account_type = match scenario {
+                    "api" | "profile-0164-api" => "apiKey",
+                    "profile-0164-gcp" => "gcp",
+                    "profile-0164-bedrock" => "amazonBedrock",
+                    _ => "chatgpt",
+                };
+                let mut result = json!({"account":if scenario == "auth-failure" || (scenario=="connection-metadata"&&auth_home.join("connection-auth-invalid").exists()) {Value::Null} else {json!({"type":account_type,"accountId":if scenario == "connection-metadata" {std::fs::read_to_string(auth_home.join("connection-identity")).unwrap_or_else(|_|"synthetic-identity".into())} else if scenario == "wrong-account" {"different-fixture-identity".into()} else {"synthetic-identity".into()},"planType":"pro"})},"requiresOpenaiAuth":true});
+                if scenario.starts_with("profile-0164-routing") {
+                    result["account"]["email"] = json!("synthetic@example.invalid");
+                    result["workspaceRouting"] = json!({
+                        "chatgptAccountId":std::fs::read_to_string(auth_home.join("route-account")).unwrap_or_else(|_|"synthetic-workspace-a".into()),
+                        "backendOrigin":std::fs::read_to_string(auth_home.join("route-backend")).unwrap_or_else(|_|"https://chatgpt.com/backend-api/".into()),
+                        "accountRoutingOverride":std::fs::read_to_string(auth_home.join("route-policy")).unwrap_or_else(|_|"NO_CONSTRAINT".into())
+                    });
+                    if scenario == "profile-0164-routing-invalid" {
+                        result["workspaceRouting"]
+                            .as_object_mut()
+                            .unwrap()
+                            .remove("chatgptAccountId");
+                    }
+                }
+                send(json!({"id":id,"result":result}));
+            }
             "account/rateLimits/read" => {
                 if auth_home.join("synthetic-capacity-read-failure").exists() {
                     send(
@@ -381,6 +410,24 @@ A Context Pack selects the content supplied by Orchestrix. It is not a read sand
                         _ => panic!("unknown remote status fixture"),
                     }
                     send(json!({"method":"remoteControl/status/changed","params":params}));
+                }
+                if scenario.starts_with("profile-0164-read-state") {
+                    let mut state = json!({"threadId":thread,"readState":{"revision":"do-not-persist-read-state","firstUnread":{"type":"turn","turnId":"do-not-adopt-historical-turn"}}});
+                    match scenario {
+                        "profile-0164-read-state" | "profile-0164-read-state-no-terminal" => {}
+                        "profile-0164-read-state-foreign" => {
+                            state["threadId"] = json!("do-not-adopt-foreign-thread")
+                        }
+                        "profile-0164-read-state-alias" => state["turnId"] = json!(turn_id),
+                        "profile-0164-read-state-invalid" => {
+                            state["readState"]["revision"] = json!(42)
+                        }
+                        _ => panic!("unknown read state fixture"),
+                    }
+                    send(json!({"method":"thread/readState/changed","params":state}));
+                    if scenario == "profile-0164-read-state-no-terminal" {
+                        std::process::exit(23);
+                    }
                 }
                 if scenario.starts_with("skills-changed-") {
                     // Pinned SkillsChangedNotification is an object without
@@ -560,6 +607,8 @@ A Context Pack selects the content supplied by Orchestrix. It is not a read sand
                         | "catalog-seven"
                         | "remote-status-global"
                         | "review-implementation"
+                        | "profile-0164-read-state"
+                        | "profile-0164-routing"
                 ) && prompt.contains("fixture-edit")
                 {
                     let path = cwd.join("fixture.txt");

@@ -802,7 +802,11 @@ impl ConnectionService {
                         d.structured_result_support = (!metadata.controls.is_empty()).then_some(
                             metadata.synthetic
                                 || metadata.descriptor.as_json()["runtimeVersion"]
-                                    == "0.162.0-alpha.17.2",
+                                    .as_str()
+                                    .is_some_and(|v| {
+                                        crate::runtime::SUPPORTED_STRUCTURED_CODEX_VERSIONS
+                                            .contains(&v)
+                                    }),
                         );
                         d.descriptor = Some(metadata.descriptor.as_json().clone());
                         if invalid_groups {
