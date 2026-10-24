@@ -1,0 +1,20 @@
+[package]
+name = "orchestrix-context-ownership-checker-v2"
+version = "0.2.0"
+edition = "2024"
+license = "MIT"
+publish = false
+
+# A proof-specific standalone tool, not another product execution engine.
+[workspace]
+
+[dependencies]
+sha2 = "=0.10.9"
+serde_json = { version = "=1.0.154", features = ["float_roundtrip"] }
+
+[dev-dependencies]
+orchestrix-core = { path = "../../crates/orchestrix-core" }
+
+[[bin]]
+name = "context-ownership-checker-v2"
+path = "src/main.rs"

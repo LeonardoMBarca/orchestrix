@@ -1,0 +1,112 @@
+{
+  "schemaVersion": 2,
+  "id": "context-ownership-proof-v2",
+  "source": {
+    "baseCommit": "b053a7ffe9b39b879ab35ca6d57b5a332e56854f",
+    "snapshot": {
+      "files": 584,
+      "bytes": 54451461,
+      "protectedFiles": 583,
+      "protectedBytes": 54444291,
+      "treeInventorySha256": "39e28dd9faf55181ca8dcc3b1b560d0e0805bb4d1f128eecf35ef23b09ee9bbc",
+      "reachableCommits": 142,
+      "historySha256": "dc4bfe38d8b0c608604c60fb2eb0e56f50be6fc809e662796373a842ed0ae626"
+    },
+    "previousReadySha256": "ccbac74509a9d81a0dff74860cb639055fa896b4936ec6fe3c22a4076f46c5be",
+    "previousReadyReference": "artifacts/dogfooding/direct-checker-real-proposal-1792814468416-79c5d964/READY.json",
+    "originalCriteria": [
+      "Preserve all 7,170 original bytes of docs/CONTEXT_OWNERSHIP.md as an exact prefix; append only one H2 section with 160-2,048 bytes of original English prose, valid UTF-8/LF and final LF.",
+      "Explain that explicit Context Pack inclusion, edit allowlist, local opaque preservation and actual tool reading are separate controls; excluding a file from context is not a read sandbox.",
+      "Explain that preserving bytes does not certify content safety or authorize disclosure/editing; a mandatory read restriction requires demonstrated enforcement or a blocked combination.",
+      "Do not rewrite earlier sections, add other files or change any of the other 583 tracked files. A structural check is insufficient for semantic acceptance; an independent read-only review must evaluate the evidence and criteria."
+    ]
+  },
+  "task": {
+    "objective": "Append one original English section explaining Context Pack inclusion, edit authorization, exact local preservation and actual runtime-tool read access to the workspace.",
+    "acceptanceCriteria": [
+      "Preserve all 7,170 original bytes of docs/CONTEXT_OWNERSHIP.md as an exact prefix; append only one H2 section with 160-2,048 bytes of original English prose, valid UTF-8/LF and final LF.",
+      "Explain that explicit Context Pack inclusion, edit allowlist, local opaque preservation and actual tool reading are separate controls; excluding a file from context is not a read sandbox.",
+      "Explain that preserving bytes does not certify content safety or authorize disclosure/editing; a mandatory read restriction requires demonstrated enforcement or a blocked combination.",
+      "Do not rewrite earlier sections, add other files or change any of the other 583 tracked files. A structural check is insufficient for semantic acceptance; an independent read-only review must evaluate the evidence and criteria.",
+      "Mechanical Markdown profile: append one visible top-level ATX H2 with a nonempty title followed by visible prose. The title wording is free; H3-H6 subheadings are allowed. Fenced/indented code and HTML comments do not supply headings or prose; inline code alone is not prose. No NUL; close fences/comments. Lines starting with < (except comments), Setext headings and link-reference definitions are outside this small profile. Mechanical success still requires independent semantic review."
+    ],
+    "editablePaths": [
+      "docs/CONTEXT_OWNERSHIP.md"
+    ],
+    "explicitContextFiles": [
+      "docs/CONTEXT_OWNERSHIP.md"
+    ],
+    "mode": {
+      "id": "development",
+      "version": 1
+    },
+    "profile": {
+      "id": "implementation-engineer",
+      "version": 1
+    },
+    "strategy": "balanced",
+    "model": "automatic selection from observed candidates; runtime defaults if access is unconfirmed and compatible fallback explicitly allowed",
+    "effort": "inherit/runtime default; record requested and observed",
+    "fallback": "compatible runtime defaults only; never paid API",
+    "subscriptionOnly": true,
+    "concurrency": 1
+  },
+  "mechanical": {
+    "relativePath": "docs/CONTEXT_OWNERSHIP.md",
+    "originalBytes": 7170,
+    "originalSha256": "b7b0d293cea53c782d2fba2d88c4ac801ea8b8fb49c7fa93f7e638f3710bd20d",
+    "minimumAdditionBytes": 160,
+    "maximumAdditionBytes": 2048,
+    "maximumFileBytes": 9218,
+    "utf8": true,
+    "lf": true,
+    "finalLf": true,
+    "nul": false,
+    "markdownProfile": "visible-atx-section-v2",
+    "titleKeywords": [],
+    "semanticLexicalPatterns": [],
+    "otherFilesEnforcer": "Core opaque-base-v2 exact allowlist/capture, before and after checks; checker reads only the fixed target"
+  },
+  "reviewRubric": [
+    {
+      "id": "S1",
+      "criterion": 2,
+      "requirement": "Distinguish explicit Context Pack inclusion, edit authorization, exact local preservation, and actual runtime-tool workspace reading. Absence from context is not a read sandbox."
+    },
+    {
+      "id": "S2",
+      "criterion": 3,
+      "requirement": "Preservation/integrity does not certify content safety or authorize disclosure or editing; mandatory read restrictions require demonstrated enforcement or the combination must remain blocked."
+    },
+    {
+      "id": "S3",
+      "criterion": 1,
+      "requirement": "The addition is original, clear English prose, pertinent and consistent with existing project/runtime/context contracts; evaluate meaning and contradictions rather than keywords."
+    },
+    {
+      "id": "S4",
+      "criterion": 4,
+      "requirement": "Inspect exact diff, artifact, protected-base provenance and check evidence. Mechanical pass is not semantic approval. Reject unsupported assertions; unavailability/invalid review is not a technical verdict."
+    }
+  ],
+  "execution": {
+    "arguments": [],
+    "timeoutMs": 5000,
+    "outputMaxBytes": 2048,
+    "exitCodes": {
+      "mechanicalPass": 0,
+      "structuralRejection": 1,
+      "executionError": 2
+    },
+    "reviewRequired": true,
+    "reviewPolicy": {
+      "corrections": 1,
+      "reviews": 2,
+      "chainMs": 900000
+    },
+    "onCheckFailure": "stop; Core correction requires a valid rejected review, not NeedsWork alone",
+    "onValidReviewRejected": "one explicit authorized correction in the same Run/Task, then fresh checks and independent review",
+    "onTechnicalFailure": "stop without retry or redispatch",
+    "onUnknown": "stop without retry or redispatch"
+  }
+}
