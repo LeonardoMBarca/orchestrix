@@ -46,6 +46,9 @@ passes structure: S1/S2 must reject its claims. That annotation is local test
 analysis, **not an independent product review**. No fixture is the old generated
 answer or an expected paragraph supplied to the implementer. Full-scope writes
 are rejected by Core, not claimed to be detected by this one-file checker.
+An additional test compiles the five canonical criteria and the sole authorized
+baseline through the existing Core Context Pack compiler, checking exact criteria,
+file/hash, no omissions and the unchanged budget without metadata or execution.
 
 ```powershell
 $env:CARGO_TARGET_DIR = Join-Path (Get-Location) 'target/context-ownership-checker-v2'
