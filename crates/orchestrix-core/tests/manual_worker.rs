@@ -1098,14 +1098,37 @@ fn cooperative_cancellation_is_durable_and_preserves_the_owned_worktree() {
         .unwrap();
     assert_eq!(task.attempts()[0].state(), AttemptState::Cancelled);
     assert!(task.verifications().is_empty());
+    assert_eq!(
+        record.observations.last().unwrap().details["interruptionReason"],
+        "cancellation-requested"
+    );
+    assert_eq!(
+        record.summary()["details"]["interruptionReason"],
+        "cancellation-requested"
+    );
+    assert!(
+        record
+            .observations
+            .iter()
+            .any(
+                |observation| observation.status == WorkerStatus::RuntimeObserved
+                    && observation.details["interruptionReason"] == "cancellation-requested"
+                    && observation.details["treeStopped"] == true
+                    && observation.details["streamsClosed"] == true
+            )
+    );
     drop(state);
     drop(store);
     let mut reopened = fixture.store();
+    let restored = ManualWorker::inspect(&mut reopened, "cancelled-worker").unwrap();
+    assert_eq!(restored.status(), WorkerStatus::Cancelled);
     assert_eq!(
-        ManualWorker::inspect(&mut reopened, "cancelled-worker")
-            .unwrap()
-            .status(),
-        WorkerStatus::Cancelled
+        restored.observations.last().unwrap().details["interruptionReason"],
+        "cancellation-requested"
+    );
+    assert_eq!(
+        restored.summary()["details"]["interruptionReason"],
+        "cancellation-requested"
     );
     assert_eq!(fixture.thread_count(), 1);
 }

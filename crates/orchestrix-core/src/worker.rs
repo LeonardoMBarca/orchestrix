@@ -832,7 +832,7 @@ impl ManualWorker {
             store,
             &input.id,
             WorkerStatus::RuntimeObserved,
-            json!({"dispatch":report.dispatch,"fault":report.fault.as_ref().map(RuntimeError::code),"treeStopped":tree_stopped,"streamsClosed":drained,"synthetic":report.synthetic,"adapterBinding":report.binding.as_ref().map(|b|b.checkpoint()),"adapterDiagnostic":report.adapter_diagnostic,"worktreeOperation":worktree.intent.operation_id}),
+            json!({"dispatch":report.dispatch,"fault":report.fault.as_ref().map(RuntimeError::code),"treeStopped":tree_stopped,"streamsClosed":drained,"synthetic":report.synthetic,"adapterBinding":report.binding.as_ref().map(|b|b.checkpoint()),"adapterDiagnostic":report.adapter_diagnostic,"interruptionReason":report.interruption_reason,"worktreeOperation":worktree.intent.operation_id}),
         )?;
         checkpoint(WorkerCheckpoint::RuntimeObserved);
         let current = record(store, &input.id)?;
@@ -889,7 +889,7 @@ impl ManualWorker {
                 } else {
                     WorkerStatus::Failed
                 },
-                json!({"artifactRevision":artifact.revision,"synthetic":report.synthetic,"worktreeOperation":worktree.intent.operation_id}),
+                json!({"artifactRevision":artifact.revision,"synthetic":report.synthetic,"interruptionReason":report.interruption_reason,"worktreeOperation":worktree.intent.operation_id}),
             );
         }
         let version = artifact_version(&artifact, &worktree.intent.domain_base)?;

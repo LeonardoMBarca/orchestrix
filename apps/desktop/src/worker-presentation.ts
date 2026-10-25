@@ -20,6 +20,16 @@ const stages:Record<string,[string,string]>={
 };
 export function workerStage(status:string):{title:string,description:string}{const value=stages[status];return value?{title:value[0],description:value[1]}:{title:status,description:'No confirmed execution state is available.'};}
 
+// Only an explicit observation explains a cancellation. Legacy or future values
+// must not acquire a cause from a status label or from the current clock.
+export function workerInterruptionNotice(status:string,details:unknown):string|undefined{
+ if(status!=='cancelled')return undefined;
+ const reason=details&&typeof details==='object'&&!Array.isArray(details)?(details as Record<string,unknown>).interruptionReason:undefined;
+ if(reason==='turn-deadline-elapsed')return 'The turn reached its time limit and was interrupted. Inspect the preserved result; this does not imply passing checks or review.';
+ if(reason==='cancellation-requested')return 'Cancellation was requested. The record does not identify who requested it. Inspect any preserved artifacts.';
+ return 'No supported interruption reason is recorded for this attempt. The Cancelled status alone does not identify the cause.';
+}
+
 export function workerActionIssue(reason:unknown){
  if(typeof reason==='string'&&reason.includes('review-staged-source-outside-profile'))return 'Staged changes were preserved, but this profile requires an unchanged index for review and integration. Prepare a compatible attempt without staging files.';
  return undefined;

@@ -1,7 +1,7 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {activeFileDestination,dockTab,preparationStillCurrent,taskFingerprint} from '../src/task-preparation.ts';
-import {workerStage} from '../src/worker-presentation.ts';
+import {workerStage,workerInterruptionNotice} from '../src/worker-presentation.ts';
 
 test('preparation belongs to the exact authorized draft, including commands and budget',()=>{
  const draft={conversationId:'conversation-one',projectId:'project-one',objective:'Fix the function',acceptanceCriteria:['Arithmetic passes'],repositoryGrant:'repo-grant',worktreeGrant:'work-grant',connectionId:'connection-one',contextFiles:[],checks:[{id:'check-one',executable:'trusted-executable',args:['--check'],timeoutSeconds:30}],strategy:'balanced',preset:'',model:'',effort:'',correctionBudget:0,fallback:'block'};
@@ -38,4 +38,26 @@ test('saved and intermediate work never claim a runtime start, passing checks or
  assert.equal(workerStage('verified').title,'Checks passed');
  assert.match(workerStage('verified').description,/review is a separate step/);
  assert.equal(workerStage('no-checks').title,'Captured without checks');
+});
+
+test('cancelled work explains only its recorded interruption reason without claiming checks or an actor',()=>{
+ const deadline=Object.freeze({interruptionReason:'turn-deadline-elapsed'});
+ const requested=Object.freeze({interruptionReason:'cancellation-requested'});
+ assert.equal(workerInterruptionNotice('cancelled',deadline),'The turn reached its time limit and was interrupted. Inspect the preserved result; this does not imply passing checks or review.');
+ assert.equal(workerInterruptionNotice('cancelled',requested),'Cancellation was requested. The record does not identify who requested it. Inspect any preserved artifacts.');
+ assert.equal(deadline.interruptionReason,'turn-deadline-elapsed');
+ assert.equal(requested.interruptionReason,'cancellation-requested');
+});
+
+test('legacy, null and unrecognized interruption details remain unknown without attribution',()=>{
+ const unknown='No supported interruption reason is recorded for this attempt. The Cancelled status alone does not identify the cause.';
+ for(const details of [undefined,null,{},[],42,'turn-deadline-elapsed',{interruptionReason:null},{interruptionReason:'unknown'},{interruptionReason:'future-reason'},{interruptionReason:42}]){
+  assert.equal(workerInterruptionNotice('cancelled',details),unknown);
+ }
+});
+
+test('interruption notices never replace a non-cancelled execution state',()=>{
+ for(const status of ['reserved','preparing','supervisor-ready','dispatch-planned','runtime-observed','checking','verified','needs-work','no-checks','failed','uncertain','blocked','invalidated','inspection-required','set-aside','future-status']){
+  for(const interruptionReason of ['turn-deadline-elapsed','cancellation-requested',null])assert.equal(workerInterruptionNotice(status,{interruptionReason}),undefined);
+ }
 });

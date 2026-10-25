@@ -159,6 +159,7 @@ impl WorkerRecord {
                 "streamsClosed",
                 "dispatch",
                 "fault",
+                "interruptionReason",
                 "worktreeOperation",
                 "recovery",
                 "nextAction",
@@ -327,6 +328,57 @@ fn bounded_reservation(body: &Value, components: impl IntoIterator<Item = Value>
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn interruption_summary_preserves_recorded_reason_and_never_fills_legacy_history() {
+        let intent: WorkerIntent = serde_json::from_value(json!({"id":"worker","request_hash":"a".repeat(64),
+            "run_id":"run","task_id":"task","attempt_id":"attempt","project_id":"project",
+            "repository_id":"repository","base_oid":"b".repeat(40),"policy":{},"context":{},"authorized_checks":[]})).unwrap();
+        for reason in [
+            None,
+            Some("cancellation-requested"),
+            Some("turn-deadline-elapsed"),
+        ] {
+            let mut details = json!({"synthetic":true});
+            if let Some(reason) = reason {
+                details["interruptionReason"] = json!(reason);
+            }
+            let record = WorkerRecord {
+                intent: intent.clone(),
+                observations: vec![
+                    WorkerObservation {
+                        status: WorkerStatus::Preparing,
+                        details: json!({}),
+                    },
+                    WorkerObservation {
+                        status: WorkerStatus::SupervisorReady,
+                        details: json!({}),
+                    },
+                    WorkerObservation {
+                        status: WorkerStatus::DispatchPlanned,
+                        details: json!({}),
+                    },
+                    WorkerObservation {
+                        status: WorkerStatus::RuntimeObserved,
+                        details: json!({}),
+                    },
+                    WorkerObservation {
+                        status: WorkerStatus::Cancelled,
+                        details,
+                    },
+                ],
+            };
+            assert!(record.validate());
+            let bytes = serde_json::to_vec(&record).unwrap();
+            let restored: WorkerRecord = serde_json::from_slice(&bytes).unwrap();
+            let summary = restored.summary();
+            assert_eq!(
+                summary["details"].get("interruptionReason"),
+                reason.map(|r| json!(r)).as_ref()
+            );
+            assert_eq!(serde_json::to_vec(&restored).unwrap(), bytes);
+        }
+    }
 
     #[test]
     fn launch_protocol_is_optional_for_exact_legacy_bytes_and_closed_when_present() {

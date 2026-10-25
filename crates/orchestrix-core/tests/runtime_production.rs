@@ -1,8 +1,8 @@
 //! Synthetic protocol runtime; Windows Job, OS processes and stdio are real.
 #![cfg(windows)]
 use orchestrix_core::runtime::{
-    AttemptExecution, CancellationToken, CodexAdapter, RuntimeLaunch, SessionBinding,
-    native_effort, neutral_effort,
+    AttemptExecution, CancellationToken, CodexAdapter, RuntimeInterruption, RuntimeLaunch,
+    SessionBinding, native_effort, neutral_effort,
 };
 use orchestrix_core::runtime_contract::{RuntimeObserver, normalize_request};
 use orchestrix_process::{OwnedProcess, ProcessError, ProcessEvent, ProcessLimits, SpawnSpec};
@@ -121,6 +121,7 @@ fn rust_adapter_edits_only_fixture_emits_normalized_observations_and_resume_bind
         .unwrap();
     assert_eq!(report.fault, None);
     assert_eq!(report.dispatch, "sent");
+    assert_eq!(report.interruption_reason, None);
     let snapshot = RuntimeObserver::restore_checkpoint(&report.observer_checkpoint)
         .unwrap()
         .snapshot();
@@ -216,8 +217,48 @@ fn cooperative_cancellation_is_distinct_from_remote_and_process_termination() {
         .snapshot();
     assert_eq!(snapshot["terminal"]["outcome"], "interrupted");
     assert_eq!(snapshot["interrupt"]["acknowledged"], true);
+    assert_eq!(
+        report.interruption_reason,
+        Some(RuntimeInterruption::CancellationRequested)
+    );
     assert_eq!(report.tree.unwrap().active_processes, 0);
     assert!(report.streams.stdout_closed);
+}
+#[test]
+fn turn_deadline_records_its_trigger_without_claiming_operator_cancellation() {
+    let fixture = Fixture::new();
+    let mut adapter = fixture.connect("hang");
+    let cancel = CancellationToken::new();
+    let late_cancel = cancel.clone();
+    let report = adapter
+        .execute(execution("deadline"), &cancel, |event, _| {
+            if event["type"] == "attempt.interrupt-requested" {
+                // A subsequent token change must not replace the first cause.
+                late_cancel.cancel();
+            }
+            Ok(())
+        })
+        .unwrap();
+    assert_eq!(
+        report.interruption_reason,
+        Some(RuntimeInterruption::TurnDeadlineElapsed)
+    );
+    assert_eq!(
+        serde_json::to_value(report.interruption_reason).unwrap(),
+        "turn-deadline-elapsed"
+    );
+    assert_eq!(report.fault, None);
+    assert_eq!(report.dispatch, "sent");
+    let snapshot = RuntimeObserver::restore_checkpoint(&report.observer_checkpoint)
+        .unwrap()
+        .snapshot();
+    assert_eq!(snapshot["startObserved"], true);
+    assert_eq!(snapshot["terminalConfirmed"], true);
+    assert_eq!(snapshot["terminal"]["outcome"], "interrupted");
+    assert_eq!(report.tree.unwrap().active_processes, 0);
+    assert!(
+        report.streams.stdin_closed && report.streams.stdout_closed && report.streams.stderr_closed
+    );
 }
 #[test]
 fn durable_callback_latency_does_not_discard_an_already_buffered_interrupted_terminal() {

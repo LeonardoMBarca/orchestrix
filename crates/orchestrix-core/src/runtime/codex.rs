@@ -404,6 +404,14 @@ pub struct AttemptExecution {
     pub developer_instructions: String,
     pub resume: Option<SessionBinding>,
 }
+/// Local trigger for an interrupt request, independent of the observed native outcome.
+/// It does not establish who requested cancellation or that the runtime stopped.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum RuntimeInterruption {
+    CancellationRequested,
+    TurnDeadlineElapsed,
+}
 #[derive(Clone, Debug)]
 pub struct RuntimeReport {
     pub observer_checkpoint: Value,
@@ -413,6 +421,7 @@ pub struct RuntimeReport {
     /// This is not a normalized domain event or evidence of a native terminal.
     pub adapter_diagnostic: Option<Value>,
     pub dispatch: &'static str,
+    pub interruption_reason: Option<RuntimeInterruption>,
     /// Bounded final assistant result requested through the official output schema channel.
     /// Never includes reasoning, tool output or a conversation transcript.
     pub structured_output: Option<String>,
@@ -598,10 +607,12 @@ impl CodexAdapter {
         )?;
         let mut binding = None;
         let mut structured_output = None;
+        let mut interruption_reason = None;
         let attempt_result = self.execute_inner(
             &execution,
             output_schema.as_ref(),
             &mut structured_output,
+            &mut interruption_reason,
             cancel,
             &mut observer,
             &mut binding,
@@ -677,6 +688,7 @@ impl CodexAdapter {
             fault,
             adapter_diagnostic,
             dispatch,
+            interruption_reason,
             structured_output,
             tree,
             streams,
@@ -689,6 +701,7 @@ impl CodexAdapter {
         execution: &AttemptExecution,
         output_schema: Option<&Value>,
         structured_output: &mut Option<String>,
+        interruption_reason: &mut Option<RuntimeInterruption>,
         cancel: &CancellationToken,
         observer: &mut RuntimeObserver,
         binding: &mut Option<SessionBinding>,
@@ -855,8 +868,18 @@ impl CodexAdapter {
         let mut expired_drain_frames = 0usize;
         let mut forced_after_grace = false;
         loop {
-            let cancelled = cancel.is_cancelled() || began.elapsed() >= self.launch.turn_timeout;
+            let local_trigger = if cancel.is_cancelled() {
+                Some(RuntimeInterruption::CancellationRequested)
+            } else if began.elapsed() >= self.launch.turn_timeout {
+                Some(RuntimeInterruption::TurnDeadlineElapsed)
+            } else {
+                None
+            };
+            let cancelled = local_trigger.is_some();
             if cancelled && interrupted_at.is_none() {
+                // Retain the first local trigger even if the token changes later.
+                // Native terminal, streams and owned-tree evidence remain independent.
+                *interruption_reason = local_trigger;
                 if observer.snapshot()["phase"] == "running"
                     || observer.snapshot()["phase"] == "accepted"
                 {
