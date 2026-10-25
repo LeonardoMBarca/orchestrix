@@ -6,7 +6,19 @@ Atualizado em **24 de outubro de 2026**. Este registro acompanha entregas e evid
 
 ## Incremento atual — OX-017, base completa e delta autorizado
 
+### Codex 0.164 — vínculo observado; janela encerrada antes da preparação
+
+O responsável autorizou READY `badd9803` em `call_1722c9b7d35f4fc1890d94b99860c624`. Pela janela normal, o Codex **0.164.0-alpha.11.1** pinado foi selecionado e vinculado no escopo exclusivo de QA. **Uma rodada lógica de metadata foi concluída; zero turnos enviados.** Foram reservados conservadoramente até dois passes técnicos; a quantidade efetiva não é exposta. O diagnóstico oficial completo apresentou identidade com garantia observed-label, configuração, uso permitido e sete candidatos de catálogo; isso não comprova entitlement por modelo, enforcement de turno ou dogfooding. Recorrência permaneceu manual/sem autorização, sem login ou cópia de credenciais.
+
+A janela começou em **25/10/2026 01:01:18.964Z** e terminou às **01:31:18.964Z** (**24/10, 22:31:18 em Brasília**) durante as interrupções da interação. A observação exibida às 22:01:41, válida até 22:02:41, permanece histórica; reabrir o Desktop não a renovou. Nenhuma leitura ou inferência foi realizada depois do prazo. O ledger e os checkpoints originais estão preservados em `artifacts/dogfooding/codex-0164-real-proposal-1792884430274/authorized-run-1792888717993/`.
+
+Na retomada, a interface normal reconstruiu a prévia local: critérios C1–C5, Development/implementation-engineer v1, Balanced, modelo automático/esforço herdado, base completa e somente `docs/CONTEXT_OWNERSHIP.md` editável/contexto explícito. Checker v2 selecionado por diálogo nativo, argv vazio e timeout de 5 s; inspeção local confirmou **584 arquivos/54.451.461 B**, **583 protegidos**, checkout limpo e perfil opaque-base-v2. O consentimento de metadata do projeto está **desmarcado**, Prepare não foi acionado e nenhum worker existe para repetir. Captura e árvore de acessibilidade `02-local-form-context` foram inspecionadas. Um timeout de captura recuperou com nova seleção/observação, sem repetir a seleção do arquivo.
+
+Guard somente leitura reconferiu fonte funcional `6e16d86`/d4ce8771, quatro binários, runtime pinado, árvore/objetos/modos/histórico do alvo, checkout principal e banco antigo em **19,4 s**; recibo `observer-guards-1792892454325.json`, SHA-256 **0ad0d42c8dddbbb5450525fd10230636bda8bb9318c646d71db0fd289cd526f0**. Não houve mudança funcional, nova campanha de testes, pacote ou instalação. A proposta de continuação `RESUME-r1.md/json`, SHA-256 **4d97730426fc3799bdd7df76150a9cfa2afc28018385f57fa88f70460a11014a**, mantém os mesmos dados/binários/alvo e propõe **nove novos ciclos/dezoito passes e até quatro turnos**, nova janela de 30 min, sem acumular saldo. **Aguarda opt-in específico antes de Prepare**; OX-017 permanece parcial e nenhuma aplicação foi realizada. Commits somente locais, sem push.
+
 ### Codex 0.164 — homologação offline autorizada, prova real ainda pendente
+
+*Registro da qualificação e proposta anteriores ao vínculo acima; os contadores zero e o estado sem opt-in pertencem àquele checkpoint.*
 
 Computer Use voltou a responder à descoberta de aplicativos; nenhuma janela foi aberta nesta retomada. O executável `0.162.0-alpha.17.2` fixado em READY-r3 foi removido pela atualização da distribuição. As duas instalações candidatas agora reportam **`0.164.0-alpha.11.1`**, com hashes distintos. O responsável autorizou **“Homologar 0.164 offline”**; isso não transfere o opt-in antigo nem autoriza conta, login ou inferência. O checkpoint anterior abaixo permanece histórico e não é executável com o novo binário.
 
