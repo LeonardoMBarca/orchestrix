@@ -29,6 +29,7 @@ node tests/task-preparation-error.browser.mjs
 node tests/integration-flow.browser.mjs
 node tests/integration-invalidation.browser.mjs
 node tests/settings-nav.browser.mjs
+node tests/activity-icons.browser.mjs
 $env:ORCHESTRIX_RENDERER_URL = 'http://127.0.0.1:1420'
 node tests/configuration-editor.browser.mjs
 node tests/configuration-integration.browser.mjs
@@ -36,6 +37,12 @@ npm.cmd run native:dev
 ```
 
 The renderer/browser checks expect an existing Vite server (`npm.cmd run dev`, port 1420). The focused Settings matrix also accepts `ORCHESTRIX_RENDERER_URL`; it checks three languages, two text scales and two viewports with an explicitly mocked native boundary. Its results do not establish Windows/DPI or daemon acceptance.
+
+The focused activity-icon check starts its own local Vite server and headless
+Chrome. It checks the Settings/Help glyph bounds, gear symmetry, hit areas and
+keyboard actions in EN/PT/ES, at 100/200% text and normal/compact widths. Native
+commands are mocked: it never opens the Desktop, external help or a provider
+connection. Its screenshots are renderer evidence, not native acceptance.
 
 The focused preparation-error test starts its own local Vite fixture unless
 `ORCHESTRIX_RENDERER_URL` is supplied. It checks the localized identity-change
