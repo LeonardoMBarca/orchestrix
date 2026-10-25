@@ -1873,6 +1873,9 @@ impl Host {
                 return Err("preparation-diagnostic-scope-changed".into());
             }
             match current["state"].as_str() {
+                Some("complete" | "partial") if current["identityChanged"] == true => {
+                    return Err("connection-identity-reconfirmation-required".into());
+                }
                 Some("complete" | "partial")
                     if current["current"] == true && current["identityChanged"] == false =>
                 {
@@ -3104,6 +3107,127 @@ mod tests {
             host.linked_binding("legacy", None).unwrap_err(),
             "connection-relink-required"
         );
+        fs::remove_dir_all(root).unwrap();
+    }
+    #[test]
+    fn preparation_scope_explains_identity_change_without_admitting_other_invalid_evidence() {
+        let root = directory();
+        let mut host = Host::new(root.clone()).unwrap();
+        let observation = Arc::new(Mutex::new(json!({
+            "id":"exact-diagnostic","registrationRevision":5,"connectionRevision":3,
+            "purpose":"task-preparation","state":"complete","current":true,
+            "identityChanged":false,"scopeKey":"exact-scope","observedAtMs":1000,
+            "validUntilMs":61000,"effectiveValidUntilMs":61000,"capacity":null
+        })));
+        let seen = observation.clone();
+        let directory = root.join("authorized-project");
+        let expected_directory = directory.clone();
+        let requests = Arc::new(Mutex::new(0));
+        let recorded = requests.clone();
+        host.test_transport = Some(Arc::new(move |operation| match operation {
+            Operation::Connections { request } => match *request {
+                ConnectionRequest::List => {
+                    Ok(json!({"connections":[{"id":"account","revision":5,"bindingRevision":3}]}))
+                }
+                ConnectionRequest::DiagnoseScope {
+                    id,
+                    expected_revision,
+                    metadata_directory,
+                    allow_metadata_read,
+                    ..
+                } => {
+                    assert_eq!(id, "account");
+                    assert_eq!(expected_revision, 5);
+                    assert_eq!(metadata_directory, expected_directory);
+                    assert!(allow_metadata_read);
+                    *recorded.lock().unwrap() += 1;
+                    Ok(json!({"diagnosticId":"exact-diagnostic"}))
+                }
+                ConnectionRequest::Diagnostics { id, diagnostic_id } => {
+                    assert_eq!(id, "account");
+                    assert_eq!(diagnostic_id.as_deref(), Some("exact-diagnostic"));
+                    Ok(json!({"latest":seen.lock().unwrap().clone()}))
+                }
+                _ => panic!("unexpected connection operation"),
+            },
+            _ => panic!("preparation inspection must not dispatch a worker"),
+        }));
+        let valid = observation.lock().unwrap().clone();
+        let evidence = host
+            .preparation_scope("account", 3, directory.clone(), true)
+            .unwrap();
+        assert_eq!(evidence["diagnosticId"], "exact-diagnostic");
+        assert_eq!(evidence["scopeKey"], "exact-scope");
+        assert_eq!(evidence["effectiveRuntimeConfirmed"], false);
+        assert_eq!(evidence["capacity"]["identityChanged"], false);
+        for state in ["complete", "partial"] {
+            let mut changed = valid.clone();
+            changed["state"] = json!(state);
+            changed["identityChanged"] = json!(true);
+            *observation.lock().unwrap() = changed;
+            assert_eq!(
+                host.preparation_scope("account", 3, directory.clone(), true)
+                    .unwrap_err(),
+                "connection-identity-reconfirmation-required"
+            );
+        }
+        for (field, value, expected) in [
+            (
+                "current",
+                json!(false),
+                "project-metadata-revalidation-required",
+            ),
+            (
+                "identityChanged",
+                Value::Null,
+                "project-metadata-revalidation-required",
+            ),
+            (
+                "id",
+                json!("another-diagnostic"),
+                "preparation-diagnostic-scope-changed",
+            ),
+            (
+                "connectionRevision",
+                json!(4),
+                "preparation-diagnostic-scope-changed",
+            ),
+            (
+                "registrationRevision",
+                json!(6),
+                "preparation-diagnostic-scope-changed",
+            ),
+            (
+                "purpose",
+                json!("registration"),
+                "preparation-diagnostic-scope-changed",
+            ),
+        ] {
+            let mut invalid = valid.clone();
+            invalid[field] = value;
+            *observation.lock().unwrap() = invalid;
+            assert_eq!(
+                host.preparation_scope("account", 3, directory.clone(), true)
+                    .unwrap_err(),
+                expected
+            );
+        }
+        let mut failed = valid;
+        failed["state"] = json!("failed");
+        failed["errorCode"] = json!("runtime-unavailable");
+        *observation.lock().unwrap() = failed;
+        assert_eq!(
+            host.preparation_scope("account", 3, directory.clone(), true)
+                .unwrap_err(),
+            "runtime-unavailable"
+        );
+        assert_eq!(*requests.lock().unwrap(), 10);
+        assert_eq!(
+            host.preparation_scope("account", 3, directory, false)
+                .unwrap_err(),
+            "project-metadata-read-not-authorized"
+        );
+        assert_eq!(*requests.lock().unwrap(), 10);
         fs::remove_dir_all(root).unwrap();
     }
     #[test]

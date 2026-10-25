@@ -58,6 +58,13 @@ Duplicate linked auth-store paths are refused, without asserting that different 
 
 The installed Codex surface exposes limited account labels, not a stable remote account/workspace identity. An observation fence is not an independent-account or quota guarantee. A changed observation requires explicit reconfirmation, never silent native-thread reassociation. Historical diagnostics do not authorize execution: preparation pins the connection/binding and context scope, and worker/review admission still performs its current runtime/identity/configuration guards. Exact implementation and tested limitations remain in [current status](../DEVELOPMENT_STATUS.md).
 
+When the exact complete/partial preparation diagnostic reports an identity change,
+the Desktop host returns the existing `connection-identity-reconfirmation-required`
+error instead of classifying it as generic stale metadata. The renderer explains
+the required review/explicit reconfirmation in Connections without asserting an
+account switch. This explanation does not recheck, reconfirm, authorize or submit
+work. Stale, mismatched, unavailable and missing evidence keep their own guards.
+
 ### Serial application extension
 
 `integration-v1` adds typed `PrepareIntegration`, `ApproveIntegration`, `ApplyIntegration` and historical `InspectIntegration` operations under the [initial Git application profile](git-worktrees.md#serial-integration-and-explicit-application). Mutations carry the original command ID, expected store revision and a closed request type from [`integration_records.rs`](../../crates/orchestrix-core/src/integration_records.rs). They acknowledge a durable journal entry and run outside the control loop in the existing serial slot. `activeOperationKind` distinguishes integration work from a model turn; Cancel addresses only that owned active operation. A stale revision is a rejection before reservation, not an uncertain application.

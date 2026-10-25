@@ -72,6 +72,15 @@ test('authentication, policy, timeout, cancellation and backoff offer different 
  assert.match(action('coalesced'),/already being observed/);
  assert.match(diagnosticNextAction({...report,identityChanged:true},50),/explicitly confirm/);
 });
+test('changed account observations have a localized preparation action without claiming an account switch',()=>{
+ const message='Observed account details changed. Review the connection in Connections and explicitly confirm the link before preparing new work. This does not prove that the account switched.';
+ assert.equal(connectionError('connection-identity-reconfirmation-required'),message);
+ assert.equal(connectionError('Error: connection-identity-reconfirmation-required'),message);
+ assert.equal(connectionTranslations[message]?.length,2);
+ assert.match(connectionTranslations[message][0],/Conexões.*explicitamente.*não comprova/);
+ assert.match(connectionTranslations[message][1],/Conexiones.*explícitamente.*no demuestra/);
+ assert.equal(connectionError('project-metadata-revalidation-required'),'project-metadata-revalidation-required','an unclassified failure must not be relabeled as identity change');
+});
 test('new diagnostic states and capability descriptions have Portuguese and Spanish labels',()=>{
  for(const state of ['running','complete','partial','failed','cancelled','interrupted','backoff','coalesced','runtime-metadata','official-read-only-metadata','synthetic','observed-label']){
   const label=diagnosticLabel(state);assert.ok(connectionTranslations[label]?.every(s=>s.length>0),label);

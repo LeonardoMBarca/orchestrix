@@ -25,6 +25,7 @@ npm.cmd test
 npm.cmd run test:browser
 npm.cmd run test:worker-evidence
 node tests/task-form.browser.mjs
+node tests/task-preparation-error.browser.mjs
 node tests/integration-flow.browser.mjs
 node tests/integration-invalidation.browser.mjs
 node tests/settings-nav.browser.mjs
@@ -35,6 +36,12 @@ npm.cmd run native:dev
 ```
 
 The renderer/browser checks expect an existing Vite server (`npm.cmd run dev`, port 1420). The focused Settings matrix also accepts `ORCHESTRIX_RENDERER_URL`; it checks three languages, two text scales and two viewports with an explicitly mocked native boundary. Its results do not establish Windows/DPI or daemon acceptance.
+
+The focused preparation-error test starts its own local Vite fixture unless
+`ORCHESTRIX_RENDERER_URL` is supplied. It checks the localized identity-change
+explanation, preserved draft and absence of automatic authorization/retry in
+EN/PT/ES at 900 px/200% text. This renderer-only fixture does not certify the
+native shell or an authenticated connection.
 
 `native:dev` builds/stages the Orchestrix-owned Core and supervisor, starts Vite at `127.0.0.1:1420`, and opens the native window. For the unsigned Windows package:
 

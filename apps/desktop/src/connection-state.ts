@@ -31,6 +31,7 @@ export function retainedModelPreference(connections:readonly Connection[],connec
 }
 export function connectionError(error:string){
  if(error.includes('auth-store-already-linked'))return 'This Codex home is already linked. Use the existing connection.';
+ if(error.includes('connection-identity-reconfirmation-required'))return 'Observed account details changed. Review the connection in Connections and explicitly confirm the link before preparing new work. This does not prove that the account switched.';
  if(error.includes('connection-binding-revision-required')||error.includes('connection-binding-revision-changed'))return 'The connection configuration changed. Select it again and authorize a new preparation.';
  if(error.includes('connection-revision'))return 'The connection was updated in another window. Refresh it before continuing.';
  return error;

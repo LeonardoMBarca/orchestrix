@@ -8,6 +8,7 @@ export const connectionTranslations:Record<string,[string,string]>={
  'Connection details':['Detalhes da conexão','Detalles de la conexión'],
  'Revision':['Revisão','Revisión'],
  'This Codex home is already linked. Use the existing connection.':['Este diretório Codex já está vinculado. Use a conexão existente.','Este directorio Codex ya está vinculado. Usa la conexión existente.'],
+ 'Observed account details changed. Review the connection in Connections and explicitly confirm the link before preparing new work. This does not prove that the account switched.':['Os dados observados da conta mudaram. Revise a conexão em Conexões e confirme o vínculo explicitamente antes de preparar um novo trabalho. Isso não comprova que a conta foi trocada.','Los datos observados de la cuenta cambiaron. Revisa la conexión en Conexiones y confirma el vínculo explícitamente antes de preparar un nuevo trabajo. Esto no demuestra que la cuenta haya cambiado.'],
  'The connection configuration changed. Select it again and authorize a new preparation.':['A configuração da conexão mudou. Selecione-a novamente e autorize uma nova preparação.','La configuración de la conexión cambió. Selecciónala otra vez y autoriza una nueva preparación.'],
  'The connection was updated in another window. Refresh it before continuing.':['A conexão foi atualizada em outra janela. Atualize-a antes de continuar.','La conexión se actualizó en otra ventana. Actualízala antes de continuar.'],
  'Connection name':['Nome da conexão','Nombre de la conexión'],

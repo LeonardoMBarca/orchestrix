@@ -5,7 +5,7 @@ import type {ConfigurationCatalog} from './configuration-types';
 import {pick,type Grant} from './editor';
 import {request,type Bootstrap,type PreparedTask,type TaskDraft} from './protocol';
 import {preparationStillCurrent,taskFingerprint} from './task-preparation';
-import {selectableConnection,retainedModelPreference} from './connection-state';
+import {selectableConnection,retainedModelPreference,connectionError} from './connection-state';
 import {CapacityObservationView} from './capacity-observation';
 import {diagnosticCapacity,preparedCapacity} from './capacity-state';
 import {RepositoryInspection} from './repository-inspection';
@@ -34,7 +34,7 @@ export function TaskForm({definitionCatalog,definitionText,task,setTask,prepared
   const snapshot=current.current,fingerprint=taskFingerprint(snapshot),version=generation.current;
   setPrepared(null);setRuntimeConsent(false);setCheckConsent(false);setBusy(true);
   try{const result=await request<PreparedTask>({type:'prepare-task',draft:snapshot});if(!mounted.current||version!==generation.current||!preparationStillCurrent(fingerprint,current.current))return;setPrepared(result);requestAnimationFrame(()=>authorization.current?.scrollIntoView({block:'start',behavior:'smooth'}));}
-  catch(error){if(mounted.current&&version===generation.current)onError(String(error));}finally{setBusy(false);}
+  catch(error){if(mounted.current&&version===generation.current)onError(t(connectionError(String(error))));}finally{setBusy(false);}
  }
  const source=prepared?.task as Record<string,unknown>|undefined;
  const requestedPreferences=(source?.policy as {layers?:{scope:string,preferences:Record<string,unknown>}[]}|undefined)?.layers?.find(layer=>layer.scope==='task')?.preferences??{};
