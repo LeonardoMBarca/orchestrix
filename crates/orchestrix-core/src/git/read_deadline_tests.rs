@@ -214,6 +214,16 @@ fn installed_git_command_deadline_is_distinct_while_observation_remains_valid() 
     assert_eq!(rejected[0]["command"]["effectiveLimitMs"], 0);
     assert_eq!(rejected[0]["command"]["limitingBudget"], "command");
     assert!(rejected[0]["command"]["transportElapsedMs"].is_u64());
+    // The zero deadline rejects before this loop's first receive/try_wait.
+    // These are LAST local facts, even if Git exited concurrently in the OS.
+    assert!(ready[0]["command"].get("waitObservation").is_none());
+    let wait = &rejected[0]["command"]["waitObservation"];
+    assert_eq!(wait["statusLastObserved"], false);
+    assert!(wait["exitCodeLastObserved"].is_null());
+    assert_eq!(wait["closedStreamsLastObserved"], 0);
+    assert_eq!(wait["inputClosedLastObserved"], true);
+    assert_eq!(wait["stdoutBytesObserved"], 0);
+    assert_eq!(wait["combinedOutputBytesObserved"], 0);
     assert!(
         rejected[0]["observationElapsedMs"].as_u64().unwrap()
             < rejected[0]["observationLimitMs"].as_u64().unwrap()
@@ -241,6 +251,41 @@ fn filesystem_rejection_preserves_deadline_then_cancellation_without_a_command()
         assert!(event["command"].is_null());
     }
     assert_no_command_ready(&events);
+}
+
+#[test]
+fn repository_scope_observation_is_private_bounded_and_rejects_invalid_oids() {
+    let fixture = TraceFixture::new();
+    let head = "a".repeat(40);
+    let base = "b".repeat(40);
+    let trace = fixture.trace();
+    diagnostic::repository_scope_observed(&fixture.root, &head, &base, true);
+    diagnostic::repository_scope_observed(&fixture.root, "fooNoSecret-invalid-head", &base, true);
+    diagnostic::repository_scope_observed(&fixture.root, &head, "fooNoSecret-invalid-base", false);
+    diagnostic::repository_scope_observed(&fixture.root, &"A".repeat(40), &base, true);
+    drop(trace);
+
+    let events = fixture.events();
+    assert_eq!(events.len(), 1);
+    let event = &events[0];
+    assert_eq!(event["event"], "repository-scope-observed");
+    assert_eq!(event["operation"], "repository-inspection");
+    assert_eq!(event["headOidObserved"], head);
+    assert_eq!(event["baseOid"], base);
+    assert_eq!(event["baseSource"], "request");
+    assert_eq!(
+        event["canonicalRootHash"],
+        crate::git_records::content_hash(fixture.root.to_str().unwrap().as_bytes())
+    );
+    assert_eq!(event["canonicalRootHash"].as_str().unwrap().len(), 64);
+    assert!(event["parent"].is_null());
+    assert!(event.get("root").is_none());
+    assert!(event.get("path").is_none());
+    let text = serde_json::to_string(event).unwrap();
+    assert!(text.len() < 2048);
+    assert!(!text.contains(PRIVATE_CANARY));
+    assert!(!text.contains("fooNoSecret"));
+    assert!(!text.contains(fixture.root.to_str().unwrap()));
 }
 
 #[test]
@@ -290,6 +335,12 @@ fn command_detail_does_not_exhaust_existing_integration_operation_traces() {
                             None,
                             None,
                         );
+                        diagnostic::repository_scope_observed(
+                            &fixture.root,
+                            "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                            "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+                            true,
+                        );
                         diagnostic::git_command_ready(command, None);
                         diagnostic::read_budget_rejected(
                             DeadlineBoundary::CommandWait,
@@ -314,6 +365,7 @@ fn command_detail_does_not_exhaust_existing_integration_operation_traces() {
             event["operation"] == expected_operation
                 && event["event"] != "git-command-ready"
                 && event["event"] != "read-budget-rejected"
+                && event["event"] != "repository-scope-observed"
                 && event["phase"] != "git-command"
         }));
         let root_end = events

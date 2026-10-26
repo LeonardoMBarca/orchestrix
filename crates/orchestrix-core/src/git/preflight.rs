@@ -229,10 +229,12 @@ fn inspect_repository_profile_inner(
         let head = executor.inspect_head(&root)?;
         Ok::<_, GitError>((root, executor, head))
     })?;
+    let base_requested = base.is_some();
     let base = base.unwrap_or(&head);
     if !valid_oid(base) {
         return Err(GitError::Base);
     }
+    diagnostic::repository_scope_observed(&root, &head, base, base_requested);
     let mut selected = editable_paths.unwrap_or_default().to_vec();
     selected.sort();
     let mut selected_aliases = BTreeSet::new();

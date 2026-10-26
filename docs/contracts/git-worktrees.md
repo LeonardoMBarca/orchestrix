@@ -200,6 +200,21 @@ successful later read does not explain a historical deadline. The same opt-in,
 32-trace/256-event/128-KiB bounds below apply; this does not query a provider or
 change `repository-inspection-v1` responses or artifact hashes.
 
+An unscoped command-wait rejection can additionally retain the loop's **last
+observed** exit status, closed-stream count (0–2), input completion and byte
+counts. These are captured before the existing kill/reap and emitted after it;
+there is no extra process poll or pipe drain. An unobserved exit is not proof
+that the child was still running; EOF count does not establish process-tree
+closure. Scoped transports omit facts they do not expose. Absence keeps the
+original diagnostic command shape unchanged.
+
+One inspection-only scope event can correlate the already canonicalized root
+by SHA-256 of its UTF-8 spelling and retain parsed HEAD/base OIDs and base source.
+It performs no filesystem lookup and exposes no path or argv. This hash is a
+correlation aid, not proof of physical-directory identity across aliases; neither
+it nor the observed OIDs grant authority. The event uses the same bounded private
+sink and never replaces fresh preparation or final-operation validation.
+
 Per-command spans, readiness and read-budget detail are exclusive to the
 `repository-inspection` operation. Prepare/Approve/Apply keep their existing
 counters and phase events, so Git-heavy integration cannot consume their bounded

@@ -543,6 +543,37 @@ pub(crate) fn read_budget_rejected(
     });
 }
 
+/// Correlation only: the caller supplies its already canonicalized root and
+/// parsed OIDs. No filesystem read, path disclosure or execution authority.
+pub(crate) fn repository_scope_observed(root: &Path, head: &str, base: &str, base_requested: bool) {
+    let Some(path) = root.to_str().filter(|p| p.len() <= 131_072) else {
+        return;
+    };
+    let oid = |s: &str| {
+        matches!(s.len(), 40 | 64)
+            && s.bytes()
+                .all(|b| b.is_ascii_hexdigit() && !b.is_ascii_uppercase())
+    };
+    if !oid(head) || !oid(base) {
+        return;
+    }
+    ACTIVE.with(|slot| {
+        if let Some(state) = slot.borrow().as_ref() {
+            let mut state = state.borrow_mut();
+            if state.operation != TraceOperation::RepositoryInspection.label() {
+                return;
+            }
+            let parent = state.stack.last().copied();
+            state.emit(serde_json::json!({
+                "event":"repository-scope-observed", "parent":parent,
+                "canonicalRootHash":crate::git_records::content_hash(path.as_bytes()),
+                "headOidObserved":head, "baseOid":base,
+                "baseSource":if base_requested {"request"}else{"observed-head"}
+            }));
+        }
+    });
+}
+
 pub(crate) fn git_command_ready(
     command: crate::git::read_deadline::CommandDeadline,
     observation: Option<(std::time::Duration, std::time::Duration)>,

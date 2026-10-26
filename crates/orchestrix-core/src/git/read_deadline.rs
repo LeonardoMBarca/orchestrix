@@ -36,6 +36,41 @@ pub(crate) fn limiting_budget(
     }
 }
 
+/// Last facts already observed by the existing process loop. These are not a
+/// fresh OS query, confirmation of tree termination or authority to continue.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct WaitObservation {
+    status_last_observed: bool,
+    exit_code_last_observed: Option<i32>,
+    closed_streams_last_observed: u8,
+    input_closed_last_observed: bool,
+    stdout_bytes_observed: u64,
+    combined_output_bytes_observed: u64,
+}
+
+impl WaitObservation {
+    /// Preserve facts without clamping an invalid stream count into completion.
+    /// No status/stream lookup, timing or enforcement occurs in this type.
+    pub(crate) fn new(
+        status_last_observed: bool,
+        exit_code_last_observed: Option<i32>,
+        closed_streams_last_observed: u8,
+        input_closed_last_observed: bool,
+        stdout_bytes_observed: u64,
+        combined_output_bytes_observed: u64,
+    ) -> Option<Self> {
+        (closed_streams_last_observed <= 2).then_some(Self {
+            status_last_observed,
+            exit_code_last_observed,
+            closed_streams_last_observed,
+            input_closed_last_observed,
+            stdout_bytes_observed,
+            combined_output_bytes_observed,
+        })
+    }
+}
+
 #[derive(Clone, Copy, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct CommandDeadline {
@@ -45,6 +80,8 @@ pub(crate) struct CommandDeadline {
     observation_remaining_at_selection_ms: Option<u64>,
     limiting_budget: LimitingBudget,
     transport_elapsed_ms: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    wait_observation: Option<WaitObservation>,
 }
 
 impl CommandDeadline {
@@ -66,7 +103,15 @@ impl CommandDeadline {
                 .map(milliseconds),
             limiting_budget: limiting_budget(command_limit, observation_remaining_at_selection),
             transport_elapsed_ms: transport_elapsed.map(milliseconds),
+            wait_observation: None,
         }
+    }
+
+    /// Attach a copy of facts captured by the caller before mandatory cleanup.
+    /// Attaching facts never samples the process or changes a selected deadline.
+    pub(crate) fn with_wait_observation(mut self, observation: WaitObservation) -> Self {
+        self.wait_observation = Some(observation);
+        self
     }
 }
 
@@ -186,5 +231,103 @@ mod tests {
         ] {
             assert_eq!(serde_json::to_value(boundary).unwrap(), label);
         }
+    }
+
+    #[test]
+    fn wait_observation_retains_last_facts_and_rejects_invalid_stream_counts() {
+        for closed in 0..=2 {
+            let observation = WaitObservation::new(false, None, closed, true, 0, 0).unwrap();
+            let value = serde_json::to_value(observation).unwrap();
+            assert_eq!(value["statusLastObserved"], false);
+            assert!(value["exitCodeLastObserved"].is_null());
+            assert_eq!(value["closedStreamsLastObserved"], closed);
+            assert_eq!(value["inputClosedLastObserved"], true);
+            assert_eq!(value["stdoutBytesObserved"], 0);
+            assert_eq!(value["combinedOutputBytesObserved"], 0);
+            assert_eq!(value.as_object().unwrap().len(), 6);
+        }
+        assert!(WaitObservation::new(false, None, 3, false, 0, 0).is_none());
+        assert!(WaitObservation::new(false, None, u8::MAX, false, 0, 0).is_none());
+        let exited = WaitObservation::new(true, Some(0), 1, true, 64, 80).unwrap();
+        let signalled = WaitObservation::new(true, None, 2, true, 0, 0).unwrap();
+        let value = serde_json::to_value(exited).unwrap();
+        assert_eq!(value["statusLastObserved"], true);
+        assert_eq!(value["exitCodeLastObserved"], 0);
+        assert_eq!(value["closedStreamsLastObserved"], 1);
+        assert_eq!(value["stdoutBytesObserved"], 64);
+        assert_eq!(value["combinedOutputBytesObserved"], 80);
+        assert!(serde_json::to_value(signalled).unwrap()["exitCodeLastObserved"].is_null());
+    }
+
+    #[test]
+    fn attaching_wait_facts_preserves_original_deadline_and_legacy_payload() {
+        let original = CommandDeadline::new(
+            "ls-files",
+            Duration::from_secs(15),
+            Duration::from_secs(2),
+            Some(Duration::from_secs(3)),
+            Some(Duration::from_millis(2_001)),
+        );
+        let observation = WaitObservation::new(true, Some(0), 1, true, 0, 12).unwrap();
+        let attached = original.with_wait_observation(observation);
+        let original_value = serde_json::to_value(original).unwrap();
+        let mut attached_value = serde_json::to_value(attached).unwrap();
+        assert_eq!(original_value.as_object().unwrap().len(), 6);
+        assert!(original_value.get("waitObservation").is_none());
+        assert_eq!(attached_value.as_object().unwrap().len(), 7);
+        assert_eq!(
+            attached_value["waitObservation"],
+            serde_json::to_value(observation).unwrap()
+        );
+        attached_value
+            .as_object_mut()
+            .unwrap()
+            .remove("waitObservation");
+        assert_eq!(attached_value, original_value);
+    }
+
+    #[test]
+    fn wait_facts_payload_is_bounded_and_cannot_retain_private_text() {
+        let observation =
+            WaitObservation::new(true, Some(i32::MIN), 2, false, u64::MAX, u64::MAX).unwrap();
+        let facts = CommandDeadline::new(
+            "fooNoSecret C:\\private-wait-canary --token=must-not-appear",
+            Duration::MAX,
+            Duration::MAX,
+            Some(Duration::MAX),
+            Some(Duration::MAX),
+        )
+        .with_wait_observation(observation);
+        let value = serde_json::to_value(facts).unwrap();
+        assert_eq!(value["builtin"], "unsupported");
+        assert_eq!(value["waitObservation"]["exitCodeLastObserved"], i32::MIN);
+        assert_eq!(value["waitObservation"]["stdoutBytesObserved"], u64::MAX);
+        let text = serde_json::to_string(&facts).unwrap();
+        assert!(text.len() < 1024);
+        for canary in [
+            "fooNoSecret",
+            "private-wait-canary",
+            "must-not-appear",
+            "token",
+        ] {
+            assert!(!text.contains(canary));
+        }
+        let keys = value["waitObservation"]
+            .as_object()
+            .unwrap()
+            .keys()
+            .map(String::as_str)
+            .collect::<std::collections::BTreeSet<_>>();
+        assert_eq!(
+            keys,
+            std::collections::BTreeSet::from([
+                "statusLastObserved",
+                "exitCodeLastObserved",
+                "closedStreamsLastObserved",
+                "inputClosedLastObserved",
+                "stdoutBytesObserved",
+                "combinedOutputBytesObserved",
+            ])
+        );
     }
 }

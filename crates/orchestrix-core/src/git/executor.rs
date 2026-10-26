@@ -1,7 +1,7 @@
 //! Bounded Git built-ins, without a shell or inherited Git configuration.
 //! This does not implement process-tree supervision or a command sandbox.
 use super::paths::{canonical_directory, git_path, reject_links};
-use super::read_deadline::{CommandDeadline, DeadlineBoundary};
+use super::read_deadline::{CommandDeadline, DeadlineBoundary, WaitObservation};
 use super::{GitError, GitResult};
 use std::{
     env,
@@ -631,7 +631,7 @@ impl GitExecutor {
         let mut result = Vec::new();
         let mut count = 0usize;
         let mut closed = 0;
-        let mut status = None;
+        let mut status: Option<std::process::ExitStatus> = None;
         let mut input_closed = input.is_none();
         loop {
             let elapsed = started.elapsed();
@@ -640,6 +640,21 @@ impl GitExecutor {
                 // delay the existing kill/reap at a command deadline.
                 let observation = self.read_budget_observation();
                 let command = command_facts(Some(elapsed));
+                // These are the loop's last observed facts, not a fresh OS
+                // probe. Do not poll the child or drain another stream before
+                // the mandatory kill/reap. In particular, None does not prove
+                // that the child is still running at this later instant.
+                let wait = u8::try_from(closed).ok().and_then(|closed| {
+                    WaitObservation::new(
+                        status.is_some(),
+                        status.as_ref().and_then(std::process::ExitStatus::code),
+                        closed,
+                        input_closed,
+                        result.len() as u64,
+                        count as u64,
+                    )
+                });
+                let command = wait.map_or(command, |wait| command.with_wait_observation(wait));
                 let _ = child.kill();
                 reap_bounded(&mut child);
                 crate::integration_diagnostics::read_budget_rejected(
