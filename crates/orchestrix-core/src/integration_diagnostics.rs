@@ -76,6 +76,16 @@ pub(crate) enum Phase {
     ReferenceCas,
     ConfirmApplied,
     ConfirmDelivered,
+    RepositoryInspection,
+    PreflightSupport,
+    PreflightInventory,
+    PreflightAttributes,
+    PreflightObjects,
+    PreflightCheckout,
+    PreflightBaseIdentity,
+    PreflightCapture,
+    PreflightFinalFence,
+    GitCommand,
 }
 impl Phase {
     fn label(self) -> &'static str {
@@ -134,6 +144,16 @@ impl Phase {
             Self::ReferenceCas => "reference-cas",
             Self::ConfirmApplied => "confirm-applied",
             Self::ConfirmDelivered => "confirm-delivered",
+            Self::RepositoryInspection => "repository-inspection",
+            Self::PreflightSupport => "preflight-support",
+            Self::PreflightInventory => "preflight-inventory",
+            Self::PreflightAttributes => "preflight-attributes",
+            Self::PreflightObjects => "preflight-objects",
+            Self::PreflightCheckout => "preflight-checkout",
+            Self::PreflightBaseIdentity => "preflight-base-identity",
+            Self::PreflightCapture => "preflight-capture",
+            Self::PreflightFinalFence => "preflight-final-fence",
+            Self::GitCommand => "git-command",
         }
     }
 }
@@ -235,6 +255,7 @@ pub(crate) enum TraceOperation {
     Prepare,
     Approve,
     Apply,
+    RepositoryInspection,
 }
 impl TraceOperation {
     fn label(self) -> &'static str {
@@ -242,6 +263,7 @@ impl TraceOperation {
             Self::Prepare => "prepare",
             Self::Approve => "approve",
             Self::Apply => "apply",
+            Self::RepositoryInspection => "repository-inspection",
         }
     }
 }
@@ -329,13 +351,16 @@ impl PreparationTrace {
         )
     }
     #[cfg(test)]
-    fn in_directory(directory: Option<&Path>, operation_id: &str) -> Self {
-        Self::in_directory_at(
-            directory,
-            operation_id,
-            Instant::now(),
-            TraceOperation::Prepare,
-        )
+    pub(crate) fn in_directory(directory: Option<&Path>, operation_id: &str) -> Self {
+        Self::in_directory_for_operation(directory, operation_id, TraceOperation::Prepare)
+    }
+    #[cfg(test)]
+    pub(crate) fn in_directory_for_operation(
+        directory: Option<&Path>,
+        operation_id: &str,
+        operation: TraceOperation,
+    ) -> Self {
+        Self::in_directory_at(directory, operation_id, Instant::now(), operation)
     }
     fn in_directory_at(
         directory: Option<&Path>,
@@ -469,6 +494,8 @@ impl PreparationTrace {
                 PreparationResult::Applied => "applied",
                 PreparationResult::Delivered => "delivered",
                 PreparationResult::Invalidated => "invalidated",
+                PreparationResult::InspectionCompatible => "inspection-compatible",
+                PreparationResult::InspectionBlocked => "inspection-blocked",
             };
             state
                 .borrow_mut()
@@ -486,6 +513,58 @@ pub(crate) enum PreparationResult {
     Applied,
     Delivered,
     Invalidated,
+    InspectionCompatible,
+    InspectionBlocked,
+}
+
+/// Fixed fields only. These observations explain an existing rejection; they
+/// neither sample an authorization clock nor select or renew any read budget.
+pub(crate) fn read_budget_rejected(
+    boundary: crate::git::read_deadline::DeadlineBoundary,
+    cancelled: bool,
+    observation: Option<(std::time::Duration, std::time::Duration)>,
+    command: Option<crate::git::read_deadline::CommandDeadline>,
+) {
+    ACTIVE.with(|slot| {
+        if let Some(state) = slot.borrow().as_ref() {
+            let mut state = state.borrow_mut();
+            if state.operation != TraceOperation::RepositoryInspection.label() {
+                return;
+            }
+            let parent = state.stack.last().copied();
+            state.emit(serde_json::json!({
+                "event":"read-budget-rejected", "parent":parent,
+                "boundary":boundary, "reason":if cancelled {"cancelled"} else {"deadline"},
+                "observationElapsedMs":observation.map(|v| duration_ms(v.0)),
+                "observationLimitMs":observation.map(|v| duration_ms(v.1)),
+                "command":command
+            }));
+        }
+    });
+}
+
+pub(crate) fn git_command_ready(
+    command: crate::git::read_deadline::CommandDeadline,
+    observation: Option<(std::time::Duration, std::time::Duration)>,
+) {
+    ACTIVE.with(|slot| {
+        if let Some(state) = slot.borrow().as_ref() {
+            let mut state = state.borrow_mut();
+            if state.operation != TraceOperation::RepositoryInspection.label() {
+                return;
+            }
+            let parent = state.stack.last().copied();
+            state.emit(serde_json::json!({
+                "event":"git-command-ready", "parent":parent, "command":command,
+                "observationElapsedMs":observation.map(|v| duration_ms(v.0)),
+                "observationLimitMs":observation.map(|v| duration_ms(v.1))
+            }));
+        }
+    });
+}
+
+fn duration_ms(duration: std::time::Duration) -> u64 {
+    duration.as_millis().try_into().unwrap_or(u64::MAX)
 }
 impl Drop for PreparationTrace {
     fn drop(&mut self) {
@@ -504,9 +583,18 @@ impl Drop for PreparationTrace {
 }
 pub(crate) fn measure<T, E>(phase: Phase, action: impl FnOnce() -> Result<T, E>) -> Result<T, E> {
     let span = ACTIVE.with(|slot| {
-        slot.borrow()
-            .as_ref()
-            .and_then(|state| Span::start(Rc::clone(state), phase, None))
+        slot.borrow().as_ref().and_then(|state| {
+            // Per-command detail belongs to repository inspection only.
+            // Preserve the bounded Apply/Approve traces and their late
+            // authorization, effect and closure checkpoints.
+            if matches!(phase, Phase::GitCommand)
+                && state.borrow().operation != TraceOperation::RepositoryInspection.label()
+            {
+                None
+            } else {
+                Span::start(Rc::clone(state), phase, None)
+            }
+        })
     });
     let result = action();
     if let Some(span) = span {

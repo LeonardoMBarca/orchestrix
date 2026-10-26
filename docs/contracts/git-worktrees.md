@@ -184,6 +184,31 @@ Attributes are inspected both at the pinned base and in the working checkout. [`
 
 Preflight has a 90-second total Git budget, the existing 15-second/8-MiB per-command bounds and cancellation between commands. It does not enlarge worker/runtime/check budgets. Unsupported metadata can reject before inventory; no empty report is presented as a successful scan. The schema-1 textual limits and historical hashes remain unchanged; the opt-in v2 limits above apply only to that separate profile.
 
+The existing private diagnostic sink can also trace `repository-inspection`:
+support, inventory, attributes, raw objects, checkout, coherent capture and final
+fences. Fixed `read-budget-rejected` facts identify the actual rejecting branch:
+preflight checkpoint, filesystem checkpoint, before-command or command wait, and
+keep cancellation distinct. Command facts retain the original 15-second limit,
+the effective duration already selected by the executor, remaining observation
+time at that selection and fixed builtin label; no arguments, paths, content or
+process output are logged. Exact-duration comparison distinguishes a command
+limit, remaining observation limit and ties before rounding display milliseconds.
+The observation at command readiness is separate from selection: existing setup,
+spawn, timer and guard order are unchanged. A command-wait rejection does not
+identify an OS/CPU/I/O cause. Diagnostic clocks never renew an observation, and a
+successful later read does not explain a historical deadline. The same opt-in,
+32-trace/256-event/128-KiB bounds below apply; this does not query a provider or
+change `repository-inspection-v1` responses or artifact hashes.
+
+Per-command spans, readiness and read-budget detail are exclusive to the
+`repository-inspection` operation. Prepare/Approve/Apply keep their existing
+counters and phase events, so Git-heavy integration cannot consume their bounded
+sink with this new detail before authorization/effect/closure checkpoints.
+A standalone base-preservation observation uses the same inspection trace and
+base-identity phase; its original start/90-second budget and return remain
+unchanged. An enclosing operation keeps its active trace instead. A successful
+preservation plan establishes neither a clean checkout nor application authority.
+
 That observation deadline is checked at operation boundaries, rather than a
 hard preemption of Windows filesystem calls. A bounded metadata walk can cross
 it before the next check reports Deadline; entry/path/byte limits still apply.

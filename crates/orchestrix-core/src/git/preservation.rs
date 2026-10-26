@@ -1,6 +1,7 @@
 //! Opt-in, exact mixed-content bases. Only explicitly editable UTF-8 files may
 //! become artifact content; preserved blobs remain hashes and native Git OIDs.
 use super::{GitError, GitExecutor, GitResult, capture, paths, preflight, worktrees::valid_oid};
+use crate::integration_diagnostics::{Phase, PreparationResult, PreparationTrace, TraceOperation};
 use crate::{
     git_records::{
         BasePreservation, MAX_BASE_BYTES, MAX_BASE_FILES, MAX_CAPTURE_BYTES, MAX_EDITABLE_FILES,
@@ -29,14 +30,29 @@ pub fn plan_base_preservation(
     cancel: &CancellationToken,
 ) -> GitResult<BasePreservation> {
     let started = Instant::now();
-    let root = paths::canonical_directory(root)?;
-    let executor =
-        GitExecutor::new()?.with_read_budget(started, Duration::from_secs(90), cancel.clone());
-    let manifest = plan(&executor, &root, base, editable_paths)?;
-    if cancel.is_cancelled() {
-        return Err(GitError::Pending);
-    }
-    Ok(manifest)
+    // A standalone base observation needs the same bounded read diagnostics.
+    // When nested in Prepare/Approve/Apply the existing trace remains active;
+    // this disabled nested handle cannot enable command detail there.
+    let trace = PreparationTrace::operation(
+        "base-preservation-inspection",
+        TraceOperation::RepositoryInspection,
+    );
+    let result = trace.measure(Phase::PreflightBaseIdentity, None, || {
+        let root = paths::canonical_directory(root)?;
+        let executor =
+            GitExecutor::new()?.with_read_budget(started, Duration::from_secs(90), cancel.clone());
+        let manifest = plan(&executor, &root, base, editable_paths)?;
+        if cancel.is_cancelled() {
+            return Err(GitError::Pending);
+        }
+        Ok(manifest)
+    });
+    trace.result(if result.is_ok() {
+        PreparationResult::InspectionCompatible
+    } else {
+        PreparationResult::Error
+    });
+    result
 }
 
 pub(super) fn plan(

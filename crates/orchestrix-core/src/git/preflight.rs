@@ -2,6 +2,9 @@
 //! worktrees, index, provider or database are modified. Effects revalidate.
 use super::worktrees::valid_oid;
 use super::{GitError, GitExecutor, GitResult, capture, paths};
+use crate::integration_diagnostics::{
+    self as diagnostic, Phase, PreparationResult, PreparationTrace, TraceOperation,
+};
 use crate::{
     git_records::{
         BasePreservation, MAX_EDITABLE_FILES, MAX_FILE_BYTES, MAX_OPAQUE_FILE_BYTES,
@@ -143,9 +146,22 @@ fn args(items: &[&str]) -> Vec<OsString> {
 }
 fn checkpoint(cancel: &CancellationToken, start: Instant) -> GitResult<()> {
     if cancel.is_cancelled() {
+        diagnostic::read_budget_rejected(
+            super::read_deadline::DeadlineBoundary::PreflightCheckpoint,
+            true,
+            Some((start.elapsed(), Duration::from_secs(INSPECTION_SECONDS))),
+            None,
+        );
         return Err(GitError::Pending);
     }
-    if start.elapsed() >= Duration::from_secs(INSPECTION_SECONDS) {
+    let elapsed = start.elapsed();
+    if elapsed >= Duration::from_secs(INSPECTION_SECONDS) {
+        diagnostic::read_budget_rejected(
+            super::read_deadline::DeadlineBoundary::PreflightCheckpoint,
+            false,
+            Some((elapsed, Duration::from_secs(INSPECTION_SECONDS))),
+            None,
+        );
         return Err(GitError::Deadline);
     }
     Ok(())
@@ -180,14 +196,39 @@ fn inspect_repository_profile(
     editable_paths: Option<&[String]>,
 ) -> GitResult<RepositoryPreflight> {
     let start = Instant::now();
-    let root = paths::canonical_directory(root)?;
-    let executor = GitExecutor::new()?.with_read_budget(
-        start,
-        Duration::from_secs(INSPECTION_SECONDS),
-        cancel.clone(),
-    );
-    executor.ensure_supported(&root)?;
-    let head = executor.inspect_head(&root)?;
+    let trace =
+        PreparationTrace::operation("repository-preflight", TraceOperation::RepositoryInspection);
+    let result = trace.measure(Phase::RepositoryInspection, None, || {
+        inspect_repository_profile_inner(root, base, cancel, editable_paths, start)
+    });
+    trace.result(match &result {
+        Ok(report) if report.compatible && report.complete => {
+            PreparationResult::InspectionCompatible
+        }
+        Ok(_) => PreparationResult::InspectionBlocked,
+        Err(_) => PreparationResult::Error,
+    });
+    result
+}
+
+fn inspect_repository_profile_inner(
+    root: &Path,
+    base: Option<&str>,
+    cancel: &CancellationToken,
+    editable_paths: Option<&[String]>,
+    start: Instant,
+) -> GitResult<RepositoryPreflight> {
+    let (root, executor, head) = diagnostic::measure(Phase::PreflightSupport, || {
+        let root = paths::canonical_directory(root)?;
+        let executor = GitExecutor::new()?.with_read_budget(
+            start,
+            Duration::from_secs(INSPECTION_SECONDS),
+            cancel.clone(),
+        );
+        executor.ensure_supported(&root)?;
+        let head = executor.inspect_head(&root)?;
+        Ok::<_, GitError>((root, executor, head))
+    })?;
     let base = base.unwrap_or(&head);
     if !valid_oid(base) {
         return Err(GitError::Base);
@@ -242,12 +283,14 @@ fn inspect_repository_profile(
         report.block("base-not-head", None);
     }
     checkpoint(cancel, start)?;
-    let tree = executor
-        .run(
-            &root,
-            &args(&["ls-tree", "-r", "-l", "-z", "--full-tree", base]),
-        )?
-        .checked()?;
+    let tree = diagnostic::measure(Phase::PreflightInventory, || {
+        executor
+            .run(
+                &root,
+                &args(&["ls-tree", "-r", "-l", "-z", "--full-tree", base]),
+            )?
+            .checked()
+    })?;
     let mut aliases = BTreeSet::new();
     let mut entries = Vec::new();
     let mut reserved = 0usize;
@@ -337,129 +380,139 @@ fn inspect_repository_profile(
     if report.inventory.bytes > READ_BYTES as u64 {
         report.block("read-bytes-limit", None);
     }
-    match capture::profile_attributes(&executor, &root, &paths, Some(base)) {
-        Ok(_) => {}
-        Err(GitError::Unsupported) => report.block("unsupported-base-attributes", None),
-        Err(GitError::Process) => {
-            report.block("base-attribute-inspection-unavailable", None);
-            report.complete = false;
+    diagnostic::measure(Phase::PreflightAttributes, || {
+        match capture::profile_attributes(&executor, &root, &paths, Some(base)) {
+            Ok(_) => {}
+            Err(GitError::Unsupported) => report.block("unsupported-base-attributes", None),
+            Err(GitError::Process) => {
+                report.block("base-attribute-inspection-unavailable", None);
+                report.complete = false;
+            }
+            Err(error) => return Err(error),
         }
-        Err(error) => return Err(error),
-    }
-    match capture::profile_attributes(&executor, &root, &paths, None) {
-        Ok(_) => {}
-        Err(GitError::Unsupported) => report.block("unsupported-attributes", None),
-        Err(error) => return Err(error),
-    }
+        match capture::profile_attributes(&executor, &root, &paths, None) {
+            Ok(_) => {}
+            Err(GitError::Unsupported) => report.block("unsupported-attributes", None),
+            Err(error) => return Err(error),
+        }
+        Ok::<_, GitError>(())
+    })?;
     // Batch raw object reads, not checkout/filter output. Bound each response
     // below GitExecutor's 8 MiB output limit, including framing overhead.
     let mut position = 0;
     let mut base_hashes = BTreeMap::new();
     let mut preservation_entries = Vec::new();
-    while position < entries.len() {
-        checkpoint(cancel, start)?;
-        let mut end = position;
-        let mut bytes = 0usize;
-        while end < entries.len() && bytes + entries[end].size + 128 <= BATCH_BYTES {
-            bytes += entries[end].size + 128;
-            end += 1;
-        }
-        let input = entries[position..end]
-            .iter()
-            .map(|e| format!("{}\n", e.oid))
-            .collect::<String>();
-        let response = executor
-            .run_with_input(&root, &args(&["cat-file", "--batch"]), input.as_bytes())?
-            .checked()?;
-        let mut rest = response.as_slice();
-        for entry in &entries[position..end] {
-            let newline = rest
+    diagnostic::measure(Phase::PreflightObjects, || {
+        while position < entries.len() {
+            checkpoint(cancel, start)?;
+            let mut end = position;
+            let mut bytes = 0usize;
+            while end < entries.len() && bytes + entries[end].size + 128 <= BATCH_BYTES {
+                bytes += entries[end].size + 128;
+                end += 1;
+            }
+            let input = entries[position..end]
                 .iter()
-                .position(|b| *b == b'\n')
-                .ok_or(GitError::InconsistentCapture)?;
-            if &rest[..newline] != format!("{} blob {}", entry.oid, entry.size).as_bytes() {
-                return Err(GitError::InconsistentCapture);
-            }
-            rest = &rest[newline + 1..];
-            if rest.len() < entry.size + 1 || rest[entry.size] != b'\n' {
-                return Err(GitError::InconsistentCapture);
-            }
-            if editable_paths.is_some() {
-                super::object_identity::verify("blob", &entry.oid, &rest[..entry.size])?;
-            }
-            let opaque_large = editable_paths.is_some()
-                && selected.binary_search(&entry.path).is_err()
-                && entry.size > MAX_FILE_BYTES;
-            let issue = if opaque_large {
-                if rest[..entry.size].contains(&0) {
-                    Some("binary-content")
-                } else if std::str::from_utf8(&rest[..entry.size]).is_err() {
-                    Some("non-utf8")
+                .map(|e| format!("{}\n", e.oid))
+                .collect::<String>();
+            let response = executor
+                .run_with_input(&root, &args(&["cat-file", "--batch"]), input.as_bytes())?
+                .checked()?;
+            let mut rest = response.as_slice();
+            for entry in &entries[position..end] {
+                let newline = rest
+                    .iter()
+                    .position(|b| *b == b'\n')
+                    .ok_or(GitError::InconsistentCapture)?;
+                if &rest[..newline] != format!("{} blob {}", entry.oid, entry.size).as_bytes() {
+                    return Err(GitError::InconsistentCapture);
+                }
+                rest = &rest[newline + 1..];
+                if rest.len() < entry.size + 1 || rest[entry.size] != b'\n' {
+                    return Err(GitError::InconsistentCapture);
+                }
+                if editable_paths.is_some() {
+                    super::object_identity::verify("blob", &entry.oid, &rest[..entry.size])?;
+                }
+                let opaque_large = editable_paths.is_some()
+                    && selected.binary_search(&entry.path).is_err()
+                    && entry.size > MAX_FILE_BYTES;
+                let issue = if opaque_large {
+                    if rest[..entry.size].contains(&0) {
+                        Some("binary-content")
+                    } else if std::str::from_utf8(&rest[..entry.size]).is_err() {
+                        Some("non-utf8")
+                    } else {
+                        None
+                    }
                 } else {
-                    None
-                }
-            } else {
-                content_issue(&rest[..entry.size])?
-            };
-            if let Some(code) = issue {
-                match code {
-                    "binary-content" => report.inventory.binary += 1,
-                    "non-utf8" => report.inventory.non_utf8 += 1,
-                    _ => report.inventory.secret_pattern += 1,
+                    content_issue(&rest[..entry.size])?
                 };
-                if editable_paths.is_none() || selected.binary_search(&entry.path).is_ok() {
-                    report.block(code, Some(&entry.path));
+                if let Some(code) = issue {
+                    match code {
+                        "binary-content" => report.inventory.binary += 1,
+                        "non-utf8" => report.inventory.non_utf8 += 1,
+                        _ => report.inventory.secret_pattern += 1,
+                    };
+                    if editable_paths.is_none() || selected.binary_search(&entry.path).is_ok() {
+                        report.block(code, Some(&entry.path));
+                    }
                 }
+                report.inventory.content_inspected += 1;
+                base_hashes.insert(
+                    entry.path.clone(),
+                    crate::git_records::content_hash(&rest[..entry.size]),
+                );
+                if editable_paths.is_some() {
+                    preservation_entries.push(PreservedBaseEntry {
+                        path: entry.path.clone(),
+                        mode: "100644".into(),
+                        size: entry.size as u64,
+                        git_oid: entry.oid.clone(),
+                        sha256: crate::git_records::content_hash(&rest[..entry.size]),
+                    });
+                }
+                rest = &rest[entry.size + 1..];
             }
-            report.inventory.content_inspected += 1;
-            base_hashes.insert(
-                entry.path.clone(),
-                crate::git_records::content_hash(&rest[..entry.size]),
-            );
-            if editable_paths.is_some() {
-                preservation_entries.push(PreservedBaseEntry {
-                    path: entry.path.clone(),
-                    mode: "100644".into(),
-                    size: entry.size as u64,
-                    git_oid: entry.oid.clone(),
-                    sha256: crate::git_records::content_hash(&rest[..entry.size]),
-                });
+            if !rest.is_empty() {
+                return Err(GitError::InconsistentCapture);
             }
-            rest = &rest[entry.size + 1..];
+            position = end;
         }
-        if !rest.is_empty() {
-            return Err(GitError::InconsistentCapture);
-        }
-        position = end;
-    }
+        Ok::<_, GitError>(())
+    })?;
     checkpoint(cancel, start)?;
-    let status = executor
-        .run(
-            &root,
-            &args(&["status", "--porcelain=v1", "-z", "--untracked-files=normal"]),
-        )?
-        .checked()?;
-    let status_text = String::from_utf8_lossy(&status).replace('\0', "\n");
-    let bounded = status_text.chars().take(8192).collect::<String>();
-    let ignored = executor
-        .run(
-            &root,
-            &args(&[
-                "ls-files",
-                "--others",
-                "--ignored",
-                "--exclude-standard",
-                "--directory",
-                "-z",
-            ]),
-        )?
-        .checked()?;
-    let untracked = executor
-        .run(
-            &root,
-            &args(&["ls-files", "--others", "--exclude-standard", "-z"]),
-        )?
-        .checked()?;
+    let (status, status_text, bounded, ignored, untracked) =
+        diagnostic::measure(Phase::PreflightCheckout, || {
+            let status = executor
+                .run(
+                    &root,
+                    &args(&["status", "--porcelain=v1", "-z", "--untracked-files=normal"]),
+                )?
+                .checked()?;
+            let status_text = String::from_utf8_lossy(&status).replace('\0', "\n");
+            let bounded = status_text.chars().take(8192).collect::<String>();
+            let ignored = executor
+                .run(
+                    &root,
+                    &args(&[
+                        "ls-files",
+                        "--others",
+                        "--ignored",
+                        "--exclude-standard",
+                        "--directory",
+                        "-z",
+                    ]),
+                )?
+                .checked()?;
+            let untracked = executor
+                .run(
+                    &root,
+                    &args(&["ls-files", "--others", "--exclude-standard", "-z"]),
+                )?
+                .checked()?;
+            Ok::<_, GitError>((status, status_text, bounded, ignored, untracked))
+        })?;
     report.checkout = Checkout {
         clean: status.is_empty(),
         truncated: bounded.len() != status_text.len(),
@@ -473,33 +526,40 @@ fn inspect_repository_profile(
     checkpoint(cancel, start)?;
     let mut no_omissions = false;
     if report.blockers.is_empty() && report.complete {
-        let preservation = if editable_paths.is_some() {
-            preservation_entries.sort_by(|a, b| a.path.cmp(&b.path));
-            let tree_oid = super::object_identity::base_tree(&executor, &root, base)?;
-            super::object_identity::inventory_tree(&tree_oid, &preservation_entries)?;
-            Some(BasePreservation {
-                schema_version: 2,
-                base_oid: base.into(),
-                tree_oid,
-                entries: preservation_entries,
-                editable_paths: selected,
-            })
-        } else {
-            None
-        };
-        let inspected = if preservation.as_ref().is_some_and(|p| !p.validate()) {
-            Err(GitError::Limit)
-        } else if preservation.is_some() {
-            capture::inspect_preparation_with_preservation(
-                &executor,
-                &root,
-                base,
-                &base_hashes,
-                preservation.as_ref(),
-            )
-        } else {
-            capture::inspect_preparation(&executor, &root, base, &base_hashes)
-        };
+        // Construction errors are hard failures, as before instrumentation.
+        // Only the subsequent capture result is represented as a blocker.
+        let preservation = diagnostic::measure(Phase::PreflightBaseIdentity, || {
+            let preservation = if editable_paths.is_some() {
+                preservation_entries.sort_by(|a, b| a.path.cmp(&b.path));
+                let tree_oid = super::object_identity::base_tree(&executor, &root, base)?;
+                super::object_identity::inventory_tree(&tree_oid, &preservation_entries)?;
+                Some(BasePreservation {
+                    schema_version: 2,
+                    base_oid: base.into(),
+                    tree_oid,
+                    entries: preservation_entries,
+                    editable_paths: selected,
+                })
+            } else {
+                None
+            };
+            Ok::<_, GitError>(preservation)
+        })?;
+        let inspected = diagnostic::measure(Phase::PreflightCapture, || {
+            if preservation.as_ref().is_some_and(|p| !p.validate()) {
+                Err(GitError::Limit)
+            } else if preservation.is_some() {
+                capture::inspect_preparation_with_preservation(
+                    &executor,
+                    &root,
+                    base,
+                    &base_hashes,
+                    preservation.as_ref(),
+                )
+            } else {
+                capture::inspect_preparation(&executor, &root, base, &base_hashes)
+            }
+        });
         match inspected {
             Ok((value, clean)) => {
                 report.compatible = true;
@@ -518,62 +578,75 @@ fn inspect_repository_profile(
             }
         }
     }
-    checkpoint(cancel, start)?;
-    if executor
-        .run(
-            &root,
-            &args(&["status", "--porcelain=v1", "-z", "--untracked-files=normal"]),
-        )?
-        .checked()?
-        != status
-        || executor
+    diagnostic::measure(Phase::PreflightFinalFence, || {
+        checkpoint(cancel, start)?;
+        if executor
             .run(
                 &root,
-                &args(&[
-                    "ls-files",
-                    "--others",
-                    "--ignored",
-                    "--exclude-standard",
-                    "--directory",
-                    "-z",
-                ]),
+                &args(&["status", "--porcelain=v1", "-z", "--untracked-files=normal"]),
             )?
             .checked()?
-            != ignored
-        || executor
-            .run(
-                &root,
-                &args(&["ls-files", "--others", "--exclude-standard", "-z"]),
-            )?
-            .checked()?
-            != untracked
-    {
-        report.complete = false;
-        report.compatible = false;
-        report.block("checkout-changed", None);
-    }
-    if executor.inspect_head(&root)? != head {
-        report.complete = false;
-        report.compatible = false;
-        report.block("head-changed", None);
-    }
-    report.application_eligible =
-        report.compatible && no_omissions && report.checkout.clean && report.checkout.ignored == 0;
-    // Fixed blocker kinds + bounded examples and status keep the wire response
-    // small independently of repository content and file count.
-    if serde_json::to_vec(&report)
-        .map_err(|_| GitError::Limit)?
-        .len()
-        > 65_536
-    {
-        return Err(GitError::OutputLimit);
-    }
-    Ok(report)
+            != status
+            || executor
+                .run(
+                    &root,
+                    &args(&[
+                        "ls-files",
+                        "--others",
+                        "--ignored",
+                        "--exclude-standard",
+                        "--directory",
+                        "-z",
+                    ]),
+                )?
+                .checked()?
+                != ignored
+            || executor
+                .run(
+                    &root,
+                    &args(&["ls-files", "--others", "--exclude-standard", "-z"]),
+                )?
+                .checked()?
+                != untracked
+        {
+            report.complete = false;
+            report.compatible = false;
+            report.block("checkout-changed", None);
+        }
+        if executor.inspect_head(&root)? != head {
+            report.complete = false;
+            report.compatible = false;
+            report.block("head-changed", None);
+        }
+        report.application_eligible = report.compatible
+            && no_omissions
+            && report.checkout.clean
+            && report.checkout.ignored == 0;
+        // Fixed blocker kinds + bounded examples and status keep the wire response
+        // small independently of repository content and file count.
+        if serde_json::to_vec(&report)
+            .map_err(|_| GitError::Limit)?
+            .len()
+            > 65_536
+        {
+            return Err(GitError::OutputLimit);
+        }
+        Ok(report)
+    })
 }
 
 #[cfg(all(test, windows))]
 mod tests {
     use super::*;
+
+    #[test]
+    fn preflight_read_deadline_and_cancellation_keep_the_existing_priority() {
+        let cancel = CancellationToken::new();
+        let expired = Instant::now() - Duration::from_secs(INSPECTION_SECONDS);
+        assert_eq!(checkpoint(&cancel, expired), Err(GitError::Deadline));
+        cancel.cancel();
+        assert_eq!(checkpoint(&cancel, expired), Err(GitError::Pending));
+    }
 
     /// Explicit, read-only timing of an already isolated complete snapshot.
     /// Never falls back to the developer checkout or accesses a provider.

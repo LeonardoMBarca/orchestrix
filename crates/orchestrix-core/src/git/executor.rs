@@ -1,6 +1,7 @@
 //! Bounded Git built-ins, without a shell or inherited Git configuration.
 //! This does not implement process-tree supervision or a command sandbox.
 use super::paths::{canonical_directory, git_path, reject_links};
+use super::read_deadline::{CommandDeadline, DeadlineBoundary};
 use super::{GitError, GitResult};
 use std::{
     env,
@@ -18,6 +19,9 @@ use std::{
 };
 
 const DEADLINE: Duration = Duration::from_secs(15);
+#[cfg(test)]
+#[path = "read_deadline_tests.rs"]
+mod read_deadline_tests;
 const OUTPUT_LIMIT: usize = 8 * 1024 * 1024;
 const OBJECT_ENTRIES: usize = 16_384;
 static NEXT_DIRECTORY: AtomicU64 = AtomicU64::new(1);
@@ -28,6 +32,37 @@ thread_local! {
 
 fn owned_index_refresh(args: &[OsString], scoped: bool) -> bool {
     scoped && args == strings(&["update-index", "--refresh"])
+}
+
+fn diagnostic_builtin(args: &[OsString]) -> &'static str {
+    const LABELS: &[&str] = &[
+        "--version",
+        "rev-parse",
+        "symbolic-ref",
+        "config",
+        "ls-files",
+        "ls-tree",
+        "cat-file",
+        "status",
+        "diff",
+        "worktree",
+        "branch",
+        "update-ref",
+        "for-each-ref",
+        "check-ref-format",
+        "check-attr",
+        "hash-object",
+        "show-ref",
+        "rev-list",
+        "merge-base",
+        "read-tree",
+        "update-index",
+    ];
+    LABELS
+        .iter()
+        .copied()
+        .find(|label| Some(*label) == args.first().and_then(|v| v.to_str()))
+        .unwrap_or("unsupported")
 }
 
 fn scoped_run(
@@ -196,13 +231,31 @@ impl GitExecutor {
     pub(super) fn check_read_budget(&self) -> GitResult<()> {
         if let Some((started, lifetime, cancel)) = &self.read_budget {
             if cancel.is_cancelled() {
+                crate::integration_diagnostics::read_budget_rejected(
+                    DeadlineBoundary::FilesystemCheckpoint,
+                    true,
+                    self.read_budget_observation(),
+                    None,
+                );
                 return Err(GitError::Pending);
             }
-            if started.elapsed() >= *lifetime {
+            let elapsed = started.elapsed();
+            if elapsed >= *lifetime {
+                crate::integration_diagnostics::read_budget_rejected(
+                    DeadlineBoundary::FilesystemCheckpoint,
+                    false,
+                    Some((elapsed, *lifetime)),
+                    None,
+                );
                 return Err(GitError::Deadline);
             }
         }
         Ok(())
+    }
+    fn read_budget_observation(&self) -> Option<(Duration, Duration)> {
+        self.read_budget
+            .as_ref()
+            .map(|(start, lifetime, _)| (start.elapsed(), *lifetime))
     }
     /// Read only, fixed built-in for a host-granted repository. No arbitrary arguments.
     pub fn inspect_head(&self, repository: &Path) -> GitResult<String> {
@@ -335,14 +388,45 @@ impl GitExecutor {
         deadline: Duration,
         limit: usize,
     ) -> GitResult<GitOutput> {
+        crate::integration_diagnostics::measure(
+            crate::integration_diagnostics::Phase::GitCommand,
+            || self.run_bounded_inner(cwd, args, input, deadline, limit),
+        )
+    }
+    fn run_bounded_inner(
+        &self,
+        cwd: &Path,
+        args: &[OsString],
+        input: Option<&[u8]>,
+        deadline: Duration,
+        limit: usize,
+    ) -> GitResult<GitOutput> {
+        let command_limit = deadline;
+        let mut observation_remaining = None;
         let deadline = if let Some((started, lifetime, cancel)) = &self.read_budget {
             if cancel.is_cancelled() {
+                crate::integration_diagnostics::read_budget_rejected(
+                    DeadlineBoundary::BeforeCommand,
+                    true,
+                    self.read_budget_observation(),
+                    None,
+                );
                 return Err(GitError::Pending);
             }
+            let elapsed = started.elapsed();
             let remaining = lifetime
-                .checked_sub(started.elapsed())
+                .checked_sub(elapsed)
                 .filter(|d| !d.is_zero())
-                .ok_or(GitError::Deadline)?;
+                .ok_or_else(|| {
+                    crate::integration_diagnostics::read_budget_rejected(
+                        DeadlineBoundary::BeforeCommand,
+                        false,
+                        Some((elapsed, *lifetime)),
+                        None,
+                    );
+                    GitError::Deadline
+                })?;
+            observation_remaining = Some(remaining);
             deadline.min(remaining)
         } else {
             deadline
@@ -495,9 +579,32 @@ impl GitExecutor {
         let _transport_timing = crate::integration_diagnostics::CounterTimer::start(
             crate::integration_diagnostics::CounterKind::GitTransport,
         );
+        let command_facts = |elapsed| {
+            CommandDeadline::new(
+                diagnostic_builtin(args),
+                command_limit,
+                deadline,
+                observation_remaining,
+                elapsed,
+            )
+        };
+        crate::integration_diagnostics::git_command_ready(
+            command_facts(None),
+            self.read_budget_observation(),
+        );
         crate::integration_diagnostics::git_bytes(input.map_or(0, <[u8]>::len), 0);
         if let Some(scope) = &self.scope {
-            return scoped_run(command, scope, input, deadline, limit);
+            let observed = Instant::now();
+            let result = scoped_run(command, scope, input, deadline, limit);
+            if matches!(result, Err(GitError::Deadline)) {
+                crate::integration_diagnostics::read_budget_rejected(
+                    DeadlineBoundary::CommandWait,
+                    false,
+                    self.read_budget_observation(),
+                    Some(command_facts(Some(observed.elapsed()))),
+                );
+            }
+            return result;
         }
         let started = Instant::now();
         let mut child = command.spawn().map_err(|_| GitError::Process)?;
@@ -527,9 +634,20 @@ impl GitExecutor {
         let mut status = None;
         let mut input_closed = input.is_none();
         loop {
-            if started.elapsed() >= deadline {
+            let elapsed = started.elapsed();
+            if elapsed >= deadline {
+                // Capture detection facts without IO. A diagnostic sink cannot
+                // delay the existing kill/reap at a command deadline.
+                let observation = self.read_budget_observation();
+                let command = command_facts(Some(elapsed));
                 let _ = child.kill();
                 reap_bounded(&mut child);
+                crate::integration_diagnostics::read_budget_rejected(
+                    DeadlineBoundary::CommandWait,
+                    false,
+                    observation,
+                    Some(command),
+                );
                 return Err(GitError::Deadline);
             }
             match receive_pipe(&receiver, Duration::from_millis(5)) {

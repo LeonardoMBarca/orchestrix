@@ -6,6 +6,7 @@ mod object_identity;
 pub(crate) mod paths;
 mod preflight;
 mod preservation;
+pub(crate) mod read_deadline;
 #[cfg(windows)]
 mod scoped_read_windows;
 mod worktrees;
