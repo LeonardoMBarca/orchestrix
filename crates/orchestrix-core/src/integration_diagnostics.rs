@@ -1,4 +1,4 @@
-//! Opt-in, bounded local timing of one integration preparation. Never authority.
+//! Opt-in, bounded local timing of integration operations. Never authority.
 //! No stdout/stderr sink: a full pipe must not stall a supervised operation.
 use serde::Serialize;
 use std::{
@@ -7,6 +7,7 @@ use std::{
     io::Write,
     path::Path,
     rc::Rc,
+    sync::Arc,
     sync::atomic::{AtomicU64, Ordering},
     time::Instant,
 };
@@ -60,6 +61,21 @@ pub(crate) enum Phase {
     ValidateCommit,
     ValidateTree,
     ValidateTarget,
+    ApproveRequest,
+    ApplyRequest,
+    Admission,
+    ApprovalPersist,
+    ClockBeforeEffect,
+    ClockBeforeWrite,
+    TargetBeforeRefresh,
+    IndexRefresh,
+    TargetAfterRefresh,
+    FileUpdate,
+    TargetAfterFiles,
+    ApplyReference,
+    ReferenceCas,
+    ConfirmApplied,
+    ConfirmDelivered,
 }
 impl Phase {
     fn label(self) -> &'static str {
@@ -103,6 +119,21 @@ impl Phase {
             Self::ValidateCommit => "validate-commit",
             Self::ValidateTree => "validate-tree",
             Self::ValidateTarget => "validate-target",
+            Self::ApproveRequest => "approve-request",
+            Self::ApplyRequest => "apply-request",
+            Self::Admission => "admission",
+            Self::ApprovalPersist => "approval-persist",
+            Self::ClockBeforeEffect => "clock-before-effect",
+            Self::ClockBeforeWrite => "clock-before-file-update",
+            Self::TargetBeforeRefresh => "target-before-refresh",
+            Self::IndexRefresh => "index-refresh",
+            Self::TargetAfterRefresh => "target-after-refresh",
+            Self::FileUpdate => "file-update",
+            Self::TargetAfterFiles => "target-after-files",
+            Self::ApplyReference => "apply-reference",
+            Self::ReferenceCas => "reference-cas",
+            Self::ConfirmApplied => "confirm-applied",
+            Self::ConfirmDelivered => "confirm-delivered",
         }
     }
 }
@@ -189,6 +220,30 @@ struct State {
     events: usize,
     bytes: usize,
     counters: Counters,
+    operation: &'static str,
+    subject_hash: Option<String>,
+    authorization: Option<Authorization>,
+    job_ready: Option<Instant>,
+}
+struct Authorization {
+    issued_ms: u64,
+    expires_ms: u64,
+    observer: Arc<dyn Fn() -> Option<u64>>,
+}
+#[derive(Clone, Copy)]
+pub(crate) enum TraceOperation {
+    Prepare,
+    Approve,
+    Apply,
+}
+impl TraceOperation {
+    fn label(self) -> &'static str {
+        match self {
+            Self::Prepare => "prepare",
+            Self::Approve => "approve",
+            Self::Apply => "apply",
+        }
+    }
 }
 impl State {
     fn emit(&mut self, mut event: serde_json::Value) {
@@ -203,6 +258,25 @@ impl State {
         // Counters on nested spans are inclusive; never sum parent and child.
         event["inclusive"] = true.into();
         event["authority"] = false.into();
+        event["operation"] = self.operation.into();
+        if let Some(subject) = &self.subject_hash {
+            event["subjectHash"] = subject.clone().into();
+        }
+        if let Some(authorization) = &self.authorization {
+            event["approvalIssuedMs"] = authorization.issued_ms.into();
+            event["approvalExpiresMs"] = authorization.expires_ms.into();
+            if let Some(now) = (authorization.observer)() {
+                event["authorizationObservedMs"] = now.into();
+                event["approvalAgeMs"] = now.checked_sub(authorization.issued_ms).into();
+                event["approvalRemainingMs"] = authorization.expires_ms.checked_sub(now).into();
+                event["authorizationClockRollback"] = (now < authorization.issued_ms).into();
+            }
+        }
+        if let Some(ready) = self.job_ready {
+            // Host-local ready-to-closure-proof observation interval, not an
+            // exact kernel lifetime, cross-process timestamp or renewed budget.
+            event["jobObservedMicros"] = micros(ready).into();
+        }
         let Ok(mut line) = serde_json::to_vec(&event) else {
             self.file = None;
             return;
@@ -239,18 +313,36 @@ impl PreparationTrace {
         Self { state: None }
     }
     pub(crate) fn new(operation_id: &str) -> Self {
+        Self::operation(operation_id, TraceOperation::Prepare)
+    }
+    pub(crate) fn operation(operation_id: &str, operation: TraceOperation) -> Self {
         let started = Instant::now();
         if std::env::var("ORCHESTRIX_INTEGRATION_DIAGNOSTICS").as_deref() != Ok("1") {
             return Self { state: None };
         }
         let directory = std::env::var_os("ORCHESTRIX_INTEGRATION_DIAGNOSTICS_DIRECTORY");
-        Self::in_directory_at(directory.as_deref().map(Path::new), operation_id, started)
+        Self::in_directory_at(
+            directory.as_deref().map(Path::new),
+            operation_id,
+            started,
+            operation,
+        )
     }
     #[cfg(test)]
     fn in_directory(directory: Option<&Path>, operation_id: &str) -> Self {
-        Self::in_directory_at(directory, operation_id, Instant::now())
+        Self::in_directory_at(
+            directory,
+            operation_id,
+            Instant::now(),
+            TraceOperation::Prepare,
+        )
     }
-    fn in_directory_at(directory: Option<&Path>, operation_id: &str, started: Instant) -> Self {
+    fn in_directory_at(
+        directory: Option<&Path>,
+        operation_id: &str,
+        started: Instant,
+        operation: TraceOperation,
+    ) -> Self {
         // Diagnostics precede admission validation. Do not hash an unbounded
         // invalid direct-call identifier just to produce an optional trace.
         if operation_id.len() > 80 {
@@ -268,7 +360,11 @@ impl PreparationTrace {
             let file = OpenOptions::new()
                 .write(true)
                 .create_new(true)
-                .open(directory.join(format!("prepare-{}-{trace}.jsonl", std::process::id())))
+                .open(directory.join(format!(
+                    "{}-{}-{trace}.jsonl",
+                    operation.label(),
+                    std::process::id()
+                )))
                 .ok()?;
             if !file.metadata().ok()?.is_file() {
                 return None;
@@ -283,6 +379,10 @@ impl PreparationTrace {
                 events: 0,
                 bytes: 0,
                 counters: Counters::default(),
+                operation: operation.label(),
+                subject_hash: None,
+                authorization: None,
+                job_ready: None,
             }));
             ACTIVE.with(|slot| {
                 *slot.borrow_mut() = Some(Rc::clone(&state));
@@ -307,6 +407,56 @@ impl PreparationTrace {
         }
         result
     }
+    pub(crate) fn subject(&self, id: &str) {
+        if id.len() <= 80
+            && let Some(state) = &self.state
+        {
+            state.borrow_mut().subject_hash = Some(crate::git_records::content_hash(id.as_bytes()));
+        }
+    }
+    pub(crate) fn approval(
+        &self,
+        issued_ms: u64,
+        expires_ms: u64,
+        observer: Arc<dyn Fn() -> Option<u64>>,
+        received_ms: Option<u64>,
+    ) {
+        if let Some(state) = &self.state {
+            let mut state = state.borrow_mut();
+            state.authorization = Some(Authorization {
+                issued_ms,
+                expires_ms,
+                observer,
+            });
+            state.emit(serde_json::json!({"event":"approval-observed","receivedAuthorizationMs":received_ms,"approvalAgeAtReceiptMs":received_ms.and_then(|now|now.checked_sub(issued_ms))}));
+        }
+    }
+    pub(crate) fn authorization_gate(
+        &self,
+        boundary: Phase,
+        observed_ms: u64,
+        issued_ms: u64,
+        expires_ms: u64,
+        valid: bool,
+    ) {
+        if let Some(state) = &self.state {
+            state.borrow_mut().emit(serde_json::json!({"event":"authorization-gate","boundary":boundary.label(),"observedMs":observed_ms,"issuedMs":issued_ms,"expiresMs":expires_ms,"ageMs":observed_ms.checked_sub(issued_ms),"valid":valid}));
+        }
+    }
+    pub(crate) fn job_ready(&self) {
+        if let Some(state) = &self.state {
+            let mut state = state.borrow_mut();
+            state.job_ready = Some(Instant::now());
+            state.emit(serde_json::json!({"event":"job-ready"}));
+        }
+    }
+    pub(crate) fn job_closed(&self) {
+        if let Some(state) = &self.state {
+            let mut state = state.borrow_mut();
+            state.emit(serde_json::json!({"event":"job-closure-confirmed"}));
+            state.job_ready = None;
+        }
+    }
     pub(crate) fn result(&self, status: PreparationResult) {
         if let Some(state) = &self.state {
             let status = match status {
@@ -315,6 +465,10 @@ impl PreparationTrace {
                 PreparationResult::Uncertain => "uncertain",
                 PreparationResult::Other => "other-record",
                 PreparationResult::Error => "error",
+                PreparationResult::Approved => "approved",
+                PreparationResult::Applied => "applied",
+                PreparationResult::Delivered => "delivered",
+                PreparationResult::Invalidated => "invalidated",
             };
             state
                 .borrow_mut()
@@ -328,6 +482,10 @@ pub(crate) enum PreparationResult {
     Uncertain,
     Other,
     Error,
+    Approved,
+    Applied,
+    Delivered,
+    Invalidated,
 }
 impl Drop for PreparationTrace {
     fn drop(&mut self) {
@@ -506,6 +664,82 @@ mod tests {
         ));
         std::fs::create_dir(&root).unwrap();
         root
+    }
+    #[test]
+    fn apply_clock_and_job_samples_are_observations_and_preserve_gate_values() {
+        use std::sync::atomic::AtomicU64;
+        let root = directory();
+        let now = Arc::new(AtomicU64::new(7_000));
+        let observation = Arc::clone(&now);
+        let trace = PreparationTrace::in_directory_at(
+            Some(&root),
+            "private-application",
+            Instant::now(),
+            TraceOperation::Apply,
+        );
+        trace.approval(
+            1_000,
+            121_000,
+            Arc::new(move || Some(observation.load(Ordering::Relaxed))),
+            Some(5_000),
+        );
+        trace.job_ready();
+        trace
+            .measure::<_, ()>(Phase::ClockBeforeWrite, None, || {
+                trace.authorization_gate(Phase::ClockBeforeWrite, 6_000, 1_000, 121_000, true);
+                Ok(())
+            })
+            .unwrap();
+        now.store(500, Ordering::Relaxed);
+        trace.result(PreparationResult::Invalidated);
+        trace.job_closed();
+        drop(trace);
+        let filename = std::fs::read_dir(&root)
+            .unwrap()
+            .next()
+            .unwrap()
+            .unwrap()
+            .path();
+        assert!(
+            filename
+                .file_name()
+                .unwrap()
+                .to_str()
+                .unwrap()
+                .starts_with("apply-")
+        );
+        let text = std::fs::read_to_string(filename).unwrap();
+        let events: Vec<serde_json::Value> = text
+            .lines()
+            .map(|line| serde_json::from_str(line).unwrap())
+            .collect();
+        let receipt = events
+            .iter()
+            .find(|e| e["event"] == "approval-observed")
+            .unwrap();
+        assert_eq!(receipt["approvalAgeAtReceiptMs"], 4_000);
+        let gate = events
+            .iter()
+            .find(|e| e["event"] == "authorization-gate")
+            .unwrap();
+        assert_eq!(
+            gate["observedMs"], 6_000,
+            "observational samples cannot rewrite the authoritative gate"
+        );
+        assert_eq!(gate["authorizationObservedMs"], 7_000);
+        assert_eq!(gate["ageMs"], 5_000);
+        assert_eq!(gate["valid"], true);
+        assert!(gate["jobObservedMicros"].is_u64());
+        let result = events.iter().find(|e| e["event"] == "result").unwrap();
+        assert_eq!(result["status"], "invalidated");
+        assert_eq!(result["approvalAgeMs"], serde_json::Value::Null);
+        assert_eq!(result["authorizationClockRollback"], true);
+        assert!(
+            events
+                .iter()
+                .all(|e| e["authority"] == false && e["operation"] == "apply")
+        );
+        assert!(!text.contains("private-application"));
     }
     #[test]
     fn begin_is_written_before_action_and_nested_metrics_are_inclusive() {

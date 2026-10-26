@@ -100,6 +100,176 @@ fn git(root: &Path, args: &[&str]) -> Vec<u8> {
     );
     out.stdout
 }
+
+// These assertions inspect opt-in diagnostic facts, never confer authority or
+// infer a valid crash merely from a child exit. The production clock sample at
+// the write edge is used; no later wall-clock sample substitutes for it.
+fn checked_crash_write_evidence(
+    events: &[Value],
+    process: u32,
+    application_id: &str,
+    approval: &Value,
+) -> Result<Value, &'static str> {
+    if events.is_empty() || events.len() > 256 {
+        return Err("apply-trace-event-bound");
+    }
+    let operation_hash = content_hash(application_id.as_bytes());
+    let mut elapsed = 0;
+    for event in events {
+        let current = event["elapsedMicros"]
+            .as_u64()
+            .ok_or("trace-clock-missing")?;
+        if event["schemaVersion"] != 1
+            || event["processId"].as_u64() != Some(process.into())
+            || event["operation"] != "apply"
+            || event["operationHash"] != operation_hash
+            || event["authority"] != false
+            || current < elapsed
+        {
+            return Err("apply-trace-scope-or-clock");
+        }
+        elapsed = current;
+    }
+    let issued = approval["issuedMs"]
+        .as_u64()
+        .ok_or("approval-issued-missing")?;
+    let expires = approval["expiresMs"]
+        .as_u64()
+        .ok_or("approval-expiry-missing")?;
+    if expires.checked_sub(issued) != Some(120_000) {
+        return Err("crash-approval-must-retain-120-seconds");
+    }
+    let gates = events
+        .iter()
+        .enumerate()
+        .filter(|(_, event)| {
+            event["event"] == "authorization-gate"
+                && event["boundary"] == "clock-before-file-update"
+        })
+        .collect::<Vec<_>>();
+    if gates.len() != 1 {
+        return Err("exact-write-authorization-gate-required");
+    }
+    let (gate_index, gate) = gates[0];
+    let observed = gate["observedMs"].as_u64().ok_or("write-clock-missing")?;
+    if gate["valid"] != true
+        || gate["issuedMs"].as_u64() != Some(issued)
+        || gate["expiresMs"].as_u64() != Some(expires)
+        || observed < issued
+        || observed >= expires
+        || gate["ageMs"].as_u64() != observed.checked_sub(issued)
+    {
+        return Err("write-authorization-was-not-valid");
+    }
+    let begins = events
+        .iter()
+        .enumerate()
+        .filter(|(_, event)| event["event"] == "begin" && event["phase"] == "file-update")
+        .collect::<Vec<_>>();
+    let ends = events
+        .iter()
+        .enumerate()
+        .filter(|(_, event)| event["event"] == "end" && event["phase"] == "file-update")
+        .collect::<Vec<_>>();
+    if begins.len() != 1 || ends.len() != 1 {
+        return Err("exact-file-update-span-required");
+    }
+    let (begin_index, begin) = begins[0];
+    let (end_index, end) = ends[0];
+    if !(gate_index < begin_index && begin_index < end_index)
+        || begin["span"].as_u64().is_none()
+        || begin["span"] != end["span"]
+        || end["outcome"] != "ok"
+    {
+        return Err("file-update-not-confirmed-after-valid-gate");
+    }
+    Ok(json!({
+        "processId":process,"operationHash":operation_hash,
+        "boundary":"clock-before-file-update","valid":true,
+        "issuedMs":issued,"observedMs":observed,"expiresMs":expires,
+        "ageMs":observed-issued,"fileUpdateSpan":begin["span"],
+        "fileUpdateCompleted":true,"authority":false
+    }))
+}
+
+fn read_crash_apply_trace(directory: &Path, process: u32) -> (PathBuf, Vec<u8>, Vec<Value>) {
+    let prefix = format!("apply-{process}-");
+    let paths = fs::read_dir(directory)
+        .unwrap()
+        .map(|entry| entry.unwrap().path())
+        .filter(|path| {
+            path.file_name().is_some_and(|name| {
+                let name = name.to_string_lossy();
+                name.starts_with(&prefix) && name.ends_with(".jsonl")
+            })
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(paths.len(), 1, "exact child Apply diagnostic required");
+    let path = paths.into_iter().next().unwrap();
+    let mut bytes = Vec::new();
+    fs::File::open(&path)
+        .unwrap()
+        .take(128 * 1024 + 1)
+        .read_to_end(&mut bytes)
+        .unwrap();
+    assert!(
+        bytes.len() <= 128 * 1024 && bytes.ends_with(b"\n"),
+        "bounded complete trace prefix required"
+    );
+    let events = bytes
+        .split(|byte| *byte == b'\n')
+        .filter(|line| !line.is_empty())
+        .map(|line| {
+            assert!(line.len() <= 2048, "diagnostic line bound");
+            serde_json::from_slice(line).unwrap()
+        })
+        .collect();
+    (path, bytes, events)
+}
+
+fn write_crash_marker(path: &Path, marker: &Value) {
+    let bytes = serde_json::to_vec(marker).unwrap();
+    assert!(
+        bytes.len() <= 8192,
+        "crash marker must contain only bounded facts"
+    );
+    let mut file = fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(path)
+        .unwrap();
+    file.write_all(&bytes).unwrap();
+    file.sync_all().unwrap();
+}
+
+fn read_crash_marker(path: &Path) -> Value {
+    let mut bytes = Vec::new();
+    fs::File::open(path)
+        .unwrap()
+        .take(8193)
+        .read_to_end(&mut bytes)
+        .unwrap();
+    assert!(bytes.len() <= 8192, "crash marker byte bound");
+    serde_json::from_slice(&bytes).unwrap()
+}
+
+fn crash_child_failure(root: &Path) -> String {
+    let mut bytes = Vec::new();
+    if let Ok(file) = fs::File::open(root.join("application-crash.stderr.log")) {
+        let _ = file.take(8193).read_to_end(&mut bytes);
+    }
+    let truncated = bytes.len() > 8192;
+    bytes.truncate(8192);
+    format!(
+        "{}{}",
+        String::from_utf8_lossy(&bytes),
+        if truncated {
+            " [stderr excerpt truncated; original retained]"
+        } else {
+            ""
+        }
+    )
+}
 struct Fixture {
     root: PathBuf,
     repo: PathBuf,
@@ -1111,7 +1281,7 @@ fn execute_fixture(
         return;
     }
     let objects_before_approval = own_object_bytes(&f.repo);
-    service.approve(&mut store, &approval).unwrap();
+    let approved_record = service.approve(&mut store, &approval).unwrap();
     assert_eq!(
         own_object_bytes(&f.repo),
         objects_before_approval,
@@ -1210,9 +1380,16 @@ fn execute_fixture(
     }
     let delivered = if fault == Some("crash-after-target") {
         let config = f.root.join("application-crash.json");
+        let diagnostics = f.root.join("application-crash-diagnostics");
+        fs::create_dir(&diagnostics).unwrap();
+        let approval_evidence = approved_record.detail("approval").unwrap().clone();
+        assert_eq!(approval_evidence["request"]["valid_for_ms"], 120_000);
         fs::write(
             &config,
-            serde_json::to_vec(&json!({"database":f.db,"request":apply})).unwrap(),
+            serde_json::to_vec(&json!({"database":f.db,"request":apply,
+                "approval":approval_evidence,"diagnostics":diagnostics,
+                "artifactRevision":final_artifact.revision}))
+            .unwrap(),
         )
         .unwrap();
         drop(store);
@@ -1226,6 +1403,8 @@ fn execute_fixture(
                 "--test-threads=1",
             ])
             .env("ORCHESTRIX_OPAQUE_CRASH", config)
+            .env("ORCHESTRIX_INTEGRATION_DIAGNOSTICS", "1")
+            .env("ORCHESTRIX_INTEGRATION_DIAGNOSTICS_DIRECTORY", &diagnostics)
             .stdin(Stdio::null())
             .stdout(Stdio::null())
             .stderr(Stdio::from(
@@ -1236,7 +1415,12 @@ fn execute_fixture(
         let child_start = Instant::now();
         loop {
             if let Some(status) = child.try_wait().unwrap() {
-                assert_eq!(status.code(), Some(73));
+                assert_eq!(
+                    status.code(),
+                    Some(73),
+                    "TargetRef crash not proved: {}",
+                    crash_child_failure(&f.root)
+                );
                 break;
             }
             if child_start.elapsed() >= Duration::from_secs(300) {
@@ -1246,9 +1430,63 @@ fn execute_fixture(
             }
             std::thread::sleep(Duration::from_millis(10));
         }
+        let files_marker = read_crash_marker(&f.root.join("application-files-applied.json"));
+        let target_marker = read_crash_marker(&f.root.join("application-target-ref.json"));
+        assert_eq!(files_marker["checkpoint"], "files-applied");
+        assert_eq!(target_marker["checkpoint"], "target-ref");
+        for marker in [&files_marker, &target_marker] {
+            assert_eq!(marker["applicationId"], apply.id);
+            assert_eq!(marker["integrationId"], apply.integration_id);
+            assert_eq!(marker["candidateRevision"], apply.candidate_revision);
+            assert_eq!(marker["artifactRevision"], final_artifact.revision);
+            assert_eq!(marker["writeAuthorization"]["valid"], true);
+            assert_eq!(marker["writeAuthorization"]["fileUpdateCompleted"], true);
+        }
+        assert_eq!(
+            target_marker["filesAppliedMarkerSha256"],
+            content_hash(&fs::read(f.root.join("application-files-applied.json")).unwrap())
+        );
+        assert_eq!(
+            target_marker["writeAuthorization"],
+            files_marker["writeAuthorization"]
+        );
+        // The exact Git effect must already exist before Store reconciliation.
+        assert_eq!(
+            String::from_utf8(git(&f.repo, &["rev-parse", "HEAD"]))
+                .unwrap()
+                .trim(),
+            prepared.detail("resultRevision").unwrap().as_str().unwrap()
+        );
+        assert_eq!(
+            String::from_utf8(git(&f.repo, &["rev-parse", "HEAD^{tree}"]))
+                .unwrap()
+                .trim(),
+            prepared.detail("treeRevision").unwrap().as_str().unwrap()
+        );
+        assert_eq!(fs::read(f.repo.join("fixture.txt")).unwrap(), b"after\n");
+        let effects_before_reconcile = git(&f.repo, &["ls-tree", "-r", "-l", "-z", "HEAD"]);
+        let index_before_reconcile = fs::read(f.repo.join(".git/index")).unwrap();
+        let file_before_reconcile = fs::metadata(f.repo.join("fixture.txt"))
+            .unwrap()
+            .modified()
+            .unwrap();
+        let dispatch_before_reconcile = fs::read(f.home.join("dispatch-count")).unwrap();
         store = Store::open(&f.db).unwrap();
         let interrupted = store.load().unwrap().integrations()[&request.id].clone();
         assert_eq!(interrupted.status(), IntegrationStatus::Applying);
+        assert_eq!(
+            interrupted.candidate_revision().as_deref(),
+            Some(apply.candidate_revision.as_str())
+        );
+        assert_eq!(
+            interrupted.detail("approval"),
+            approved_record.detail("approval")
+        );
+        assert_eq!(
+            interrupted.detail("applicationRequest"),
+            Some(&json!(&apply))
+        );
+        assert_eq!(interrupted.snapshot(), approved_record.snapshot());
         let guardian: GuardianBinding =
             serde_json::from_value(interrupted.detail("guardian").unwrap().clone()).unwrap();
         let closure_start = Instant::now();
@@ -1257,7 +1495,35 @@ fn execute_fixture(
             std::thread::sleep(Duration::from_millis(10));
         }
         service.reconcile(&mut store).unwrap();
-        store.load().unwrap().integrations()[&request.id].clone()
+        let reconciled = store.load().unwrap().integrations()[&request.id].clone();
+        assert_eq!(
+            reconciled.candidate_revision(),
+            interrupted.candidate_revision()
+        );
+        assert_eq!(
+            reconciled.detail("approval"),
+            interrupted.detail("approval")
+        );
+        assert_eq!(
+            git(&f.repo, &["ls-tree", "-r", "-l", "-z", "HEAD"]),
+            effects_before_reconcile
+        );
+        assert_eq!(
+            fs::read(f.repo.join(".git/index")).unwrap(),
+            index_before_reconcile
+        );
+        assert_eq!(
+            fs::metadata(f.repo.join("fixture.txt"))
+                .unwrap()
+                .modified()
+                .unwrap(),
+            file_before_reconcile
+        );
+        assert_eq!(
+            fs::read(f.home.join("dispatch-count")).unwrap(),
+            dispatch_before_reconcile
+        );
+        reconciled
     } else {
         service.apply(&mut store, &apply, &cancel).unwrap()
     };
@@ -1501,10 +1767,9 @@ fn crash_after_durable_object_plan_does_not_publish_or_replay() {
 #[test]
 #[ignore = "private owned application crash child; no provider access"]
 fn opaque_application_crash_child() {
-    let config: serde_json::Value = serde_json::from_slice(
-        &fs::read(std::env::var_os("ORCHESTRIX_OPAQUE_CRASH").unwrap()).unwrap(),
-    )
-    .unwrap();
+    let config_path = PathBuf::from(std::env::var_os("ORCHESTRIX_OPAQUE_CRASH").unwrap());
+    let config_bytes = fs::read(&config_path).unwrap();
+    let config: serde_json::Value = serde_json::from_slice(&config_bytes).unwrap();
     let mut store = Store::open(Path::new(config["database"].as_str().unwrap())).unwrap();
     if config["mode"] == "prepare" {
         let request: IntegrationRequest =
@@ -1519,14 +1784,59 @@ fn opaque_application_crash_child() {
         panic!("preparation crash checkpoint not reached");
     }
     let request: ApplicationRequest = serde_json::from_value(config["request"].clone()).unwrap();
-    IntegrationService::new()
+    let root = config_path.parent().unwrap();
+    let diagnostics = Path::new(config["diagnostics"].as_str().unwrap());
+    let mut files_applied: Option<Value> = None;
+    let returned = IntegrationService::new()
         .apply_with_checkpoint(&mut store, &request, &CancellationToken::new(), |point| {
+            if point == IntegrationCheckpoint::FilesApplied {
+                let (trace_path, prefix, events) = read_crash_apply_trace(diagnostics, std::process::id());
+                let write_authorization = checked_crash_write_evidence(
+                    &events, std::process::id(), &request.id, &config["approval"],
+                ).expect("valid recorded authorization and completed file update required before crash proof");
+                let marker = json!({
+                    "checkpoint":"files-applied","processId":std::process::id(),
+                    "applicationId":request.id,"integrationId":request.integration_id,
+                    "candidateRevision":request.candidate_revision,
+                    "artifactRevision":config["artifactRevision"],
+                    "writeAuthorization":write_authorization,
+                    "traceFile":trace_path.file_name().unwrap().to_str().unwrap(),
+                    "tracePrefixBytes":prefix.len(),"tracePrefixSha256":content_hash(&prefix),
+                    "configurationSha256":content_hash(&config_bytes),"authority":false
+                });
+                write_crash_marker(&root.join("application-files-applied.json"), &marker);
+                files_applied = Some(marker);
+            }
             if point == IntegrationCheckpoint::TargetRef {
+                let files = files_applied.as_ref().expect("FilesApplied must precede TargetRef");
+                write_crash_marker(&root.join("application-target-ref.json"), &json!({
+                    "checkpoint":"target-ref","processId":std::process::id(),
+                    "applicationId":request.id,"integrationId":request.integration_id,
+                    "candidateRevision":request.candidate_revision,
+                    "artifactRevision":config["artifactRevision"],
+                    "writeAuthorization":files["writeAuthorization"],
+                    "filesAppliedMarkerSha256":content_hash(&fs::read(root.join("application-files-applied.json")).unwrap()),
+                    "configurationSha256":content_hash(&config_bytes),
+                    "databaseConfirmationExpected":"applying","authority":false
+                }));
                 std::process::exit(73);
             }
-        })
-        .unwrap();
-    panic!("application crash checkpoint not reached");
+        });
+    match returned {
+        Ok(record) => panic!(
+            "application crash checkpoint not reached; precondition={}",
+            json!({
+                "status":format!("{:?}",record.status()),"reason":record.detail("reason"),
+                "applicationNotStarted":record.detail("applicationNotStarted"),
+                "inspectionRequired":record.detail("inspectionRequired"),
+                "automaticRetry":record.detail("automaticRetry")
+            })
+        ),
+        Err(error) => panic!(
+            "application crash checkpoint not reached; operation-error={}",
+            error.0
+        ),
+    }
 }
 
 #[test]

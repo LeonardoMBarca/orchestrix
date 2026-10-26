@@ -7,7 +7,7 @@ use crate::{
         integration::{ApplyFilesError, IntegrationGit},
     },
     git_records::{WorktreeIntent, content_hash},
-    integration_diagnostics::{Phase, PreparationResult, PreparationTrace},
+    integration_diagnostics::{Phase, PreparationResult, PreparationTrace, TraceOperation},
     integration_records::*,
     persistence::{Command, Store},
     recovery_guardian::{Guardian, GuardianBinding, default_helper, read_proof},
@@ -23,8 +23,26 @@ use std::{
 };
 type Result<T> = std::result::Result<T, WorkerError>;
 
+fn trace_record_result(trace: &PreparationTrace, result: &Result<IntegrationRecord>) {
+    trace.result(match result.as_ref().map(IntegrationRecord::status) {
+        Ok(IntegrationStatus::Approved) => PreparationResult::Approved,
+        Ok(IntegrationStatus::Applied) => PreparationResult::Applied,
+        Ok(IntegrationStatus::Delivered) => PreparationResult::Delivered,
+        Ok(IntegrationStatus::Invalidated) => PreparationResult::Invalidated,
+        Ok(IntegrationStatus::Uncertain) => PreparationResult::Uncertain,
+        Ok(IntegrationStatus::Blocked) => PreparationResult::Blocked,
+        Ok(_) => PreparationResult::Other,
+        Err(_) => PreparationResult::Error,
+    });
+}
+
 pub trait IntegrationClock: Send + Sync {
     fn now_ms(&self) -> u64;
+    /// Optional observation without advancing a deterministic authority clock.
+    /// Diagnostics never add calls to `now_ms` at authorization boundaries.
+    fn diagnostic_now_ms(&self) -> Option<u64> {
+        None
+    }
 }
 pub struct SystemIntegrationClock;
 impl IntegrationClock for SystemIntegrationClock {
@@ -32,6 +50,9 @@ impl IntegrationClock for SystemIntegrationClock {
         SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .map_or(0, |d| d.as_millis().try_into().unwrap_or(u64::MAX))
+    }
+    fn diagnostic_now_ms(&self) -> Option<u64> {
+        Some(self.now_ms())
     }
 }
 pub struct IntegrationService {
@@ -494,7 +515,23 @@ impl IntegrationService {
         )
     }
     pub fn approve(&self, store: &mut Store, input: &ApprovalRequest) -> Result<IntegrationRecord> {
-        let _lease = crate::worker::lease(store)?.ok_or(WorkerError("worker-host-busy"))?;
+        let diagnostics = PreparationTrace::operation(&input.id, TraceOperation::Approve);
+        diagnostics.subject(&input.integration_id);
+        let result = diagnostics.measure(Phase::ApproveRequest, None, || {
+            self.approve_measured(store, input, &diagnostics)
+        });
+        trace_record_result(&diagnostics, &result);
+        result
+    }
+    fn approve_measured(
+        &self,
+        store: &mut Store,
+        input: &ApprovalRequest,
+        diagnostics: &PreparationTrace,
+    ) -> Result<IntegrationRecord> {
+        let _lease = diagnostics
+            .measure(Phase::AcquireLease, None, || crate::worker::lease(store))?
+            .ok_or(WorkerError("worker-host-busy"))?;
         if input.schema_version != 1
             || LocalRef::new(&input.id).is_err()
             || LocalRef::new(&input.authorization_ref).is_err()
@@ -502,7 +539,9 @@ impl IntegrationService {
         {
             return Err(WorkerError("approval-request"));
         }
-        let record = load_record(store, &input.integration_id)?;
+        let record = diagnostics.measure(Phase::LoadIntent, None, || {
+            load_record(store, &input.integration_id)
+        })?;
         let hash = content_hash(json!(input).to_string().as_bytes());
         if let Some(old) = record.detail("approval")
             && old["request"]["id"] == input.id
@@ -517,7 +556,9 @@ impl IntegrationService {
         {
             return Err(WorkerError("prepared-exact-candidate-required"));
         }
-        self.validate_prepared(&record)?;
+        diagnostics.measure(Phase::ValidateReadOnly, None, || {
+            self.validate_prepared(&record)
+        })?;
         let issued = self.clock.now_ms();
         if issued < record.intent.created_ms {
             return Err(WorkerError("approval-clock-rollback"));
@@ -525,13 +566,23 @@ impl IntegrationService {
         let expires = issued
             .checked_add(input.valid_for_ms)
             .ok_or(WorkerError("approval-clock"))?;
-        observe(
+        let clock = Arc::clone(&self.clock);
+        diagnostics.approval(
+            issued,
+            expires,
+            Arc::new(move || clock.diagnostic_now_ms()),
+            None,
+        );
+        diagnostics.authorization_gate(Phase::ApprovalPersist, issued, issued, expires, true);
+        diagnostics.measure(Phase::ApprovalPersist, None, || observe(
             store,
             &input.integration_id,
             IntegrationStatus::Approved,
             json!({"approval":{"request":input,"requestHash":hash,"issuedMs":issued,"expiresMs":expires,"target":record.intent.target}}),
-        )?;
-        load_record(store, &input.integration_id)
+        ))?;
+        diagnostics.measure(Phase::ReadResult, None, || {
+            load_record(store, &input.integration_id)
+        })
     }
     fn validate_prepared(&self, record: &IntegrationRecord) -> Result<()> {
         let mut diagnostics = PreparedValidationDiagnostics::for_record(
@@ -593,14 +644,45 @@ impl IntegrationService {
         cancel: &CancellationToken,
         mut checkpoint: impl FnMut(IntegrationCheckpoint),
     ) -> Result<IntegrationRecord> {
+        let received = (std::env::var("ORCHESTRIX_INTEGRATION_DIAGNOSTICS").as_deref() == Ok("1"))
+            .then(|| self.clock.diagnostic_now_ms())
+            .flatten();
+        let diagnostics = PreparationTrace::operation(&input.id, TraceOperation::Apply);
+        diagnostics.subject(&input.integration_id);
+        let result = diagnostics.measure(Phase::ApplyRequest, None, || {
+            self.apply_measured(
+                store,
+                input,
+                cancel,
+                &mut checkpoint,
+                &diagnostics,
+                received,
+            )
+        });
+        trace_record_result(&diagnostics, &result);
+        result
+    }
+    fn apply_measured(
+        &self,
+        store: &mut Store,
+        input: &ApplicationRequest,
+        cancel: &CancellationToken,
+        checkpoint: &mut impl FnMut(IntegrationCheckpoint),
+        diagnostics: &PreparationTrace,
+        received: Option<u64>,
+    ) -> Result<IntegrationRecord> {
         if input.schema_version != 1
             || LocalRef::new(&input.id).is_err()
             || LocalRef::new(&input.authorization_ref).is_err()
         {
             return Err(WorkerError("application-request"));
         }
-        let _lease = crate::worker::lease(store)?.ok_or(WorkerError("worker-host-busy"))?;
-        let record = load_record(store, &input.integration_id)?;
+        let _lease = diagnostics
+            .measure(Phase::AcquireLease, None, || crate::worker::lease(store))?
+            .ok_or(WorkerError("worker-host-busy"))?;
+        let record = diagnostics.measure(Phase::LoadIntent, None, || {
+            load_record(store, &input.integration_id)
+        })?;
         let hash = content_hash(json!(input).to_string().as_bytes());
         if let Some(old) = record.detail("applicationRequestHash") {
             if old != &json!(hash) {
@@ -621,6 +703,26 @@ impl IntegrationService {
         }
         let now = self.clock.now_ms();
         let approval = record.detail("approval").ok_or(WorkerError("approval"))?;
+        let issued_ms = approval["issuedMs"]
+            .as_u64()
+            .ok_or(WorkerError("approval-clock"))?;
+        let expires_ms = approval["expiresMs"]
+            .as_u64()
+            .ok_or(WorkerError("approval-clock"))?;
+        let clock = Arc::clone(&self.clock);
+        diagnostics.approval(
+            issued_ms,
+            expires_ms,
+            Arc::new(move || clock.diagnostic_now_ms()),
+            received,
+        );
+        diagnostics.authorization_gate(
+            Phase::Admission,
+            now,
+            issued_ms,
+            expires_ms,
+            now >= issued_ms && now < expires_ms,
+        );
         if now
             < approval["issuedMs"]
                 .as_u64()
@@ -655,16 +757,27 @@ impl IntegrationService {
             return load_record(store, &input.integration_id);
         }
         cancelled(cancel)?;
-        let state = store.load()?;
-        admission(&state, Some(&record.intent.id))?;
+        let state = diagnostics.measure(Phase::LoadState, None, || store.load())?;
+        diagnostics.measure(Phase::Admission, None, || {
+            admission(&state, Some(&record.intent.id))
+        })?;
         drop(state);
-        let helper = default_helper()?;
-        let binding = GuardianBinding::prepare(
-            store.path(),
-            &format!("apply-{}", &content_hash(input.id.as_bytes())[..24]),
-            &helper,
-        )?;
+        let helper = diagnostics.measure(Phase::PrepareSupervisor, None, default_helper)?;
+        let binding = diagnostics.measure(Phase::PrepareSupervisor, None, || {
+            GuardianBinding::prepare(
+                store.path(),
+                &format!("apply-{}", &content_hash(input.id.as_bytes())[..24]),
+                &helper,
+            )
+        })?;
         let now = self.clock.now_ms();
+        diagnostics.authorization_gate(
+            Phase::RecordSupervisor,
+            now,
+            issued_ms,
+            expires_ms,
+            now >= issued_ms && now < expires_ms,
+        );
         if now
             < approval["issuedMs"]
                 .as_u64()
@@ -682,25 +795,35 @@ impl IntegrationService {
             )?;
             return load_record(store, &input.integration_id);
         }
-        observe(
+        diagnostics.measure(Phase::RecordSupervisor, None, || observe(
             store,
             &input.integration_id,
             IntegrationStatus::Applying,
             json!({"guardian":binding,"applicationRequest":input,"applicationRequestHash":hash,"startedMs":now,"effects":"git-and-checks-owned-v1"}),
-        )?;
+        ))?;
         let mut effect_started = false;
         let outcome = (|| {
-            let mut guardian = Guardian::start(binding.clone(), &helper)?;
-            let git = IntegrationGit::new(guardian.job()?)?;
+            let mut guardian = diagnostics.measure(Phase::StartSupervisor, None, || {
+                Guardian::start(binding.clone(), &helper)
+            })?;
+            diagnostics.job_ready();
+            let git = diagnostics.measure(Phase::CreateExecutor, None, || {
+                Ok::<_, WorkerError>(IntegrationGit::new(guardian.job()?)?)
+            })?;
             let result = value_text(&record, "resultRevision")?;
-            git.verify_commit(&record.intent, value_text(&record, "treeRevision")?, result)?;
-            git.verify_snapshot_tree(
-                &record.intent,
-                value_text(&record, "treeRevision")?,
-                &record.snapshot().ok_or(WorkerError("snapshot"))?,
-            )?;
-            if git
-                .inspect(&record.intent)
+            diagnostics.measure(Phase::ValidateCommit, None, || {
+                git.verify_commit(&record.intent, value_text(&record, "treeRevision")?, result)
+                    .map_err(WorkerError::from)
+            })?;
+            diagnostics.measure(Phase::ValidateTree, None, || {
+                Ok::<_, WorkerError>(git.verify_snapshot_tree(
+                    &record.intent,
+                    value_text(&record, "treeRevision")?,
+                    &record.snapshot().ok_or(WorkerError("snapshot"))?,
+                )?)
+            })?;
+            if diagnostics
+                .measure(Phase::ValidateInspect, None, || git.inspect(&record.intent))
                 .map_err(|error| validation_git_error(&record, error))?
                 .revision
                 != record.snapshot().ok_or(WorkerError("snapshot"))?.revision
@@ -708,26 +831,38 @@ impl IntegrationService {
                 return Err(WorkerError("combined-artifact-changed"));
             }
             cancelled(cancel)?;
-            let effect_time = self.clock.now_ms();
-            if effect_time < now
-                || effect_time
-                    >= approval["expiresMs"]
-                        .as_u64()
-                        .ok_or(WorkerError("approval-clock"))?
-            {
-                return Err(WorkerError("approval-expired-before-effect"));
-            }
-            git.apply_files(&record.intent, result, || {
-                cancelled(cancel)?;
-                let before_write = self.clock.now_ms();
-                if before_write < effect_time
-                    || before_write
-                        >= approval["expiresMs"]
-                            .as_u64()
-                            .ok_or(WorkerError("approval-clock"))?
-                {
-                    return Err(WorkerError("approval-expired-before-file-update"));
+            let effect_time = diagnostics.measure(Phase::ClockBeforeEffect, None, || {
+                let effect_time = self.clock.now_ms();
+                let valid = effect_time >= now && effect_time < expires_ms;
+                diagnostics.authorization_gate(
+                    Phase::ClockBeforeEffect,
+                    effect_time,
+                    issued_ms,
+                    expires_ms,
+                    valid,
+                );
+                if !valid {
+                    return Err(WorkerError("approval-expired-before-effect"));
                 }
+                Ok(effect_time)
+            })?;
+            git.apply_files(&record.intent, result, || {
+                diagnostics.measure(Phase::ClockBeforeWrite, None, || {
+                    cancelled(cancel)?;
+                    let before_write = self.clock.now_ms();
+                    let valid = before_write >= effect_time && before_write < expires_ms;
+                    diagnostics.authorization_gate(
+                        Phase::ClockBeforeWrite,
+                        before_write,
+                        issued_ms,
+                        expires_ms,
+                        valid,
+                    );
+                    if !valid {
+                        return Err(WorkerError("approval-expired-before-file-update"));
+                    }
+                    Ok(())
+                })?;
                 // Target checks and the stat-only refresh above have not
                 // started application. Mark uncertainty only at the actual
                 // byte-write boundary, after authorization still holds.
@@ -741,29 +876,39 @@ impl IntegrationService {
             checkpoint(IntegrationCheckpoint::FilesApplied);
             // Once files changed, cancellation cannot claim a rollback. Finish
             // only the already-authorized ref CAS, or preserve uncertain state.
-            let actual = git.apply_ref(&record.intent, result)?;
+            let actual = diagnostics.measure(Phase::ApplyReference, None, || {
+                git.apply_ref(&record.intent, result)
+            })?;
             checkpoint(IntegrationCheckpoint::TargetRef);
-            drop(git);
-            drop(guardian);
-            let proof = read_proof(&binding)?;
-            observe(
+            diagnostics.measure::<_, WorkerError>(Phase::CloseJob, None, || {
+                drop(git);
+                drop(guardian);
+                Ok(())
+            })?;
+            let proof = diagnostics.measure(Phase::ReadClosure, None, || read_proof(&binding))?;
+            diagnostics.job_closed();
+            diagnostics.measure(Phase::ConfirmApplied, None, || observe(
                 store,
                 &input.integration_id,
                 IntegrationStatus::Applied,
                 json!({"actualTarget":actual,"resultRevision":result,"localClosureProof":proof}),
-            )?;
-            observe(
-                store,
-                &input.integration_id,
-                IntegrationStatus::Delivered,
-                json!({"delivered":true}),
-            )?;
+            ))?;
+            diagnostics.measure(Phase::ConfirmDelivered, None, || {
+                observe(
+                    store,
+                    &input.integration_id,
+                    IntegrationStatus::Delivered,
+                    json!({"delivered":true}),
+                )
+            })?;
             Ok(())
         })();
         if let Err(error) = outcome {
-            let current = load_record(store, &input.integration_id)?;
+            let current = diagnostics.measure(Phase::LoadIntent, None, || {
+                load_record(store, &input.integration_id)
+            })?;
             if current.status() == IntegrationStatus::Applying {
-                observe(
+                diagnostics.measure(Phase::RecordFailure, None, || observe(
                     store,
                     &input.integration_id,
                     if effect_started {
@@ -772,10 +917,12 @@ impl IntegrationService {
                         IntegrationStatus::Invalidated
                     },
                     json!({"reason":error.0,"automaticRetry":false,"inspectionRequired":effect_started,"applicationNotStarted":!effect_started}),
-                )?;
+                ))?;
             }
         }
-        load_record(store, &input.integration_id)
+        diagnostics.measure(Phase::ReadResult, None, || {
+            load_record(store, &input.integration_id)
+        })
     }
     /// Explicit expensive revalidation, not the renderer's compact polling path.
     pub fn inspect(&self, store: &mut Store, id: &str) -> Result<IntegrationRecord> {

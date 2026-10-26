@@ -22,7 +22,7 @@ use std::{
     process::{Command, Stdio},
     sync::{
         Arc,
-        atomic::{AtomicU64, Ordering},
+        atomic::{AtomicU64, AtomicUsize, Ordering},
     },
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
@@ -36,6 +36,26 @@ struct SteppingClock(AtomicU64);
 impl IntegrationClock for SteppingClock {
     fn now_ms(&self) -> u64 {
         self.0.fetch_add(100, Ordering::SeqCst)
+    }
+}
+struct ScriptedClock {
+    samples: [u64; 4],
+    calls: AtomicUsize,
+    cancel_on_sample: Option<(usize, CancellationToken)>,
+}
+impl IntegrationClock for ScriptedClock {
+    fn now_ms(&self) -> u64 {
+        let sample = self.calls.fetch_add(1, Ordering::SeqCst);
+        let now = *self
+            .samples
+            .get(sample)
+            .expect("unexpected additional authoritative clock sample");
+        if let Some((ordinal, token)) = &self.cancel_on_sample
+            && sample + 1 == *ordinal
+        {
+            token.cancel();
+        }
+        now
     }
 }
 struct Fixture {
@@ -422,6 +442,119 @@ fn exact_combined_checks_approval_expiry_local_work_and_final_delivery_are_disti
         fs::read_to_string(f.repository.join("fixture.txt")).unwrap(),
         "before\n"
     );
+    // Reuse the already prepared fixture and its unchanged approval duration.
+    // Observation-only diagnostics keep their default None clock and cannot
+    // consume these four authoritative samples.
+    for boundary in [
+        "expiry-at-file-write",
+        "rollback-at-file-write",
+        "cancel-at-file-write",
+    ] {
+        let path = f.copy_database(boundary);
+        let mut case = Store::open(&path).unwrap();
+        let issuing_clock = f.clock();
+        let issuer = IntegrationService::with_clock(issuing_clock);
+        let request = approval(&prepared, boundary);
+        let approved = issuer.approve(&mut case, &request).unwrap();
+        let recorded = approved.detail("approval").unwrap();
+        let issued = recorded["issuedMs"].as_u64().unwrap();
+        let expires = recorded["expiresMs"].as_u64().unwrap();
+        assert_eq!(expires - issued, request.valid_for_ms);
+        let token = CancellationToken::new();
+        let scripted = Arc::new(ScriptedClock {
+            samples: [
+                issued + 10,
+                issued + 20,
+                issued + 30,
+                if boundary == "rollback-at-file-write" {
+                    issued + 29
+                } else {
+                    expires
+                },
+            ],
+            calls: AtomicUsize::new(0),
+            // The third sample is after the earlier cancellation guard. The
+            // final guard must see this token before taking a fourth sample.
+            cancel_on_sample: (boundary == "cancel-at-file-write").then(|| (3, token.clone())),
+        });
+        let service = IntegrationService::with_clock(scripted.clone());
+        let before_files = ["fixture.txt", "preserve.txt", "nested/keep.md"]
+            .map(|name| fs::read(f.repository.join(name)).unwrap());
+        let before_head = git(&f.repository, &["rev-parse", "--verify", "HEAD"]);
+        let before_ref = git(&f.repository, &["symbolic-ref", "HEAD"]);
+        let before_index = git(&f.repository, &["ls-files", "--stage", "-z"]);
+        let before_tree = git(&f.repository, &["ls-tree", "-r", "-l", "-z", "HEAD"]);
+        let mut checkpoints = Vec::new();
+        let stopped = service
+            .apply_with_checkpoint(
+                &mut case,
+                &application(&prepared, boundary),
+                &token,
+                |point| checkpoints.push(point),
+            )
+            .unwrap();
+        assert_eq!(
+            stopped.status(),
+            IntegrationStatus::Invalidated,
+            "{boundary}"
+        );
+        assert_eq!(
+            stopped.detail("reason"),
+            Some(&json!(if boundary == "cancel-at-file-write" {
+                "integration-cancelled"
+            } else {
+                "approval-expired-before-file-update"
+            })),
+            "{boundary}"
+        );
+        assert_eq!(stopped.detail("applicationNotStarted"), Some(&json!(true)));
+        assert_eq!(stopped.detail("inspectionRequired"), Some(&json!(false)));
+        assert_eq!(stopped.detail("automaticRetry"), Some(&json!(false)));
+        assert_eq!(stopped.detail("approval"), approved.detail("approval"));
+        assert_eq!(stopped.candidate_revision(), approved.candidate_revision());
+        assert!(
+            !checkpoints.iter().any(|point| matches!(
+                point,
+                IntegrationCheckpoint::FilesApplied | IntegrationCheckpoint::TargetRef
+            )),
+            "{boundary}: no byte/ref effect checkpoint may be reached"
+        );
+        assert_eq!(
+            scripted.calls.load(Ordering::SeqCst),
+            if boundary == "cancel-at-file-write" {
+                3
+            } else {
+                4
+            },
+            "{boundary}: requested boundary must be reached exactly"
+        );
+        for (name, bytes) in ["fixture.txt", "preserve.txt", "nested/keep.md"]
+            .into_iter()
+            .zip(before_files)
+        {
+            assert_eq!(
+                fs::read(f.repository.join(name)).unwrap(),
+                bytes,
+                "{boundary}"
+            );
+        }
+        assert_eq!(
+            git(&f.repository, &["rev-parse", "--verify", "HEAD"]),
+            before_head
+        );
+        assert_eq!(git(&f.repository, &["symbolic-ref", "HEAD"]), before_ref);
+        // update-index --refresh may update stat cache bytes; it must never
+        // change the approved logical index or the committed source tree.
+        assert_eq!(
+            git(&f.repository, &["ls-files", "--stage", "-z"]),
+            before_index
+        );
+        assert_eq!(
+            git(&f.repository, &["ls-tree", "-r", "-l", "-z", "HEAD"]),
+            before_tree
+        );
+        await_closure(&case, &prepared.intent.id);
+    }
     for (kind, contents) in [
         ("dirty", "personal local edit\n"),
         ("untracked", "keep my notes\n"),

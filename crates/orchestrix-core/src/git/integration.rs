@@ -454,8 +454,12 @@ impl IntegrationGit {
         result: &str,
         before_write: impl FnOnce() -> Result<(), E>,
     ) -> Result<TargetState, ApplyFilesError<E>> {
+        use crate::integration_diagnostics::{Phase, measure};
         self.require_scope()?;
-        if self.target(intent, &intent.input_base, &intent.input_base)? != intent.target {
+        if measure(Phase::TargetBeforeRefresh, || {
+            self.target(intent, &intent.input_base, &intent.input_base)
+        })? != intent.target
+        {
             return Err(GitError::Conflict.into());
         }
         let root = Path::new(&intent.target.directory);
@@ -463,10 +467,17 @@ impl IntegrationGit {
         // restored to the same bytes can retain stale index stat information;
         // read-tree deliberately refuses that state. Refresh only stat data,
         // never stage content/mode changes, and recheck the logical fingerprint.
-        self.executor
-            .run(root, &args(&["update-index", "--refresh"]))?
-            .checked()?;
-        if self.target(intent, &intent.input_base, &intent.input_base)? != intent.target {
+        measure(Phase::IndexRefresh, || {
+            self.executor
+                .run(root, &args(&["update-index", "--refresh"]))?
+                .checked()
+        })?;
+        #[cfg(all(test, windows))]
+        target_fence_tests::after_index_refresh();
+        if measure(Phase::TargetAfterRefresh, || {
+            self.target(intent, &intent.input_base, &intent.input_base)
+        })? != intent.target
+        {
             return Err(GitError::Conflict.into());
         }
         // Refresh and coherent fingerprint reads can consume time. The service
@@ -474,33 +485,40 @@ impl IntegrationGit {
         before_write().map_err(ApplyFilesError::BeforeWrite)?;
         // Two-tree fast-forward update checks for local changes. No reset,
         // clean, stash, cherry-pick, hooks, filters or project scripts.
-        self.executor
-            .run(
-                root,
-                &args(&["read-tree", "-m", "-u", &intent.input_base, result]),
-            )?
-            .checked()?;
-        let partial = self.target(intent, result, &intent.input_base)?;
+        measure(Phase::FileUpdate, || {
+            self.executor
+                .run(
+                    root,
+                    &args(&["read-tree", "-m", "-u", &intent.input_base, result]),
+                )?
+                .checked()
+        })?;
+        let partial = measure(Phase::TargetAfterFiles, || {
+            self.target(intent, result, &intent.input_base)
+        })?;
         if partial.symbolic_ref != intent.target.symbolic_ref {
             return Err(GitError::Conflict.into());
         }
         Ok(partial)
     }
     pub fn apply_ref(&self, intent: &IntegrationIntent, result: &str) -> GitResult<TargetState> {
+        use crate::integration_diagnostics::{Phase, measure};
         self.require_scope()?;
         self.target(intent, result, &intent.input_base)?;
-        self.executor
-            .run(
-                Path::new(&intent.target.directory),
-                &args(&[
-                    "update-ref",
-                    "--no-deref",
-                    &intent.target.symbolic_ref,
-                    result,
-                    &intent.input_base,
-                ]),
-            )?
-            .checked()?;
+        measure(Phase::ReferenceCas, || {
+            self.executor
+                .run(
+                    Path::new(&intent.target.directory),
+                    &args(&[
+                        "update-ref",
+                        "--no-deref",
+                        &intent.target.symbolic_ref,
+                        result,
+                        &intent.input_base,
+                    ]),
+                )?
+                .checked()
+        })?;
         self.target(intent, result, result)
     }
 }
@@ -1224,5 +1242,312 @@ mod diagnostics {
             result.is_ok(),
             "diagnostic-inspection-failed; see static result code"
         );
+    }
+}
+
+#[cfg(all(test, windows))]
+mod target_fence_tests {
+    use super::*;
+    use crate::{evaluator::CheckSpec, git_records::WorktreeIntent};
+    use std::{
+        cell::{Cell, RefCell},
+        rc::Rc,
+    };
+
+    thread_local! {
+        static AFTER_REFRESH: RefCell<Option<Box<dyn FnOnce()>>> = const { RefCell::new(None) };
+    }
+
+    // This hook exists only in this unit-test build, before the second target
+    // fence. Production has no callback here or after its final clock guard.
+    pub(super) fn after_index_refresh() {
+        let callback = AFTER_REFRESH.with(|slot| slot.borrow_mut().take());
+        if let Some(callback) = callback {
+            callback();
+        }
+    }
+
+    fn with_after_refresh<T>(callback: impl FnOnce() + 'static, action: impl FnOnce() -> T) -> T {
+        struct Clear;
+        impl Drop for Clear {
+            fn drop(&mut self) {
+                AFTER_REFRESH.with(|slot| {
+                    slot.borrow_mut().take();
+                });
+            }
+        }
+        AFTER_REFRESH.with(|slot| {
+            assert!(slot.borrow_mut().replace(Box::new(callback)).is_none());
+        });
+        let clear = Clear;
+        let result = action();
+        assert!(
+            AFTER_REFRESH.with(|slot| slot.borrow().is_none()),
+            "refresh boundary not reached"
+        );
+        drop(clear);
+        result
+    }
+
+    #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+    enum Mutation {
+        Protected,
+        Index,
+        Reference,
+    }
+
+    #[derive(Debug, PartialEq, Eq)]
+    struct TargetBytes {
+        editable: Vec<u8>,
+        protected: Vec<u8>,
+        index: Vec<u8>,
+        logical_index: Vec<u8>,
+        head: Vec<u8>,
+        symbolic_ref: Vec<u8>,
+    }
+
+    fn read_target(executor: &GitExecutor, root: &Path) -> TargetBytes {
+        let read = |argv: &[&str]| executor.run(root, &args(argv)).unwrap().checked().unwrap();
+        TargetBytes {
+            editable: fs::read(root.join("editable.txt")).unwrap(),
+            protected: fs::read(root.join("protected.bin")).unwrap(),
+            logical_index: read(&["ls-files", "--stage", "-z"]),
+            head: read(&["rev-parse", "--verify", "HEAD"]),
+            symbolic_ref: read(&["symbolic-ref", "HEAD"]),
+            index: fs::read(root.join(".git/index")).unwrap(),
+        }
+    }
+
+    fn commit(
+        executor: &GitExecutor,
+        root: &Path,
+        tree: &str,
+        parent: Option<&str>,
+        message: &str,
+    ) -> String {
+        let parent = parent
+            .map(|id| format!("parent {id}\n"))
+            .unwrap_or_default();
+        let body = format!(
+            "tree {tree}\n{parent}author Fixture <fixture@orchestrix.invalid> 1 +0000\ncommitter Fixture <fixture@orchestrix.invalid> 1 +0000\n\n{message}\n"
+        );
+        object(executor, root, "commit", body.as_bytes(), true).unwrap()
+    }
+
+    fn reject_between_target_fences(mutation: Mutation) {
+        let fixture = super::super::executor::MetadataFixture::new();
+        let root = fixture.repository("target-fences");
+        let scope = JobScope::create(&orchestrix_process::named_job::nonce().unwrap()).unwrap();
+        let git = IntegrationGit::new(scope.clone()).unwrap();
+        let executor = &git.executor;
+        let original = object(executor, &root, "blob", b"before\n", true).unwrap();
+        let changed = object(executor, &root, "blob", b"after\n", true).unwrap();
+        let protected = object(executor, &root, "blob", &[0, 1, 255, 0, 3], true).unwrap();
+        let files = BTreeMap::from([
+            ("editable.txt".into(), original),
+            ("protected.bin".into(), protected),
+        ]);
+        let base_tree = write_oid_tree(executor, &root, &files, 0, true).unwrap();
+        let base = commit(executor, &root, &base_tree, None, "Own target base");
+        let mut edited = files.clone();
+        edited.insert("editable.txt".into(), changed);
+        let result_tree = write_oid_tree(executor, &root, &edited, 0, true).unwrap();
+        let result = commit(
+            executor,
+            &root,
+            &result_tree,
+            Some(&base),
+            "Own intended result",
+        );
+        let other = commit(
+            executor,
+            &root,
+            &base_tree,
+            Some(&base),
+            "Own concurrent ref change",
+        );
+        executor
+            .run(&root, &args(&["update-ref", "refs/heads/main", &base]))
+            .unwrap()
+            .checked()
+            .unwrap();
+        fs::write(root.join("editable.txt"), b"before\n").unwrap();
+        fs::write(root.join("protected.bin"), [0, 1, 255, 0, 3]).unwrap();
+        executor
+            .run(&root, &args(&["read-tree", &base]))
+            .unwrap()
+            .checked()
+            .unwrap();
+        let root = paths::canonical_directory(&root).unwrap();
+        let common = paths::canonical_directory(&root.join(".git")).unwrap();
+        let preservation =
+            super::super::preservation::plan(executor, &root, &base, &["editable.txt".into()])
+                .unwrap();
+        let target =
+            initial_target_with_preservation(executor, &root, &common, &base, Some(&preservation))
+                .unwrap();
+        let authorized = fixture.root.join("authorized");
+        let worktree = authorized.join("owned");
+        fs::create_dir_all(&worktree).unwrap();
+        let path = |value: &Path| {
+            paths::canonical_directory(value)
+                .unwrap()
+                .to_str()
+                .unwrap()
+                .to_owned()
+        };
+        // Only the typed target and preservation manifest are consumed by this
+        // low-level test. It creates no Store, runtime, approval or fake check.
+        let intent = IntegrationIntent {
+            launch_protocol: "guarded-git-and-checks-v1".into(),
+            id: "target-fence".into(),
+            request_hash: content_hash(b"own target-fence request"),
+            worker_id: "worker".into(),
+            run_id: "run".into(),
+            task_id: "task".into(),
+            artifact: serde_json::json!({"type":"synthetic-target-fence"}),
+            capture_id: "capture".into(),
+            capture_revision: content_hash(b"own target-fence capture"),
+            input_base: base.clone(),
+            target,
+            worktree: WorktreeIntent {
+                preservation: Some(preservation),
+                operation_id: "target-fence".into(),
+                project_id: "project".into(),
+                repository_id: "repository".into(),
+                run_id: "run".into(),
+                task_id: "task".into(),
+                attempt_id: "attempt".into(),
+                base_oid: base.clone(),
+                domain_base: "base".into(),
+                worktree_ref: "owned".into(),
+                authorized_root: path(&authorized),
+                path: path(&worktree),
+                main_repository: path(&root),
+                branch: "orchestrix/target-fence".into(),
+                common_git_dir: path(&common),
+                ownership_token: content_hash(b"own target-fence ownership"),
+            },
+            // Shape-only, never evaluated: this test calls only apply_files.
+            checks: vec![CheckSpec {
+                id: "not-run".into(),
+                executable: std::env::current_exe().unwrap(),
+                arguments: vec![],
+                authorization_ref: "shape-only-never-evaluated".into(),
+                authorized: true,
+                timeout_ms: 1_000,
+                executable_sha256: None,
+            }],
+            authorization_ref: "owned-unit-test".into(),
+            created_ms: 1,
+        };
+        assert!(intent.validate());
+        let before = read_target(executor, &root);
+        let injected = Rc::new(RefCell::new(None));
+        let injected_copy = Rc::clone(&injected);
+        let reached = Rc::new(Cell::new(0));
+        let reached_copy = Rc::clone(&reached);
+        let root_copy = root.clone();
+        let executor_copy = Arc::clone(executor);
+        let base_copy = base.clone();
+        let result_copy = result.clone();
+        let other_copy = other.clone();
+        let write_gate_called = Cell::new(false);
+        let outcome = with_after_refresh(
+            move || {
+                reached_copy.set(reached_copy.get() + 1);
+                match mutation {
+                    Mutation::Protected => {
+                        fs::write(root_copy.join("protected.bin"), [0, 1, 254, 0, 3]).unwrap()
+                    }
+                    Mutation::Index => {
+                        executor_copy
+                            .run(&root_copy, &args(&["read-tree", &result_copy]))
+                            .unwrap()
+                            .checked()
+                            .unwrap();
+                    }
+                    Mutation::Reference => {
+                        executor_copy
+                            .run(
+                                &root_copy,
+                                &args(&["update-ref", "refs/heads/main", &other_copy, &base_copy]),
+                            )
+                            .unwrap()
+                            .checked()
+                            .unwrap();
+                    }
+                }
+                *injected_copy.borrow_mut() = Some(read_target(&executor_copy, &root_copy));
+            },
+            || {
+                git.apply_files(&intent, &result, || {
+                    write_gate_called.set(true);
+                    Ok::<(), ()>(())
+                })
+            },
+        );
+        assert_eq!(
+            reached.get(),
+            1,
+            "one exact after-refresh injection required"
+        );
+        assert!(
+            !write_gate_called.get(),
+            "second target fence must reject before the write gate"
+        );
+        let error = match outcome {
+            Err(ApplyFilesError::Git(error)) => error,
+            Err(ApplyFilesError::BeforeWrite(())) => panic!("unexpected before-write error"),
+            Ok(_) => panic!("concurrent target change was accepted"),
+        };
+        assert_eq!(
+            error,
+            match mutation {
+                Mutation::Protected | Mutation::Index => GitError::UnpreservedWork,
+                Mutation::Reference => GitError::Base,
+            }
+        );
+        let expected = injected.borrow_mut().take().unwrap();
+        assert_eq!(expected.editable, before.editable);
+        match mutation {
+            Mutation::Protected => {
+                assert_ne!(expected.protected, before.protected);
+                assert_eq!(expected.logical_index, before.logical_index);
+                assert_eq!(expected.head, before.head);
+            }
+            Mutation::Index => {
+                assert_eq!(expected.protected, before.protected);
+                assert_ne!(expected.logical_index, before.logical_index);
+                assert_eq!(expected.head, before.head);
+            }
+            Mutation::Reference => {
+                assert_eq!(expected.protected, before.protected);
+                assert_eq!(expected.logical_index, before.logical_index);
+                assert_ne!(expected.head, before.head);
+            }
+        }
+        assert_eq!(
+            read_target(executor, &root),
+            expected,
+            "never restore or overwrite the injected state"
+        );
+        assert_eq!(scope.active().unwrap(), 0, "all own Git processes exited");
+        drop(git);
+        scope.seal().unwrap();
+        assert_eq!(scope.active().unwrap(), 0);
+    }
+
+    #[test]
+    fn protected_change_after_index_refresh_blocks_before_write() {
+        reject_between_target_fences(Mutation::Protected);
+    }
+    #[test]
+    fn index_change_after_index_refresh_blocks_before_write() {
+        reject_between_target_fences(Mutation::Index);
+    }
+    #[test]
+    fn ref_change_after_index_refresh_blocks_before_write() {
+        reject_between_target_fences(Mutation::Reference);
     }
 }

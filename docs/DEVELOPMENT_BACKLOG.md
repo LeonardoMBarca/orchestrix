@@ -311,6 +311,8 @@ Preservar a galeria de oito temas e a escolha persistente de idioma como configu
 
 ### OX-017 Alpha de uso real
 
+**Continuação técnica — 26/10:** diagnóstico limitado de aprovação/apply e provas estritas de fronteira adicionados sem mudar TTL, budgets, formatos/hashes ou guards. Baseline e fonte combinada chegaram ao TargetRef e recuperaram sem reaplicação; a expiração anterior não foi reproduzida nem recebeu causa presumida/otimização especulativa. Cercas entre refresh/segundo fingerprint, quarto sample/rollback/cancelamento e compatibilidade histórica têm provas focais. Convergência release **13/13**, check/Clippy/build, conformance **245** e fronteira Rust **11/11** passaram. [Estado e gates restantes](DEVELOPMENT_STATUS.md#aplicação-instrumentada-e-crash-comprovado--2610): congelamento normal/conferência nativa local, depois opt-in novo antes de conta/inferência. Pins Codex 0.164/checker v2 preservados; OX-017 continua parcial.
+
 **Checkpoint técnico — 26/10:** leitura opaca Windows por handles de pais dentro de cada observação, preservando Core sem unsafe, formatos/hashes, três conferências e budgets. Preflight completo b053a7f passou em 31,844 s/584 arquivos; guards, 15 casos Git e check/Clippy/build/conformance passaram. Sucesso/correção sintéticos chegaram à aplicação/reabertura, mas crash ficou sem aceite: aprovação de 120 s venceu antes da escrita em debug e release e o Core bloqueou corretamente. [Estado e próxima medição](DEVELOPMENT_STATUS.md#preparação-retomada-leitura-preservada-com-handles-por-observação--2610): separar fases de apply antes de outra otimização, manter fences/TTL; nova build/nativa/opt-in ainda pendentes. Nenhuma chamada de conta, turno real ou promoção do Cancelled anterior.
 
 
