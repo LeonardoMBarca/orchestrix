@@ -303,32 +303,44 @@ fn read_working(root: &Path, relative: &str, maximum: usize) -> GitResult<Option
         stamp: before,
     }))
 }
-fn read_preserved(root: &Path, relative: &str) -> GitResult<Option<WorkingFile>> {
+fn read_preserved(
+    executor: &GitExecutor,
+    #[cfg(not(windows))] root: &Path,
+    relative: &str,
+    #[cfg(windows)] scope: &mut super::scoped_read_windows::ScopedRead,
+) -> GitResult<Option<WorkingFile>> {
     #[cfg(all(test, windows))]
     let mut timing = TimingCall::phase("phase-capture-preserved-file");
+    executor.check_read_budget()?;
+    #[cfg(not(windows))]
     let path = root.join(relative);
     #[cfg(all(test, windows))]
-    let path_timing = TimingCall::phase("phase-capture-path-guard");
+    let path_timing = TimingCall::phase("phase-capture-scoped-open");
+    #[cfg(not(windows))]
     super::paths::reject_links(&path)?;
+    #[cfg(windows)]
+    let Some(mut file) = scope.open(relative)? else {
+        return Ok(None);
+    };
     #[cfg(all(test, windows))]
     drop(path_timing);
     #[cfg(all(test, windows))]
     let metadata_timing = TimingCall::phase("phase-capture-path-metadata");
+    #[cfg(not(windows))]
     let before = match fs::symlink_metadata(&path) {
         Ok(value) => stamp(&value)?,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
         Err(_) => return Err(GitError::Io),
     };
+    #[cfg(windows)]
+    let before = stamp(&file.metadata()?)?;
     #[cfg(all(test, windows))]
     drop(metadata_timing);
     if before.length > MAX_OPAQUE_FILE_BYTES {
         return Err(GitError::Limit);
     }
-    #[cfg(all(test, windows))]
-    let open_timing = TimingCall::phase("phase-capture-file-open");
+    #[cfg(not(windows))]
     let mut file = File::open(&path)?;
-    #[cfg(all(test, windows))]
-    drop(open_timing);
     #[cfg(all(test, windows))]
     let metadata_timing = TimingCall::phase("phase-capture-handle-metadata");
     if stamp(&file.metadata()?)? != before {
@@ -340,6 +352,7 @@ fn read_preserved(root: &Path, relative: &str) -> GitResult<Option<WorkingFile>>
     let mut buffer = [0u8; 65_536];
     let mut size = 0u64;
     loop {
+        executor.check_read_budget()?;
         #[cfg(all(test, windows))]
         let mut read_timing = TimingCall::phase("phase-capture-preserved-read");
         let n = file.read(&mut buffer)?;
@@ -371,15 +384,20 @@ fn read_preserved(root: &Path, relative: &str) -> GitResult<Option<WorkingFile>>
         timing.add_bytes(size);
     }
     #[cfg(all(test, windows))]
-    let path_timing = TimingCall::phase("phase-capture-path-guard");
+    let path_timing = TimingCall::phase("phase-capture-scoped-fence");
+    #[cfg(not(windows))]
     super::paths::reject_links(&path)?;
+    #[cfg(windows)]
+    let final_metadata = scope.verify_file(relative, &file)?;
+    #[cfg(not(windows))]
+    let final_metadata = fs::symlink_metadata(&path)?;
     #[cfg(all(test, windows))]
     drop(path_timing);
     #[cfg(all(test, windows))]
     let metadata_timing = TimingCall::phase("phase-capture-final-file-fence");
     if size != before.length
         || stamp(&file.metadata()?)? != before
-        || stamp(&fs::symlink_metadata(&path)?)? != before
+        || stamp(&final_metadata)? != before
     {
         return Err(GitError::InconsistentCapture);
     }
@@ -725,7 +743,18 @@ fn inspect_at_profile(
     } else {
         limits.read_bytes
     };
+    // Each complete observation owns its directory handles. No handle or
+    // mutable filesystem observation is reused by a later snapshot/decision.
+    #[cfg(windows)]
+    let mut opaque_scope = preservation
+        .map(|_| {
+            #[cfg(all(test, windows))]
+            let _timing = TimingCall::phase("phase-capture-scope-open");
+            super::scoped_read_windows::ScopedRead::new(root)
+        })
+        .transpose()?;
     for path in included {
+        executor.check_read_budget()?;
         for entry in [base_entries.get(&path), index.get(&path)]
             .into_iter()
             .flatten()
@@ -736,7 +765,14 @@ fn inspect_at_profile(
         }
         let opaque = preservation.filter(|m| m.editable_paths.binary_search(&path).is_err());
         let observed = if opaque.is_some() {
-            read_preserved(root, &path)?
+            read_preserved(
+                executor,
+                #[cfg(not(windows))]
+                root,
+                &path,
+                #[cfg(windows)]
+                opaque_scope.as_mut().ok_or(GitError::Ownership)?,
+            )?
         } else {
             read_working(
                 root,
@@ -783,6 +819,13 @@ fn inspect_at_profile(
         }
         files.insert(path, observed);
     }
+    #[cfg(windows)]
+    if let Some(scope) = opaque_scope {
+        #[cfg(all(test, windows))]
+        let _timing = TimingCall::phase("phase-capture-scope-fence");
+        scope.finish()?;
+    }
+    executor.check_read_budget()?;
     // Resolve again at the final edge, not only reread a cached index path.
     // A .git retarget with identical index bytes is still a different source.
     let final_index = index_path(executor, root)?;

@@ -5,6 +5,8 @@ pub mod lease;
 pub mod named_job;
 pub mod startup_pipe;
 pub mod watch;
+#[cfg(windows)]
+pub mod windows_file_read;
 
 use std::ffi::OsString;
 use std::io::{Read, Write};

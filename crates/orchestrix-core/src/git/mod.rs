@@ -6,6 +6,8 @@ mod object_identity;
 pub(crate) mod paths;
 mod preflight;
 mod preservation;
+#[cfg(windows)]
+mod scoped_read_windows;
 mod worktrees;
 
 use crate::persistence::StoreError;

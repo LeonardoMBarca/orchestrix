@@ -98,7 +98,7 @@ fn same_component(left: Component<'_>, right: Component<'_>) -> bool {
     }
 }
 
-fn validate_absolute(path: &Path) -> GitResult<()> {
+pub(super) fn validate_absolute(path: &Path) -> GitResult<()> {
     if !path.is_absolute() {
         return Err(GitError::Path);
     }

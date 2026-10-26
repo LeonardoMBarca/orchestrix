@@ -191,6 +191,19 @@ pub(super) struct SupportedDirectories {
 }
 
 impl GitExecutor {
+    /// Filesystem phases consume the same optional inspection budget as Git.
+    /// A checkpoint cannot interrupt an OS call already in progress.
+    pub(super) fn check_read_budget(&self) -> GitResult<()> {
+        if let Some((started, lifetime, cancel)) = &self.read_budget {
+            if cancel.is_cancelled() {
+                return Err(GitError::Pending);
+            }
+            if started.elapsed() >= *lifetime {
+                return Err(GitError::Deadline);
+            }
+        }
+        Ok(())
+    }
     /// Read only, fixed built-in for a host-granted repository. No arbitrary arguments.
     pub fn inspect_head(&self, repository: &Path) -> GitResult<String> {
         let output = self
@@ -1426,6 +1439,26 @@ fn reap_bounded(child: &mut std::process::Child) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn filesystem_checkpoints_preserve_read_deadline_and_cancellation() {
+        let cancel = crate::runtime::CancellationToken::new();
+        // No executable, directory, process or provider is needed to inspect
+        // the observation's existing budget.
+        let mut executor = GitExecutor {
+            binary: PathBuf::new(),
+            private: PathBuf::new(),
+            scope: None,
+            read_budget: None,
+        };
+        assert_eq!(executor.check_read_budget(), Ok(()));
+        executor.read_budget = Some((Instant::now(), Duration::from_secs(90), cancel.clone()));
+        assert_eq!(executor.check_read_budget(), Ok(()));
+        executor.read_budget = Some((Instant::now(), Duration::ZERO, cancel.clone()));
+        assert_eq!(executor.check_read_budget(), Err(GitError::Deadline));
+        cancel.cancel();
+        assert_eq!(executor.check_read_budget(), Err(GitError::Pending));
+    }
+
     #[test]
     fn aliased_metadata_roles_share_one_current_store_read_without_caching() {
         let executor = GitExecutor::new().unwrap();

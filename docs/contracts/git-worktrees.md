@@ -219,6 +219,31 @@ The legacy v1 path retains three matching observations. In v2, two complete matc
 
 Metadata and bytes are also checked around each file read. A mismatch rejects capture; no mixed artifact is persisted. Sticky worktree/common watches remain an additional guard during the supervised check/review intervals, with failure/overflow treated as failure; watch silence never replaces content verification. These are coherent samples, not an atomic filesystem snapshot against a hostile writer that restores bytes and metadata between samples. Removing the interior sample does not claim equivalent sampling opportunities against such a writer.
 
+On Windows, v2 opaque working-file reads use directory handles scoped to one
+complete observation. After checking the absolute root ancestry, the reader
+opens each relative component through its actual parent handle using
+[`NtCreateFile`'s `RootDirectory`](https://learn.microsoft.com/en-us/windows/win32/api/winternl/nf-winternl-ntcreatefile)
+and `FILE_OPEN_REPARSE_POINT`. A component never contains a separator; handle
+metadata rejects every reparse tag and an unexpected file type. At most 4,096
+directories are retained, with no retained bodies or cross-observation cache.
+The read-only native primitive is confined to
+[`orchestrix-process`](../../crates/orchestrix-process/src/windows_file_read.rs);
+the Core retains `forbid(unsafe_code)` and translates its typed errors.
+Sharing does not make these directories immutable: parent handles are checked
+during traversal, each file is reopened and compared by native volume/file ID
+after its bounded streaming read, and the closing fence reopens the retained
+directory names and root and compares their identities. Missing/unsupported
+identity information or a mismatch blocks the observation. The absolute-root
+link checks remain at both boundaries. This avoids repeatedly walking all
+absolute ancestors for every preserved file; it does not create a runtime read
+sandbox or an atomic snapshot. The legacy textual reader, serialized artifacts,
+hashes and repeated snapshot comparisons are unchanged.
+
+Preflight's existing cancellation/deadline is also checked between working
+files and opaque 64-KiB read chunks and after the closing directory fence. A
+pending OS call is still not preempted. The 90-second observation, 110-second
+host wait, per-command budgets and worker/keeper lifetimes do not increase.
+
 | Bound | Current maximum |
 | --- | --- |
 | Included inventory | 4,096 paths |
