@@ -607,7 +607,14 @@ impl GitExecutor {
             return result;
         }
         let started = Instant::now();
-        let mut child = command.spawn().map_err(|_| GitError::Process)?;
+        let mut child = {
+            // The existing command deadline still starts before synchronous
+            // process creation. This counter only separates its observed cost.
+            let _spawn_timing = crate::integration_diagnostics::CounterTimer::start(
+                crate::integration_diagnostics::CounterKind::GitSpawn,
+            );
+            command.spawn().map_err(|_| GitError::Process)?
+        };
         let stdout = child.stdout.take().ok_or(GitError::Process)?;
         let stderr = child.stderr.take().ok_or(GitError::Process)?;
         let (sender, receiver) = mpsc::sync_channel(8);

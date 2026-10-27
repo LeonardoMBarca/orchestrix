@@ -215,6 +215,13 @@ correlation aid, not proof of physical-directory identity across aliases; neithe
 it nor the observed OIDs grant authority. The event uses the same bounded private
 sink and never replaces fresh preparation or final-operation validation.
 
+For an unscoped command, the existing `gitSpawnMicros` counter brackets only the
+synchronous `Command::spawn()` call. The deadline still starts before that call;
+measurement never resets it. Transport time includes other setup, diagnostics,
+stream/status waiting and cleanup, so subtracting spawn does not yield pure I/O
+time. Older unscoped traces did not populate this counter: their zero is not
+evidence that process creation had no cost. No counter grants execution authority.
+
 Per-command spans, readiness and read-budget detail are exclusive to the
 `repository-inspection` operation. Prepare/Approve/Apply keep their existing
 counters and phase events, so Git-heavy integration cannot consume their bounded

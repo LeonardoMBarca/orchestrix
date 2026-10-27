@@ -113,6 +113,7 @@ fn assert_no_command_ready(events: &[Value]) {
     );
     for event in events.iter().filter(|event| event["event"] == "end") {
         assert_eq!(event["counters"]["gitProcessAttempts"], 0);
+        assert_eq!(event["counters"]["gitSpawnMicros"], 0);
     }
 }
 
@@ -214,6 +215,27 @@ fn installed_git_command_deadline_is_distinct_while_observation_remains_valid() 
     assert_eq!(rejected[0]["command"]["effectiveLimitMs"], 0);
     assert_eq!(rejected[0]["command"]["limitingBudget"], "command");
     assert!(rejected[0]["command"]["transportElapsedMs"].is_u64());
+    // Obtaining Deadline here independently requires a successful real spawn:
+    // spawn failure returns Process. The existing counter stays within its
+    // enclosing transport/span without imposing a minimum process duration.
+    let command_end = events
+        .iter()
+        .find(|event| {
+            event["event"] == "end"
+                && event["phase"] == "git-command"
+                && event["span"] == rejected[0]["parent"]
+        })
+        .unwrap();
+    let spawn_micros = command_end["counters"]["gitSpawnMicros"].as_u64().unwrap();
+    let transport_micros = command_end["counters"]["gitTransportMicros"]
+        .as_u64()
+        .unwrap();
+    assert_eq!(command_end["counters"]["gitProcessAttempts"], 1);
+    // A real Windows Git spawn must register its measured duration. This
+    // detects missing instrumentation, not a performance budget or threshold.
+    assert!(spawn_micros > 0);
+    assert!(spawn_micros <= transport_micros);
+    assert!(spawn_micros <= command_end["spanMicros"].as_u64().unwrap());
     // The zero deadline rejects before this loop's first receive/try_wait.
     // These are LAST local facts, even if Git exited concurrently in the OS.
     assert!(ready[0]["command"].get("waitObservation").is_none());
