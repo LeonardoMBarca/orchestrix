@@ -13,6 +13,10 @@ use std::path::PathBuf;
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case", tag = "kind", deny_unknown_fields)]
 pub enum QueryKind {
+    /// Host-only private probe; no renderer command, free arguments or authority.
+    GitExecutorProbe {
+        repository: PathBuf,
+    },
     RepositoryPreflight {
         repository: PathBuf,
         base_commit: Option<String>,
@@ -48,6 +52,10 @@ pub fn execute(store: Option<&mut Store>, input: &Query) -> Result<Value, Worker
         return Err(WorkerError("query-not-authorized"));
     }
     match &input.query {
+        QueryKind::GitExecutorProbe { repository } => {
+            GitExecutor::diagnostic_probe(repository, &crate::runtime::CancellationToken::new())
+                .map_err(Into::into)
+        }
         QueryKind::RepositoryPreflight {
             repository,
             base_commit,
@@ -125,5 +133,29 @@ pub fn execute(store: Option<&mut Store>, input: &Query) -> Result<Value, Worker
                 json!({"route":"deterministic","result":record.summary(),"processObservation":"historical-not-current-liveness","modelCalled":false}),
             )
         }
+    }
+}
+
+#[cfg(test)]
+mod probe_schema_tests {
+    use super::*;
+    #[test]
+    fn probe_has_no_arguments_environment_or_executable_from_the_client() {
+        let valid = json!({"kind":"git-executor-probe","repository":"owned-repository"});
+        assert!(serde_json::from_value::<QueryKind>(valid.clone()).is_ok());
+        for field in ["args", "executable", "environment", "deadline"] {
+            let mut invalid = valid.clone();
+            invalid[field] = json!("not-authorized");
+            assert!(serde_json::from_value::<QueryKind>(invalid).is_err());
+        }
+        let request = Query {
+            authorization_ref: "probe".into(),
+            authorized: false,
+            query: serde_json::from_value(valid).unwrap(),
+        };
+        assert_eq!(
+            execute(None, &request).unwrap_err().0,
+            "query-not-authorized"
+        );
     }
 }

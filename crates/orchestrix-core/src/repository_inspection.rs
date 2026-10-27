@@ -73,7 +73,9 @@ impl RepositoryInspectionService {
             }
             if !matches!(
                 query.query,
-                QueryKind::RepositoryPreflight { .. } | QueryKind::GitStatus { .. }
+                QueryKind::RepositoryPreflight { .. }
+                    | QueryKind::GitStatus { .. }
+                    | QueryKind::GitExecutorProbe { .. }
             ) {
                 return Err("repository-read-kind".into());
             }
@@ -103,6 +105,10 @@ impl RepositoryInspectionService {
                         Err("repository-read-cancelled".into())
                     } else {
                         match &query.query {
+                            QueryKind::GitExecutorProbe { repository } => {
+                                crate::git::GitExecutor::diagnostic_probe(repository, &token)
+                                    .map_err(|e| e.to_string())
+                            }
                             QueryKind::RepositoryPreflight {
                                 repository,
                                 base_commit,
@@ -178,6 +184,61 @@ impl Drop for RepositoryInspectionService {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn probe_identity_replay_and_inspect_do_not_launch_another_sequence() {
+        let query = Query {
+            authorization_ref: "probe-consent".into(),
+            authorized: true,
+            query: QueryKind::GitExecutorProbe {
+                repository: std::env::temp_dir().join("repository"),
+            },
+        };
+        let fingerprint = crate::git_records::content_hash(&serde_json::to_vec(&query).unwrap());
+        let (_tx, rx) = mpsc::sync_channel(1);
+        let mut service = RepositoryInspectionService::default();
+        service.jobs.push_back(Job {
+            id: "probe-fixed".into(),
+            fingerprint,
+            cancel: CancellationToken::new(),
+            thread: None,
+            done: rx,
+            result: Some(Ok(json!({"authority":false,"probeSucceeded":false}))),
+        });
+        let first = service
+            .handle(
+                &InspectionRequest::Inspect {
+                    id: "probe-fixed".into(),
+                },
+                false,
+            )
+            .unwrap();
+        let replay = service
+            .handle(
+                &InspectionRequest::Start {
+                    id: "probe-fixed".into(),
+                    query: query.clone(),
+                },
+                false,
+            )
+            .unwrap();
+        assert_eq!(first, replay);
+        assert_eq!(service.jobs.len(), 1);
+        assert!(service.is_idle());
+        let mut changed = query;
+        changed.authorization_ref = "different-consent".into();
+        assert_eq!(
+            service
+                .handle(
+                    &InspectionRequest::Start {
+                        id: "probe-fixed".into(),
+                        query: changed
+                    },
+                    false
+                )
+                .unwrap_err(),
+            "repository-read-id-conflict"
+        );
+    }
     #[test]
     fn cancellation_busy_and_query_allowlist_remain_local_and_bounded() {
         let mut service = RepositoryInspectionService::default();

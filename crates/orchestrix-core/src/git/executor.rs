@@ -19,6 +19,8 @@ use std::{
 };
 
 const DEADLINE: Duration = Duration::from_secs(15);
+#[path = "executor_probe.rs"]
+mod probe;
 #[cfg(test)]
 #[path = "read_deadline_tests.rs"]
 mod read_deadline_tests;
@@ -289,7 +291,9 @@ impl GitExecutor {
         Self::construct(Some(scope))
     }
     fn construct(scope: Option<orchestrix_process::named_job::JobScope>) -> GitResult<Self> {
+        let resolution = probe::start_preparation();
         let binary = find_git()?;
+        probe::selected(&binary, resolution.map(|start| start.elapsed()))?;
         let parent = canonical_directory(&env::temp_dir())?;
         let epoch = SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -338,7 +342,16 @@ impl GitExecutor {
         if major < 2 || major == 2 && minor < 36 {
             return Err(GitError::Unsupported);
         }
+        probe::version_validated(version);
         Ok(executor)
+    }
+
+    /// Private fixed read sequence, opt-in and confined to an owned TEMP root.
+    pub(crate) fn diagnostic_probe(
+        repository: &Path,
+        cancel: &crate::runtime::CancellationToken,
+    ) -> GitResult<serde_json::Value> {
+        probe::execute(repository, cancel)
     }
 
     pub(crate) fn run(&self, cwd: &Path, args: &[OsString]) -> GitResult<GitOutput> {
@@ -401,6 +414,7 @@ impl GitExecutor {
         deadline: Duration,
         limit: usize,
     ) -> GitResult<GitOutput> {
+        let preparation = probe::start_preparation();
         let command_limit = deadline;
         let mut observation_remaining = None;
         let deadline = if let Some((started, lifetime, cancel)) = &self.read_budget {
@@ -606,107 +620,169 @@ impl GitExecutor {
             }
             return result;
         }
+        let mut probe = probe::CommandProbe::begin(
+            &command,
+            false,
+            limit,
+            deadline,
+            preparation.map(|start| start.elapsed()),
+        );
         let started = Instant::now();
-        let mut child = {
+        let child = {
             // The existing command deadline still starts before synchronous
             // process creation. This counter only separates its observed cost.
             let _spawn_timing = crate::integration_diagnostics::CounterTimer::start(
                 crate::integration_diagnostics::CounterKind::GitSpawn,
             );
-            command.spawn().map_err(|_| GitError::Process)?
+            command.spawn()
         };
-        let stdout = child.stdout.take().ok_or(GitError::Process)?;
-        let stderr = child.stderr.take().ok_or(GitError::Process)?;
-        let (sender, receiver) = mpsc::sync_channel(8);
-        drain(stdout, false, sender.clone());
-        drain(stderr, true, sender.clone());
-        if let Some(input) = input {
-            let mut stdin = child.stdin.take().ok_or(GitError::Process)?;
-            let input = input.to_vec();
-            let sender = sender.clone();
-            thread::spawn(move || {
-                let result = stdin.write_all(&input);
-                drop(stdin);
-                let _ = sender.send(if result.is_ok() {
-                    Pipe::InputClosed
-                } else {
-                    Pipe::Error
-                });
-            });
-        }
-        drop(sender);
-        let mut result = Vec::new();
-        let mut count = 0usize;
-        let mut closed = 0;
-        let mut status: Option<std::process::ExitStatus> = None;
-        let mut input_closed = input.is_none();
-        loop {
-            let elapsed = started.elapsed();
-            if elapsed >= deadline {
-                // Capture detection facts without IO. A diagnostic sink cannot
-                // delay the existing kill/reap at a command deadline.
-                let observation = self.read_budget_observation();
-                let command = command_facts(Some(elapsed));
-                // These are the loop's last observed facts, not a fresh OS
-                // probe. Do not poll the child or drain another stream before
-                // the mandatory kill/reap. In particular, None does not prove
-                // that the child is still running at this later instant.
-                let wait = u8::try_from(closed).ok().and_then(|closed| {
-                    WaitObservation::new(
-                        status.is_some(),
-                        status.as_ref().and_then(std::process::ExitStatus::code),
-                        closed,
-                        input_closed,
-                        result.len() as u64,
-                        count as u64,
-                    )
-                });
-                let command = wait.map_or(command, |wait| command.with_wait_observation(wait));
-                let _ = child.kill();
-                reap_bounded(&mut child);
-                crate::integration_diagnostics::read_budget_rejected(
-                    DeadlineBoundary::CommandWait,
-                    false,
-                    observation,
-                    Some(command),
-                );
-                return Err(GitError::Deadline);
-            }
-            match receive_pipe(&receiver, Duration::from_millis(5)) {
-                Ok(Pipe::Data(is_stderr, bytes)) => {
-                    count = count.saturating_add(bytes.len());
-                    if count > limit {
-                        let _ = child.kill();
-                        reap_bounded(&mut child);
-                        return Err(GitError::OutputLimit);
-                    }
-                    if !is_stderr {
-                        crate::integration_diagnostics::git_bytes(0, bytes.len());
-                        result.extend_from_slice(&bytes);
-                    }
+        let mut child = match child {
+            Ok(child) => child,
+            Err(_) => {
+                if let Some(probe) = &mut probe {
+                    probe.spawn_failed(started.elapsed());
                 }
-                Ok(Pipe::Closed) => closed += 1,
-                Ok(Pipe::InputClosed) => input_closed = true,
-                Ok(Pipe::Error) => {
+                return Err(GitError::Process);
+            }
+        };
+        if let Some(probe) = &mut probe {
+            probe.spawned(child.id(), started.elapsed());
+        }
+        let result = (|| {
+            let stdout = child.stdout.take().ok_or(GitError::Process)?;
+            let stderr = child.stderr.take().ok_or(GitError::Process)?;
+            let (sender, receiver) = mpsc::sync_channel(8);
+            drain(stdout, false, sender.clone());
+            drain(stderr, true, sender.clone());
+            if let Some(input) = input {
+                let mut stdin = child.stdin.take().ok_or(GitError::Process)?;
+                let input = input.to_vec();
+                let sender = sender.clone();
+                thread::spawn(move || {
+                    let result = stdin.write_all(&input);
+                    drop(stdin);
+                    let _ = sender.send(if result.is_ok() {
+                        Pipe::InputClosed
+                    } else {
+                        Pipe::Error
+                    });
+                });
+            }
+            drop(sender);
+            let mut result = Vec::new();
+            let mut count = 0usize;
+            let mut closed = 0;
+            let mut status: Option<std::process::ExitStatus> = None;
+            let mut input_closed = input.is_none();
+            if let Some(probe) = &mut probe {
+                probe.observe_created(&child, started.elapsed(), deadline);
+            }
+            loop {
+                let elapsed = started.elapsed();
+                if elapsed >= deadline {
+                    // Capture detection facts without IO. A diagnostic sink cannot
+                    // delay the existing kill/reap at a command deadline.
+                    let observation = self.read_budget_observation();
+                    let command = command_facts(Some(elapsed));
+                    // These are the loop's last observed facts, not a fresh OS
+                    // probe. Do not poll the child or drain another stream before
+                    // the mandatory kill/reap. In particular, None does not prove
+                    // that the child is still running at this later instant.
+                    let wait = u8::try_from(closed).ok().and_then(|closed| {
+                        WaitObservation::new(
+                            status.is_some(),
+                            status.as_ref().and_then(std::process::ExitStatus::code),
+                            closed,
+                            input_closed,
+                            result.len() as u64,
+                            count as u64,
+                        )
+                    });
+                    let command = wait.map_or(command, |wait| command.with_wait_observation(wait));
+                    if let Some(probe) = &mut probe {
+                        probe.cleanup_start();
+                    }
                     let _ = child.kill();
                     reap_bounded(&mut child);
-                    return Err(GitError::Process);
+                    if let Some(probe) = &mut probe {
+                        probe.cleanup_returned();
+                    }
+                    crate::integration_diagnostics::read_budget_rejected(
+                        DeadlineBoundary::CommandWait,
+                        false,
+                        observation,
+                        Some(command),
+                    );
+                    return Err(GitError::Deadline);
                 }
-                Err(mpsc::RecvTimeoutError::Timeout | mpsc::RecvTimeoutError::Disconnected) => {}
+                match receive_pipe(&receiver, Duration::from_millis(5)) {
+                    Ok(Pipe::Data(is_stderr, bytes)) => {
+                        if let Some(probe) = &mut probe {
+                            probe.output();
+                        }
+                        count = count.saturating_add(bytes.len());
+                        if count > limit {
+                            if let Some(probe) = &mut probe {
+                                probe.cleanup_start();
+                            }
+                            let _ = child.kill();
+                            reap_bounded(&mut child);
+                            if let Some(probe) = &mut probe {
+                                probe.cleanup_returned();
+                            }
+                            return Err(GitError::OutputLimit);
+                        }
+                        if !is_stderr {
+                            crate::integration_diagnostics::git_bytes(0, bytes.len());
+                            result.extend_from_slice(&bytes);
+                        }
+                    }
+                    Ok(Pipe::Closed) => {
+                        closed += 1;
+                        if closed == 2
+                            && let Some(probe) = &mut probe
+                        {
+                            probe.streams_closed();
+                        }
+                    }
+                    Ok(Pipe::InputClosed) => input_closed = true,
+                    Ok(Pipe::Error) => {
+                        if let Some(probe) = &mut probe {
+                            probe.cleanup_start();
+                        }
+                        let _ = child.kill();
+                        reap_bounded(&mut child);
+                        if let Some(probe) = &mut probe {
+                            probe.cleanup_returned();
+                        }
+                        return Err(GitError::Process);
+                    }
+                    Err(mpsc::RecvTimeoutError::Timeout | mpsc::RecvTimeoutError::Disconnected) => {
+                    }
+                }
+                if status.is_none() {
+                    status = child.try_wait().map_err(|_| GitError::Process)?;
+                    if let Some(status) = &status
+                        && let Some(probe) = &mut probe
+                    {
+                        probe.exit(status);
+                    }
+                }
+                if closed == 2
+                    && input_closed
+                    && let Some(exit) = status
+                {
+                    return Ok(GitOutput {
+                        stdout: result,
+                        status: exit.code().unwrap_or(-1),
+                    });
+                }
             }
-            if status.is_none() {
-                status = child.try_wait().map_err(|_| GitError::Process)?;
-            }
-            if closed == 2
-                && input_closed
-                && let Some(exit) = status
-            {
-                return Ok(GitOutput {
-                    stdout: result,
-                    status: exit.code().unwrap_or(-1),
-                });
-            }
+        })();
+        if let Some(probe) = &mut probe {
+            probe.finish(&child, result.is_ok());
         }
+        result
     }
 
     /// Inspect only the repository's direct local config, without includes.

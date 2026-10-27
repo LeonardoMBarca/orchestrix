@@ -48,9 +48,17 @@ fn run() -> Result<(), String> {
         "--directory",
         "--request",
         "--command-id",
+        "--wait-git-probe",
     ];
     if flags.keys().any(|k| !allowed.contains(&k.as_str())) {
         return Err("unknown-option".into());
+    }
+    if flags.contains_key("--wait-git-probe")
+        && (action != "api"
+            || flags.get("--wait-git-probe").map(String::as_str) != Some("yes")
+            || env::var_os("ORCHESTRIX_GIT_EXECUTOR_PROBE_ROOT").is_none())
+    {
+        return Err("private-git-probe-wait-opt-in".into());
     }
     let required = |key: &str| {
         flags
@@ -88,7 +96,31 @@ fn run() -> Result<(), String> {
                 operation,
             }
         };
-        let response = Client::new(&PathBuf::from(required("--database")?))?.request(&request)?;
+        let wait_id = flags
+            .contains_key("--wait-git-probe")
+            .then(|| probe_wait_id(&request))
+            .transpose()?;
+        let client = Client::new(&PathBuf::from(required("--database")?))?;
+        let mut response = client.request(&request)?;
+        if let Some(id) = wait_id {
+            let started = std::time::Instant::now();
+            while response.ok && response.result["state"] == "pending" {
+                if started.elapsed() >= std::time::Duration::from_secs(110) {
+                    return Err("git-probe-wait-elapsed-inspect-original-id".into());
+                }
+                std::thread::sleep(std::time::Duration::from_millis(500));
+                // Same request identity; never repeat Start after a lost reply.
+                response = client.request(&Request {
+                    api_version: API_VERSION,
+                    operation: Operation::RepositoryInspection {
+                        request:
+                            orchestrix_core::repository_inspection::InspectionRequest::Inspect {
+                                id: id.clone(),
+                            },
+                    },
+                })?;
+            }
+        }
         println!(
             "{}",
             serde_json::to_string_pretty(&response).map_err(|_| "serialization")?
@@ -294,6 +326,25 @@ fn run() -> Result<(), String> {
     );
     Ok(())
 }
+fn probe_wait_id(request: &orchestrix_core::daemon::Request) -> Result<String, String> {
+    use orchestrix_core::{
+        daemon::{API_VERSION, Operation},
+        mechanical::QueryKind,
+        repository_inspection::InspectionRequest,
+    };
+    if request.api_version != API_VERSION {
+        return Err("private-git-probe-wait-request".into());
+    }
+    match &request.operation {
+        Operation::RepositoryInspection {
+            request: InspectionRequest::Start { id, query },
+        } if query.authorized && matches!(query.query, QueryKind::GitExecutorProbe { .. }) => {
+            Ok(id.clone())
+        }
+        _ => Err("private-git-probe-wait-request".into()),
+    }
+}
+
 fn read_json<T: serde::de::DeserializeOwned>(path: &std::path::Path) -> Result<T, String> {
     let mut bytes = vec![];
     std::fs::File::open(path)
@@ -305,4 +356,51 @@ fn read_json<T: serde::de::DeserializeOwned>(path: &std::path::Path) -> Result<T
         return Err("manifest-size".into());
     }
     serde_json::from_slice(&bytes).map_err(|_| "manifest-schema".into())
+}
+
+#[cfg(test)]
+mod probe_wait_tests {
+    use super::*;
+    use orchestrix_core::{
+        daemon::{API_VERSION, Operation, Request},
+        mechanical::{Query, QueryKind},
+        repository_inspection::InspectionRequest,
+    };
+    #[test]
+    fn wait_accepts_only_one_fixed_probe_start_and_retains_its_id() {
+        let request = Request {
+            api_version: API_VERSION,
+            operation: Operation::RepositoryInspection {
+                request: InspectionRequest::Start {
+                    id: "fixed-b1".into(),
+                    query: Query {
+                        authorization_ref: "read".into(),
+                        authorized: true,
+                        query: QueryKind::GitExecutorProbe {
+                            repository: PathBuf::from("owned"),
+                        },
+                    },
+                },
+            },
+        };
+        assert_eq!(probe_wait_id(&request).unwrap(), "fixed-b1");
+        assert!(
+            probe_wait_id(&Request {
+                api_version: API_VERSION,
+                operation: Operation::Snapshot
+            })
+            .is_err()
+        );
+        assert!(
+            probe_wait_id(&Request {
+                api_version: API_VERSION,
+                operation: Operation::RepositoryInspection {
+                    request: InspectionRequest::Inspect {
+                        id: "fixed-b1".into()
+                    }
+                }
+            })
+            .is_err()
+        );
+    }
 }

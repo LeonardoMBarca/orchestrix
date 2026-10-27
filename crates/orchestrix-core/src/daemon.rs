@@ -673,7 +673,7 @@ fn handle_inner(
                 return Err("query-not-authorized".into());
             }
             match &query.query {
-                crate::mechanical::QueryKind::RepositoryPreflight{..}|crate::mechanical::QueryKind::GitStatus{..}|crate::mechanical::QueryKind::GitDiff{..}|crate::mechanical::QueryKind::FileExists{..}=>return Err("filesystem-query-not-supported-by-control-loop".into()),
+                crate::mechanical::QueryKind::GitExecutorProbe{..}|crate::mechanical::QueryKind::RepositoryPreflight{..}|crate::mechanical::QueryKind::GitStatus{..}|crate::mechanical::QueryKind::GitDiff{..}|crate::mechanical::QueryKind::FileExists{..}=>return Err("filesystem-query-not-supported-by-control-loop".into()),
                 crate::mechanical::QueryKind::CheckResults{worker_id}|crate::mechanical::QueryKind::ProcessStatus{worker_id}=>return store.load().map_err(|_|"database")?.workers().get(worker_id).map(|w|json!({"route":"deterministic","result":w.summary(),"historical":true,"currentVerification":"not-revalidated","modelCalled":false})).ok_or_else(||"worker-not-found".into()),
             }
         }

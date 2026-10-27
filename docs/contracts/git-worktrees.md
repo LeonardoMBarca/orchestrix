@@ -222,6 +222,45 @@ stream/status waiting and cleanup, so subtracting spawn does not yield pure I/O
 time. Older unscoped traces did not populate this counter: their zero is not
 evidence that process creation had no cost. No counter grants execution authority.
 
+The private `git-executor-probe` mechanical query is a separate, non-authoritative
+diagnostic. It requires the daemon/CLI process's explicit
+`ORCHESTRIX_GIT_EXECUTOR_PROBE_ROOT` to match a canonical owned TEMP
+`orchestrix-*/repository` root. It permits at most two samples per process and
+only the fixed constructor/version, local configuration, administrative-directory
+and `rev-parse --verify HEAD^{commit}` sequence. No client-supplied executable,
+arguments, environment or deadlines are accepted. CLI uses the existing standalone
+query path; daemon samples use the existing serial asynchronous repository-read
+service. Replaying a retained job ID inspects its original result; restart does
+not replay a sample. The synchronous control loop continues to refuse filesystem
+queries. There is no renderer command or provider call.
+
+An opted-in local CLI client can use `api --wait-git-probe yes` only with a fixed
+probe Start request. That one client waits/inspects the original ID over the
+production typed IPC client instead of starting an executable at every poll.
+Its separate 110-second observation watchdog neither changes 15/90-second Git
+budgets nor resends Start after a response loss. Other operations reject this
+private wait option.
+
+This private response (at most 64 KiB/four commands) records selected Git and Core
+paths, bounded file hashes/physical identities, admitted version provenance,
+restricted environment hashes, fixed arguments/stdio/creation flags and local
+timeline observations. File hashing occurs once per sample outside spawn timing;
+it is not proof of immutable mapped-image bytes. The fresh empty hooks-directory
+argument varies between samples and remains explicit. A root child image/PID is
+queried through its borrowed process handle after creation only while its command
+budget still has time. The existing wait-loop deadline check immediately follows;
+an already expired creation skips image lookup and proceeds to cleanup. Native
+query cost is separate, with at most three fixed queries and no file hashing or
+output writes in that interval. An exited process may no longer expose its image;
+that failure remains unavailable, never filled from the selected filename. The
+query neither enumerates launcher descendants nor certifies tree closure. There
+is no diagnostic query on the cleanup path. Synchronous creation/native calls
+are not hard-interruptible by these checkpoints, so an in-progress native call
+may delay the next deadline observation; no abandoned creator thread or renewed
+budget is used.
+Private probe data is not stored as artifact/policy/connection authority or
+exported automatically. Ordinary preflight/worker results retain their formats.
+
 Per-command spans, readiness and read-budget detail are exclusive to the
 `repository-inspection` operation. Prepare/Approve/Apply keep their existing
 counters and phase events, so Git-heavy integration cannot consume their bounded

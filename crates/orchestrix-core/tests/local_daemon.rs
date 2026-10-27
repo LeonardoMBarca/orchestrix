@@ -59,7 +59,15 @@ impl Fixture {
         }
     }
     fn start(&self) -> Daemon {
-        let child = Command::new(env!("CARGO_BIN_EXE_orchestrix"))
+        self.start_with_probe(false)
+    }
+    fn start_with_probe(&self, probe: bool) -> Daemon {
+        let mut command = Command::new(env!("CARGO_BIN_EXE_orchestrix"));
+        command.env_remove("ORCHESTRIX_GIT_EXECUTOR_PROBE_ROOT");
+        if probe {
+            command.env("ORCHESTRIX_GIT_EXECUTOR_PROBE_ROOT", &self.repository);
+        }
+        let child = command
             .args(["daemon", "--database"])
             .arg(&self.database)
             .env("ORCHESTRIX_LOCAL_CONTROL_DIAGNOSTICS", "1")
@@ -802,6 +810,108 @@ impl Drop for Daemon {
             let _ = self.child.wait();
         }
     }
+}
+
+#[test]
+fn fixed_git_probe_runs_in_daemon_without_authority_replay_or_provider_calls() {
+    use orchestrix_core::{
+        mechanical::{Query, QueryKind},
+        repository_inspection::InspectionRequest,
+    };
+    let fixture = Fixture::new();
+    let daemon = fixture.start_with_probe(true);
+    let before = daemon.ok(Operation::Snapshot);
+    let query = Query {
+        authorized: true,
+        authorization_ref: "private-probe".into(),
+        query: QueryKind::GitExecutorProbe {
+            repository: fixture.repository.clone(),
+        },
+    };
+    assert_eq!(
+        daemon
+            .send(Operation::Query {
+                query: query.clone()
+            })
+            .error
+            .as_deref(),
+        Some("filesystem-query-not-supported-by-control-loop")
+    );
+    let start = |id: &str| Operation::RepositoryInspection {
+        request: InspectionRequest::Start {
+            id: id.into(),
+            query: query.clone(),
+        },
+    };
+    let inspect = |id: &str| Operation::RepositoryInspection {
+        request: InspectionRequest::Inspect { id: id.into() },
+    };
+    let wait = |id: &str| {
+        let deadline = Instant::now() + Duration::from_secs(110);
+        loop {
+            let view = daemon.ok(inspect(id));
+            if view["state"] != "pending" {
+                break view;
+            }
+            assert!(daemon.ok(Operation::Snapshot)["activeWorkerId"].is_null());
+            assert!(Instant::now() < deadline, "private probe deadline");
+            std::thread::sleep(Duration::from_millis(50));
+        }
+    };
+    for id in ["probe-a", "probe-b"] {
+        assert_eq!(daemon.ok(start(id))["state"], "pending");
+        let view = wait(id);
+        assert_eq!(view["state"], "finished", "{view}");
+        let result = &view["result"];
+        assert_eq!(result["probeSucceeded"], true, "{result}");
+        assert_eq!(result["authority"], false);
+        assert_eq!(result["modelCalled"], false);
+        assert_eq!(result["head"], fixture.base);
+        assert_eq!(result["corePid"], daemon.child.id());
+        assert_eq!(
+            result["versionProvenance"],
+            "existing-constructor-admission"
+        );
+        let commands = result["commands"].as_array().unwrap();
+        assert_eq!(commands.len(), 4);
+        let last = &commands[3];
+        let args = last["arguments"].as_array().unwrap();
+        assert_eq!(
+            args[args.len() - 3..],
+            serde_json::json!(["rev-parse", "--verify", "HEAD^{commit}"])
+                .as_array()
+                .unwrap()[..]
+        );
+        assert_eq!(last["deadlineMs"], 15000);
+        assert_eq!(last["outputLimitBytes"], 256);
+        assert_eq!(last["stdin"], "null");
+        assert_eq!(last["scoped"], false);
+        assert!(last["childPid"].is_u64());
+        if last["image"]["path"].is_string() {
+            assert_eq!(last["image"]["pid"], last["childPid"]);
+            assert_eq!(
+                fs::canonicalize(last["image"]["path"].as_str().unwrap()).unwrap(),
+                fs::canonicalize(result["selectedGit"]["path"].as_str().unwrap()).unwrap()
+            );
+        } else {
+            assert!(last["image"]["unavailable"].is_string(), "{last}");
+        }
+        assert_eq!(
+            daemon.ok(start(id)),
+            view,
+            "replay cannot launch another sample"
+        );
+    }
+    daemon.ok(start("probe-third"));
+    let denied = wait("probe-third");
+    assert_eq!(denied["state"], "failed");
+    assert_eq!(denied["error"], "Local Git operation rejected: limit");
+    let after = daemon.ok(Operation::Snapshot);
+    assert_eq!(before["state"], after["state"]);
+    assert_eq!(after["workerCount"], 0);
+    assert_eq!(fixture.dispatches(), 0);
+    assert_eq!(fixture.native_threads(), 0);
+    assert!(daemon.shutdown_status().success());
 }
 
 #[test]

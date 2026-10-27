@@ -3,6 +3,7 @@
 pub mod ipc;
 pub mod lease;
 pub mod named_job;
+pub mod process_observation;
 pub mod startup_pipe;
 pub mod watch;
 #[cfg(windows)]
