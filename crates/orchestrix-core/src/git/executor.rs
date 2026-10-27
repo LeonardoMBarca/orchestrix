@@ -319,7 +319,9 @@ impl GitExecutor {
             binary,
             private: private.ok_or(GitError::Collision)?,
             scope,
-            read_budget: None,
+            // Only the explicit private probe has a budget at construction.
+            // Ordinary executors retain their existing admission semantics.
+            read_budget: probe::read_budget(),
         };
         let version = executor.run(&parent, &strings(&["--version"]))?.checked()?;
         let version = std::str::from_utf8(&version).map_err(|_| GitError::Unsupported)?;

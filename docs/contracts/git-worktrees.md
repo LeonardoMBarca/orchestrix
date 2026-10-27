@@ -241,6 +241,16 @@ Its separate 110-second observation watchdog neither changes 15/90-second Git
 budgets nor resends Start after a response loss. Other operations reject this
 private wait option.
 
+The private sequence starts its unchanged 90-second observation budget before
+Git discovery and selected-file identity I/O. It checks cancellation/expiry on
+both sides of that I/O and installs the same budget in the constructor before
+`--version`; it cannot start a new command after an expired read or renew the
+budget at construction. The separate, once-per-sample Core identity read is
+preparation outside that sequence, with a 32-MiB file bound and cancellation
+checks before/after. Neither file reads nor native creation calls are hard
+interruptible; a blocked OS call can return after the deadline. These limits do
+not promise a hard wall-clock return or abandon a still-owned creator thread.
+
 This private response (at most 64 KiB/four commands) records selected Git and Core
 paths, bounded file hashes/physical identities, admitted version provenance,
 restricted environment hashes, fixed arguments/stdio/creation flags and local

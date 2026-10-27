@@ -6,6 +6,7 @@ use sha2::{Digest, Sha256};
 use std::{cell::RefCell, rc::Rc};
 
 const MAX_SAMPLES: u64 = 2;
+const SEQUENCE_LIMIT: Duration = Duration::from_secs(90);
 static SAMPLES: AtomicU64 = AtomicU64::new(0);
 thread_local! {
     static ACTIVE: RefCell<Option<Rc<RefCell<State>>>> = const { RefCell::new(None) };
@@ -13,6 +14,7 @@ thread_local! {
 #[derive(Default)]
 struct State {
     cancel: Option<crate::runtime::CancellationToken>,
+    started: Option<Instant>,
     selected: Option<Value>,
     version: Option<String>,
     commands: Vec<Value>,
@@ -25,6 +27,23 @@ impl Drop for Guard {
 }
 fn current() -> Option<Rc<RefCell<State>>> {
     ACTIVE.with(|s| s.borrow().clone())
+}
+pub(super) fn read_budget() -> Option<(Instant, Duration, crate::runtime::CancellationToken)> {
+    let state = current()?;
+    let state = state.borrow();
+    Some((state.started?, SEQUENCE_LIMIT, state.cancel.clone()?))
+}
+fn check_state_budget(state: &State) -> GitResult<()> {
+    if state.cancel.as_ref().is_some_and(|c| c.is_cancelled()) {
+        return Err(GitError::Pending);
+    }
+    if state
+        .started
+        .is_some_and(|start| start.elapsed() >= SEQUENCE_LIMIT)
+    {
+        return Err(GitError::Deadline);
+    }
+    Ok(())
 }
 
 fn file_observation(path: &Path) -> GitResult<Value> {
@@ -82,20 +101,9 @@ fn selected_with(
     observe: impl FnOnce() -> GitResult<Value>,
 ) -> GitResult<()> {
     if let Some(state) = current() {
-        let cancelled = || {
-            state
-                .borrow()
-                .cancel
-                .as_ref()
-                .is_some_and(|c| c.is_cancelled())
-        };
-        if cancelled() {
-            return Err(GitError::Pending);
-        }
+        check_state_budget(&state.borrow())?;
         let mut file = observe()?;
-        if cancelled() {
-            return Err(GitError::Pending);
-        }
+        check_state_budget(&state.borrow())?;
         file["resolutionMicros"] = json!(resolution.map(micros));
         state.borrow_mut().selected = Some(file);
     }
@@ -275,16 +283,17 @@ fn execute_authorized(root: &Path, cancel: &crate::runtime::CancellationToken) -
     if cancel.is_cancelled() {
         return Err(GitError::Pending);
     }
+    let started = Instant::now();
     let state = Rc::new(RefCell::new(State {
         cancel: Some(cancel.clone()),
+        started: Some(started),
         ..State::default()
     }));
     ACTIVE.with(|slot| *slot.borrow_mut() = Some(state.clone()));
     let guard = Guard;
-    let started = Instant::now();
     let result = (|| {
         let executor =
-            GitExecutor::new()?.with_read_budget(started, Duration::from_secs(90), cancel.clone());
+            GitExecutor::new()?.with_read_budget(started, SEQUENCE_LIMIT, cancel.clone());
         executor.check_read_budget()?;
         executor.ensure_supported(root)?;
         executor.inspect_head(root)
@@ -376,6 +385,48 @@ mod tests {
             selected_with(None, || panic!("cancelled read must not start")),
             Err(GitError::Pending)
         );
+    }
+
+    #[test]
+    fn expired_identity_read_cannot_start_version_or_renew_the_sequence() {
+        let cancel = crate::runtime::CancellationToken::new();
+        let started = Instant::now();
+        let state = Rc::new(RefCell::new(State {
+            cancel: Some(cancel.clone()),
+            started: Some(started),
+            ..State::default()
+        }));
+        ACTIVE.with(|slot| *slot.borrow_mut() = Some(state.clone()));
+        let _guard = Guard;
+        let (observed_start, limit, _) = read_budget().unwrap();
+        assert_eq!(observed_start, started);
+        assert_eq!(limit, SEQUENCE_LIMIT);
+        assert_eq!(
+            selected_with(None, || {
+                state.borrow_mut().started = Some(Instant::now() - SEQUENCE_LIMIT);
+                Ok(json!({"authority":false}))
+            }),
+            Err(GitError::Deadline)
+        );
+        assert!(state.borrow().commands.is_empty());
+        assert!(state.borrow().selected.is_none());
+        assert_eq!(
+            selected_with(None, || panic!("expired identity read must not start")),
+            Err(GitError::Deadline)
+        );
+        // The constructor receives this same budget before its first command;
+        // even its normal command guard refuses before touching cwd or spawn.
+        let executor = GitExecutor {
+            binary: "absent".into(),
+            private: PathBuf::new(),
+            scope: None,
+            read_budget: read_budget(),
+        };
+        assert!(matches!(
+            executor.run(Path::new("absent"), &strings(&["--version"])),
+            Err(GitError::Deadline)
+        ));
+        assert!(state.borrow().commands.is_empty());
     }
 
     #[test]
